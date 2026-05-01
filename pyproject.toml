@@ -2,7 +2,7 @@
 name = "mem-mcp"
 version = "0.0.0"
 description = "Multi-tenant memory MCP service"
-authors = ["Your Name <you@example.com>"]
+authors = ["Anand <anand@dheemantech.com>"]
 readme = "README.md"
 packages = [{ include = "mem_mcp", from = "src" }]
 
