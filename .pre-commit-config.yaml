@@ -1,0 +1,33 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.7.0
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy
+        entry: poetry run mypy src/mem_mcp tests
+        language: system
+        types: [python]
+        pass_filenames: false
+        stages: [commit]
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+
+# TODO: T-6.1 — Add tenant-scope-linter hook when linter is implemented.
+# - repo: local
+#   hooks:
+#     - id: tenant-scope-linter
+#       name: tenant-scope-linter
+#       entry: poetry run python tools/lint_tenant_scope.py
+#       language: system
+#       types: [python]
+#       pass_filenames: false
+#       stages: [commit]
