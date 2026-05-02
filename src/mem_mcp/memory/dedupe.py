@@ -31,7 +31,7 @@ class DedupeMatch:
 
 
 async def check_dup(
-    conn: "asyncpg.Connection",
+    conn: asyncpg.Connection,
     tenant_id: UUID,
     content_hash: str,
     embedding: list[float] | None,

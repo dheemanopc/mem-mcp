@@ -108,7 +108,7 @@ LIMIT $11
 
 
 async def hybrid_search(
-    conn: "asyncpg.Connection",
+    conn: asyncpg.Connection,
     tenant_id: UUID,
     params: SearchParams,
 ) -> list[SearchResult]:
