@@ -31,6 +31,19 @@ from mem_mcp.auth.middleware import (
     TouchSink,
     make_bearer_middleware,
 )
+from mem_mcp.auth.dcr import (
+    AllowedSoftwareLookup,
+    BotoCognitoClientFactory,
+    CognitoClientFactory,
+    DbAllowedSoftwareLookup,
+    DbOauthClientStore,
+    DcrInput,
+    DcrOutput,
+    InMemoryRateLimiter,
+    OauthClientStore,
+    RateLimiter,
+    make_dcr_router,
+)
 from mem_mcp.auth.well_known import (
     DEFAULT_MCP_SCOPES,
     make_well_known_router,
@@ -55,4 +68,15 @@ __all__ = [
     "make_bearer_middleware",
     "DEFAULT_MCP_SCOPES",
     "make_well_known_router",
+    "AllowedSoftwareLookup",
+    "BotoCognitoClientFactory",
+    "CognitoClientFactory",
+    "DbAllowedSoftwareLookup",
+    "DbOauthClientStore",
+    "DcrInput",
+    "DcrOutput",
+    "InMemoryRateLimiter",
+    "OauthClientStore",
+    "RateLimiter",
+    "make_dcr_router",
 ]
