@@ -11,15 +11,13 @@ raises JsonRpcError(-32000, code='insufficient_scope') if not granted.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, ClassVar, Protocol
+from typing import TYPE_CHECKING, ClassVar, Protocol
 from uuid import UUID
 
 from pydantic import BaseModel
 
 if TYPE_CHECKING:
     import asyncpg
-
-    from mem_mcp.audit.logger import AuditLogger  # future T-5.12; placeholder type
 
 
 @dataclass(frozen=True)
@@ -35,7 +33,7 @@ class ToolContext:
     identity_id: UUID
     client_id: str
     scopes: frozenset[str]
-    db_pool: "asyncpg.Pool"
+    db_pool: asyncpg.Pool
     # audit: "AuditLogger"  # T-5.12 — left out for now; tools just _log via structlog
 
 

@@ -18,7 +18,6 @@ from mem_mcp.mcp.tools._base import BaseTool, ToolContext
 from mem_mcp.mcp.tools._test_echo import EchoTool
 from mem_mcp.mcp.transport import make_mcp_router
 
-
 # --------------------------------------------------------------------------
 # Helpers
 # --------------------------------------------------------------------------
@@ -198,7 +197,9 @@ class TestTransport:
     def test_invalid_json_body(self) -> None:
         r = ToolRegistry()
         client = _build_app(r)
-        resp = client.post("/mcp", content=b"not json", headers={"Content-Type": "application/json"})
+        resp = client.post(
+            "/mcp", content=b"not json", headers={"Content-Type": "application/json"}
+        )
         assert resp.status_code == 400
         body = resp.json()
         assert body["error"]["code"] == -32700

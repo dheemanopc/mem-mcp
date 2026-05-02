@@ -30,19 +30,22 @@ class ToolRegistry:
         defs: list[dict[str, Any]] = []
         for name in sorted(self._tools.keys()):
             cls = self._tools[name]
-            defs.append({
-                "name": name,
-                "description": (cls.__doc__ or "").strip().splitlines()[0]
-                if cls.__doc__ else "",
-                "inputSchema": cls.InputModel.model_json_schema(),
-                "outputSchema": cls.OutputModel.model_json_schema(),
-                "required_scope": cls.required_scope,
-            })
+            defs.append(
+                {
+                    "name": name,
+                    "description": (cls.__doc__ or "").strip().splitlines()[0]
+                    if cls.__doc__
+                    else "",
+                    "inputSchema": cls.InputModel.model_json_schema(),
+                    "outputSchema": cls.OutputModel.model_json_schema(),
+                    "required_scope": cls.required_scope,
+                }
+            )
         return defs
 
     async def dispatch(
         self,
-        ctx: "ToolContext",
+        ctx: ToolContext,
         method: str,
         params: dict[str, Any] | None,
     ) -> dict[str, Any]:
@@ -78,12 +81,12 @@ class ToolRegistry:
                 data={"errors": exc.errors(include_url=False, include_input=False)},
             ) from exc
 
-        instance = tool_cls()  # type: ignore[call-arg]  # Protocol — constructable
+        instance = tool_cls()  # Protocol — constructable
         try:
             output: BaseModel = await instance(ctx, inp)
         except JsonRpcError:
             raise
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             # Don't leak internals; log with full stack via structlog (caller does).
             raise JsonRpcError(
                 -32603,

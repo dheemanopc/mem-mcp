@@ -15,7 +15,7 @@ problem (none of memory.* tools stream). SSE wiring is left as a TODO.
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Request
 from starlette.responses import JSONResponse
@@ -35,8 +35,8 @@ _log = get_logger("mem_mcp.mcp.transport")
 
 def make_mcp_router(
     *,
-    registry: "ToolRegistry",
-    db_pool: "asyncpg.Pool",
+    registry: ToolRegistry,
+    db_pool: asyncpg.Pool,
 ) -> APIRouter:
     """Build the POST /mcp router. The Bearer middleware must run before this."""
     router = APIRouter(tags=["mcp"])
@@ -112,7 +112,9 @@ def make_mcp_router(
         params = body.get("params") or {}
         if not isinstance(params, dict):
             return JSONResponse(
-                content=to_jsonrpc_error_response(request_id, -32602, "params must be object or omitted"),
+                content=to_jsonrpc_error_response(
+                    request_id, -32602, "params must be object or omitted"
+                ),
                 status_code=400,
             )
 
