@@ -8,7 +8,6 @@ from fastapi.testclient import TestClient
 from mem_mcp.health import CheckResult, HealthChecker
 from mem_mcp.main import create_app
 
-
 # ---------------------------------------------------------------------------
 # Fake HealthChecker
 # ---------------------------------------------------------------------------

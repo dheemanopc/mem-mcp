@@ -74,9 +74,9 @@ def create_app(checkers: list[HealthChecker] | None = None) -> FastAPI:
         title="mem-mcp",
         version="0.0.0",
         lifespan=lifespan,
-        docs_url=None,        # no Swagger UI in production
-        redoc_url=None,       # no ReDoc
-        openapi_url=None,     # no public OpenAPI spec
+        docs_url=None,  # no Swagger UI in production
+        redoc_url=None,  # no ReDoc
+        openapi_url=None,  # no public OpenAPI spec
     )
 
     if checkers is not None:

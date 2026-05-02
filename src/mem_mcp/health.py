@@ -50,7 +50,7 @@ class DbHealthChecker:
             if value == 1:
                 return CheckResult(self.name, "ok")
             return CheckResult(self.name, "fail", f"unexpected SELECT 1 result: {value!r}")
-        except Exception as exc:  # noqa: BLE001 — we report the message
+        except Exception as exc:
             return CheckResult(self.name, "fail", str(exc)[:200])
 
 
@@ -73,7 +73,7 @@ class BedrockHealthChecker:
 
             boto3.client("bedrock-runtime", region_name=self.region)
             return CheckResult(self.name, "ok")
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return CheckResult(self.name, "fail", str(exc)[:200])
 
 
@@ -105,7 +105,7 @@ class CognitoJwksHealthChecker:
             if not isinstance(payload, dict) or "keys" not in payload:
                 return CheckResult(self.name, "fail", "jwks payload missing 'keys'")
             return CheckResult(self.name, "ok")
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return CheckResult(self.name, "fail", str(exc)[:200])
 
 

@@ -18,9 +18,7 @@ class TestAggregate:
         assert payload == {"a": "ok", "b": "ok"}
 
     def test_one_failure(self) -> None:
-        status, payload = aggregate(
-            [CheckResult("a", "ok"), CheckResult("b", "fail", "boom")]
-        )
+        status, payload = aggregate([CheckResult("a", "ok"), CheckResult("b", "fail", "boom")])
         assert status == "fail"
         assert payload == {"a": "ok", "b": "boom"}
 
