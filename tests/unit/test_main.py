@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from mem_mcp.health import CheckResult, HealthChecker
+from mem_mcp.health import CheckResult
 from mem_mcp.main import create_app
 
 # ---------------------------------------------------------------------------
@@ -18,9 +18,7 @@ from mem_mcp.main import create_app
 class FakeChecker:
     """Returns a pre-canned CheckResult. Records call count."""
 
-    def __init__(
-        self, name: str, status: str = "ok", message: str = ""
-    ) -> None:
+    def __init__(self, name: str, status: str = "ok", message: str = "") -> None:
         self.name = name
         self._status: str = status
         self._message = message
@@ -29,7 +27,9 @@ class FakeChecker:
     async def check(self) -> CheckResult:
         self.calls += 1
         return CheckResult(
-            self.name, self._status, self._message  # type: ignore[arg-type]
+            self.name,
+            self._status,
+            self._message,  # type: ignore[arg-type]
         )
 
 
