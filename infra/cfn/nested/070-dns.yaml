@@ -1,0 +1,102 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'mem-mcp 070-dns — Route 53 records (memsys, memapp A → EIP; memauth ALIAS → Cognito CloudFront)'
+
+Parameters:
+  HostedZoneId:
+    Type: AWS::Route53::HostedZone::Id
+    Description: Route 53 hosted zone for the apex domain (operator-managed; T-0.1 prereq)
+
+  DomainName:
+    Type: String
+    Description: Apex domain (e.g., dheemantech.in)
+    AllowedPattern: '^[a-z0-9]+([-.][a-z0-9]+)*\.[a-z]{2,}$'
+
+  MemSysSubdomain:
+    Type: String
+    Default: memsys
+    Description: Subdomain for MCP API server
+
+  MemAppSubdomain:
+    Type: String
+    Default: memapp
+    Description: Subdomain for web admin UI
+
+  MemAuthSubdomain:
+    Type: String
+    Default: memauth
+    Description: Subdomain for Cognito custom domain
+
+  ElasticIp:
+    Type: String
+    Description: Elastic IP address for EC2 (output from 060-compute)
+    AllowedPattern: '^([0-9]{1,3}\.){3}[0-9]{1,3}$'
+    ConstraintDescription: Must be a valid IPv4 address (e.g., 13.234.x.x)
+
+  CognitoCloudFrontDistribution:
+    Type: String
+    Description: Cognito user pool custom domain CloudFront distribution DNS name (output from 040-identity)
+    AllowedPattern: '^[a-z0-9]+\.cloudfront\.net$'
+    ConstraintDescription: Must be a valid CloudFront distribution domain name
+
+  RecordTtl:
+    Type: Number
+    Default: 300
+    MinValue: 60
+    MaxValue: 86400
+    Description: TTL in seconds for the A records (default 5 minutes for easy operator updates)
+
+Resources:
+  MemSysRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Sub '${MemSysSubdomain}.${DomainName}.'
+      Type: A
+      TTL: !Ref RecordTtl
+      ResourceRecords:
+        - !Ref ElasticIp
+      Comment: mem-mcp MCP server (FastAPI on EC2)
+
+  MemAppRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Sub '${MemAppSubdomain}.${DomainName}.'
+      Type: A
+      TTL: !Ref RecordTtl
+      ResourceRecords:
+        - !Ref ElasticIp
+      Comment: mem-mcp web admin UI (Next.js on EC2)
+
+  MemAuthRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Sub '${MemAuthSubdomain}.${DomainName}.'
+      Type: A
+      AliasTarget:
+        DNSName: !Ref CognitoCloudFrontDistribution
+        # Z2FDTNDATAQYW2 is the global CloudFront hosted zone ID per AWS documentation
+        # https://docs.aws.amazon.com/general/latest/gr/rande.html#cf_region
+        HostedZoneId: Z2FDTNDATAQYW2
+        EvaluateTargetHealth: false
+      Comment: mem-mcp Cognito Hosted UI (custom domain ALIAS → CloudFront)
+
+Outputs:
+  MemSysFqdn:
+    Description: Memsys FQDN (MCP server)
+    Value: !Sub '${MemSysSubdomain}.${DomainName}'
+    Export:
+      Name: !Sub '${AWS::StackName}-MemSysFqdn'
+
+  MemAppFqdn:
+    Description: Memapp FQDN (web admin UI)
+    Value: !Sub '${MemAppSubdomain}.${DomainName}'
+    Export:
+      Name: !Sub '${AWS::StackName}-MemAppFqdn'
+
+  MemAuthFqdn:
+    Description: Memauth FQDN (Cognito Hosted UI)
+    Value: !Sub '${MemAuthSubdomain}.${DomainName}'
+    Export:
+      Name: !Sub '${AWS::StackName}-MemAuthFqdn'

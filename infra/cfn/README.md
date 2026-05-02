@@ -15,8 +15,8 @@ infra/cfn/
 │   ├── 030-storage.yaml                # S3 backup bucket + lifecycle (T-1.3)
 │   ├── 040-identity.yaml               # Cognito user pool + Google IdP (T-1.4)
 │   ├── 050-lambda-presignup.yaml       # Lambda PreSignUp trigger (T-1.5)
-│   ├── 060-compute.yaml                # EC2, IAM instance profile (T-1.6 — this PR)
-│   ├── 070-dns.yaml                    # Route 53 records (T-1.7)
+│   ├── 060-compute.yaml                # EC2, IAM instance profile (T-1.6)
+│   ├── 070-dns.yaml                    # Route 53 records (T-1.7 — this PR)
 │   ├── 080-observability.yaml          # CloudWatch, alarms, SNS (T-1.8)
 │   └── 090-bootstrap-bucket.yaml       # Bootstrap bucket for nested templates + Lambda zips (T-1.0)
 ├── us-east-1/                          # ACM cert stack (us-east-1 only)
@@ -37,7 +37,7 @@ Before deploying, ensure all of the following manual prerequisites are completed
 - [ ] **SES sandbox removal**: AWS Support ticket requesting removal from SES sandbox
 - [ ] **Google Cloud OAuth client**: Google Cloud Console → Create OAuth 2.0 Web application client; save client ID and secret to SSM SecureString parameters
 - [ ] **Domain registration**: Confirm `dheemantech.in` is registered and owned
-- [ ] **Route 53 hosted zone**: Create or note the ID of existing Route 53 hosted zone for `dheemantech.in`
+- [ ] **Route 53 hosted zone**: Create or note the ID of existing Route 53 hosted zone for `dheemantech.in` (operator-managed; its ID is passed as `HostedZoneId` parameter to 070-dns.yaml)
 - [ ] **KMS customer-managed key**: Create KMS CMK with alias `alias/mem-mcp` (required by 090-bootstrap-bucket.yaml)
 
 ## Known Gaps
@@ -45,7 +45,7 @@ Before deploying, ensure all of the following manual prerequisites are completed
 - **030-storage IAM role restriction (T-1.6 — this PR)**: The bucket policy currently denies non-TLS access and enforces SSE-KMS encryption. IAM-role-based access restriction to `mem-mcp-instance-role` is now available. See the TODO comment in 030-storage.yaml bucket policy for how to wire it.
 - **EC2 user-data is a stub (T-1.11)**: 060-compute.yaml installs the EC2 with a placeholder UserData that just echoes "T-1.11 not yet wired" and exits 0. The real cloud-init bootstrap (Caddy, Postgres, Python, Node, app deploy) lands in T-1.11.
 - **DLM snapshot start time is 21:30 UTC = 03:00 IST**: matches spec §14.3 retention windows. If timezone needs adjusting later, change the `Times:` field on `SnapshotPolicy.PolicyDetails.Schedules`.
-- **Cognito DNS alias (T-1.7)**: 040-identity creates the user pool custom domain, but the Route 53 ALIAS pointing `memauth.dheemantech.in` at the Cognito CloudFront distribution is created in T-1.7 (DNS stack). Sign-in won't work until both are deployed.
+- **070-dns must deploy AFTER 040-identity (T-1.7)**: The Cognito custom domain creation takes 10-15 minutes for CloudFront propagation. The root stack must order `DnsStack DependsOn IdentityStack` so the CloudFront distribution exists before the MemAuth ALIAS record can be created. Root stack wiring is in T-1.10.
 - **PreSignUp trigger wiring (T-1.10)**: `050-lambda-presignup.yaml` creates the function. The `LambdaConfig.PreSignUp` field on the user pool (which makes Cognito actually call this function) is wired in the root stack (T-1.10) to avoid circular dependencies between 040-identity and 050-lambda. Until then, the function exists but is never invoked.
 - **PreSignUp logic (T-4.8)**: handler.py is a STUB that approves all signups. Real `invited_emails` allowlist check lands in T-4.8. Do NOT route real Cognito traffic through this until T-4.8 ships.
 
@@ -160,8 +160,8 @@ sam deploy \
 | `030-storage.yaml` | T-1.3 | S3 backup bucket, versioning, encryption, lifecycle rules |
 | `040-identity.yaml` | T-1.4 | Cognito user pool, custom domain, Google IdP, web client, resource server |
 | `050-lambda-presignup.yaml` | T-1.5 | Lambda function for Cognito PreSignUp trigger, execution role, permissions |
-| `060-compute.yaml` | T-1.6 (this PR) | EC2 t4g.medium instance, IAM instance profile, EBS gp3, Elastic IP, termination protection, DLM snapshots |
-| `070-dns.yaml` | Future PR T-1.7 | Route 53 records (A, CNAME) for mem.*, app.*, auth.* subdomains |
+| `060-compute.yaml` | T-1.6 | EC2 t4g.medium instance, IAM instance profile, EBS gp3, Elastic IP, termination protection, DLM snapshots |
+| `070-dns.yaml` | T-1.7 (this PR) | Route 53 records (A, CNAME) for mem.*, app.*, auth.* subdomains |
 | `080-observability.yaml` | Future PR T-1.8 | CloudWatch log groups, custom metrics, alarms, SNS topics, dashboard |
 | `us-east-1/cert.yaml` | Future PR T-1.9 | ACM certificate for Cognito custom domain (must be in us-east-1) |
 | `root.yaml` | Future PR T-1.10 | Root stack composing all nested stacks via SAM CLI |
