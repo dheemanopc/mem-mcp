@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from mem_mcp.auth.dcr import (
     DcrInput,
@@ -15,7 +16,6 @@ from mem_mcp.auth.dcr import (
     _sanitize_client_name,
     make_dcr_router,
 )
-
 
 _RESOURCE = "https://memsys.dheemantech.in"
 
@@ -34,7 +34,9 @@ class FakeCognito:
     async def create_user_pool_client(
         self, *, client_name: str, callback_urls: list[str], scopes: list[str]
     ) -> str:
-        self.calls.append({"client_name": client_name, "callback_urls": callback_urls, "scopes": scopes})
+        self.calls.append(
+            {"client_name": client_name, "callback_urls": callback_urls, "scopes": scopes}
+        )
         if self.error:
             raise self.error
         return self.next_id
@@ -79,7 +81,12 @@ def _build_client(
             resource_url=_RESOURCE,
         )
     )
-    return TestClient(app), {"cognito": cognito, "store": store, "allowed": allowed, "limiter": limiter}
+    return TestClient(app), {
+        "cognito": cognito,
+        "store": store,
+        "allowed": allowed,
+        "limiter": limiter,
+    }
 
 
 def _valid_payload() -> dict[str, Any]:
@@ -104,7 +111,9 @@ class TestDcrInputValidation:
         assert m.token_endpoint_auth_method == "none"
 
     def test_redirect_uri_https(self) -> None:
-        DcrInput.model_validate({**_valid_payload(), "redirect_uris": ["https://app.example.com/cb"]})
+        DcrInput.model_validate(
+            {**_valid_payload(), "redirect_uris": ["https://app.example.com/cb"]}
+        )
 
     def test_redirect_uri_localhost(self) -> None:
         DcrInput.model_validate({**_valid_payload(), "redirect_uris": ["http://localhost:9000/cb"]})
@@ -115,37 +124,39 @@ class TestDcrInputValidation:
     @pytest.mark.parametrize(
         "uri",
         [
-            "http://example.com/cb",      # plain http non-localhost
-            "ftp://example.com/cb",        # wrong scheme
-            "https://*.example.com/cb",    # wildcard
-            "https://example.com/cb#frag", # fragment
+            "http://example.com/cb",  # plain http non-localhost
+            "ftp://example.com/cb",  # wrong scheme
+            "https://*.example.com/cb",  # wildcard
+            "https://example.com/cb#frag",  # fragment
         ],
     )
     def test_redirect_uri_rejected(self, uri: str) -> None:
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             DcrInput.model_validate({**_valid_payload(), "redirect_uris": [uri]})
 
     def test_scope_unknown_rejected(self) -> None:
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             DcrInput.model_validate({**_valid_payload(), "scope": "memory.read malicious.scope"})
 
     def test_scope_valid(self) -> None:
-        m = DcrInput.model_validate({**_valid_payload(), "scope": "memory.read memory.write memory.admin"})
+        m = DcrInput.model_validate(
+            {**_valid_payload(), "scope": "memory.read memory.write memory.admin"}
+        )
         assert "memory.admin" in m.scope.split()
 
     def test_extra_field_rejected(self) -> None:
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             DcrInput.model_validate({**_valid_payload(), "junk_field": "value"})
 
     def test_too_many_redirect_uris(self) -> None:
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             DcrInput.model_validate(
                 {**_valid_payload(), "redirect_uris": [f"https://x.example/{i}" for i in range(6)]}
             )
 
     def test_grant_types_subset(self) -> None:
         DcrInput.model_validate({**_valid_payload(), "grant_types": ["authorization_code"]})
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             DcrInput.model_validate({**_valid_payload(), "grant_types": ["password"]})
 
 
@@ -218,7 +229,9 @@ class TestDcrEndpointFailures:
     def test_unknown_software_id_returns_403(self) -> None:
         allowed = FakeAllowed({})  # nothing allowed
         client, _ = _build_client(allowed=allowed)
-        resp = client.post("/oauth/register", json={**_valid_payload(), "software_id": "rogue-tool"})
+        resp = client.post(
+            "/oauth/register", json={**_valid_payload(), "software_id": "rogue-tool"}
+        )
         assert resp.status_code == 403
         assert resp.json()["detail"]["error"] == "unauthorized_client"
 
@@ -246,6 +259,7 @@ class TestDcrEndpointFailures:
     def test_per_ip_rate_limit_returns_429(self) -> None:
         # Allow only 1 per IP for fast testing
         from mem_mcp.auth.dcr import PER_IP_LIMIT
+
         # Mutate via the limiter directly: register PER_IP_LIMIT times then expect 429
         client, _ = _build_client()
         for _ in range(PER_IP_LIMIT):

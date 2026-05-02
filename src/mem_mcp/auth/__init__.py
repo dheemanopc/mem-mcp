@@ -9,6 +9,19 @@ Modules land incrementally per Phase 4:
 - internal_invite (T-4.7)
 """
 
+from mem_mcp.auth.dcr import (
+    AllowedSoftwareLookup,
+    BotoCognitoClientFactory,
+    CognitoClientFactory,
+    DbAllowedSoftwareLookup,
+    DbOauthClientStore,
+    DcrInput,
+    DcrOutput,
+    InMemoryRateLimiter,
+    OauthClientStore,
+    RateLimiter,
+    make_dcr_router,
+)
 from mem_mcp.auth.jwks import (
     HttpxJwksFetcher,
     JwkKey,
@@ -30,19 +43,6 @@ from mem_mcp.auth.middleware import (
     TenantResolver,
     TouchSink,
     make_bearer_middleware,
-)
-from mem_mcp.auth.dcr import (
-    AllowedSoftwareLookup,
-    BotoCognitoClientFactory,
-    CognitoClientFactory,
-    DbAllowedSoftwareLookup,
-    DbOauthClientStore,
-    DcrInput,
-    DcrOutput,
-    InMemoryRateLimiter,
-    OauthClientStore,
-    RateLimiter,
-    make_dcr_router,
 )
 from mem_mcp.auth.well_known import (
     DEFAULT_MCP_SCOPES,

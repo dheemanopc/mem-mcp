@@ -18,7 +18,7 @@ import hashlib
 import re
 import secrets
 import time
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 from urllib.parse import urlparse
@@ -32,7 +32,7 @@ from mem_mcp.db import system_tx
 from mem_mcp.logging_setup import get_logger
 
 if TYPE_CHECKING:
-    import asyncpg
+    import asyncpg  # type: ignore[import-untyped]
 
 _log = get_logger("mem_mcp.auth.dcr")
 
@@ -40,9 +40,9 @@ _log = get_logger("mem_mcp.auth.dcr")
 MAX_REQUEST_BYTES = 8 * 1024
 MAX_REDIRECT_URIS = 5
 PER_IP_LIMIT = 5
-PER_IP_WINDOW_SECONDS = 3600          # 1 hour
+PER_IP_WINDOW_SECONDS = 3600  # 1 hour
 GLOBAL_LIMIT = 100
-GLOBAL_WINDOW_SECONDS = 86400         # 1 day
+GLOBAL_WINDOW_SECONDS = 86400  # 1 day
 
 _COGNITO_CLIENT_NAME_RE = re.compile(r"[^\w\s+=,.@-]+")
 _LOCALHOST_HOSTS = ("localhost", "127.0.0.1")
@@ -66,10 +66,10 @@ class DcrInput(BaseModel):
     client_name: str = Field(..., max_length=128)
     client_uri: str | None = None
     redirect_uris: list[str] = Field(..., min_length=1, max_length=MAX_REDIRECT_URIS)
-    grant_types: list[Literal["authorization_code", "refresh_token"]] = Field(
-        default_factory=lambda: ["authorization_code", "refresh_token"]
+    grant_types: list[str] = Field(
+        default=["authorization_code", "refresh_token"],
     )
-    response_types: list[Literal["code"]] = Field(default_factory=lambda: ["code"])
+    response_types: list[str] = Field(default=["code"])
     token_endpoint_auth_method: Literal["none"] = "none"
     scope: str = "memory.read memory.write"
     software_id: str = Field(..., min_length=1, max_length=128)
@@ -93,15 +93,31 @@ class DcrInput(BaseModel):
             )
         return uris
 
+    @field_validator("grant_types")
+    @classmethod
+    def _validate_grant_types(cls, grants: list[str]) -> list[str]:
+        allowed = {"authorization_code", "refresh_token"}
+        for g in grants:
+            if g not in allowed:
+                raise ValueError(f"unknown grant_type {g!r}; allowed: {sorted(allowed)}")
+        return grants
+
+    @field_validator("response_types")
+    @classmethod
+    def _validate_response_types(cls, responses: list[str]) -> list[str]:
+        allowed = {"code"}
+        for r in responses:
+            if r not in allowed:
+                raise ValueError(f"unknown response_type {r!r}; allowed: {sorted(allowed)}")
+        return responses
+
     @field_validator("scope")
     @classmethod
     def _validate_scope(cls, scope: str) -> str:
         requested = scope.split()
         for s in requested:
             if s not in DEFAULT_MCP_SCOPES:
-                raise ValueError(
-                    f"unknown scope {s!r}; allowed: {sorted(DEFAULT_MCP_SCOPES)}"
-                )
+                raise ValueError(f"unknown scope {s!r}; allowed: {sorted(DEFAULT_MCP_SCOPES)}")
         if not requested:
             raise ValueError("scope must contain at least one entry")
         return scope
@@ -169,7 +185,9 @@ class RateLimiter(Protocol):
 class BotoCognitoClientFactory:
     """Production CognitoClientFactory using boto3 cognito-idp."""
 
-    def __init__(self, user_pool_id: str, region: str, supported_idps: tuple[str, ...] = _SUPPORTED_IDPS) -> None:
+    def __init__(
+        self, user_pool_id: str, region: str, supported_idps: tuple[str, ...] = _SUPPORTED_IDPS
+    ) -> None:
         self.user_pool_id = user_pool_id
         self.region = region
         self.supported_idps = supported_idps
@@ -179,7 +197,8 @@ class BotoCognitoClientFactory:
     ) -> str:
         # Lazy import keeps boto3 cost out of test paths
         import asyncio
-        import boto3
+
+        import boto3  # type: ignore[import-untyped]
 
         def _call() -> str:
             client = boto3.client("cognito-idp", region_name=self.region)
@@ -404,7 +423,8 @@ def make_dcr_router(
                 callback_urls=payload.redirect_uris,
                 scopes=payload.scope.split(),
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
+            # Catch all exceptions from boto3 API call
             _log.error("cognito_create_user_pool_client_failed", error=str(exc)[:300])
             raise HTTPException(
                 status_code=500,
