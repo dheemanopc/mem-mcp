@@ -7,20 +7,20 @@ This directory contains CloudFormation templates and configuration for the mem-m
 ```
 infra/cfn/
 ├── README.md                           # This file
-├── root.yaml                           # Root stack (future PR T-1.11)
+├── root.yaml                           # Root stack (future PR T-1.10)
 ├── samconfig.toml                      # SAM CLI config (cp from samconfig.toml.example)
 ├── nested/                             # Nested stacks
-│   ├── 010-network.yaml                # VPC, subnets, IGW, security groups (T-1.2)
-│   ├── 020-secrets.yaml                # KMS, SSM parameters (T-1.3)
-│   ├── 030-storage.yaml                # S3 backup bucket + lifecycle (T-1.4)
-│   ├── 040-identity.yaml               # Cognito user pool + Google IdP (T-1.5)
-│   ├── 050-lambda-presignup.yaml       # Lambda PreSignUp trigger (T-1.6)
-│   ├── 060-compute.yaml                # EC2, IAM instance profile (T-1.7)
-│   ├── 070-dns.yaml                    # Route 53 records (T-1.8)
-│   ├── 080-observability.yaml          # CloudWatch, alarms, SNS (T-1.9)
+│   ├── 010-network.yaml                # VPC, subnets, IGW, security groups (T-1.1)
+│   ├── 020-secrets.yaml                # KMS, SSM parameters (T-1.2)
+│   ├── 030-storage.yaml                # S3 backup bucket + lifecycle (T-1.3)
+│   ├── 040-identity.yaml               # Cognito user pool + Google IdP (T-1.4)
+│   ├── 050-lambda-presignup.yaml       # Lambda PreSignUp trigger (T-1.5)
+│   ├── 060-compute.yaml                # EC2, IAM instance profile (T-1.6)
+│   ├── 070-dns.yaml                    # Route 53 records (T-1.7)
+│   ├── 080-observability.yaml          # CloudWatch, alarms, SNS (T-1.8)
 │   └── 090-bootstrap-bucket.yaml       # Bootstrap bucket for nested templates + Lambda zips (T-1.0)
 ├── us-east-1/                          # ACM cert stack (us-east-1 only)
-│   └── cert.yaml                       # Cognito custom domain cert (T-1.1)
+│   └── cert.yaml                       # Cognito custom domain cert (T-1.9)
 └── parameters/
     ├── prod.json.example               # Example parameter file for prod
     └── staging.json.example            # Example parameter file for staging (future)
@@ -110,15 +110,17 @@ sam deploy \
 
 | Stack | Status | Description |
 |---|---|---|
-| `010-network.yaml` | Future PR T-1.2 | VPC, subnets, Internet Gateway, route tables, security groups |
-| `020-secrets.yaml` | Future PR T-1.3 | KMS CMK, SSM Parameter Store placeholders for secrets |
-| `030-storage.yaml` | Future PR T-1.4 | S3 backup bucket, versioning, encryption, lifecycle rules |
-| `040-identity.yaml` | Future PR T-1.5 | Cognito user pool, custom domain, Google IdP, web client, resource server |
-| `050-lambda-presignup.yaml` | Future PR T-1.6 | Lambda function for Cognito PreSignUp trigger, execution role, permissions |
-| `060-compute.yaml` | Future PR T-1.7 | EC2 t4g.medium instance, IAM instance profile, EBS gp3, Elastic IP, termination protection |
-| `070-dns.yaml` | Future PR T-1.8 | Route 53 records (A, CNAME) for mem.*, app.*, auth.* subdomains |
-| `080-observability.yaml` | Future PR T-1.9 | CloudWatch log groups, custom metrics, alarms, SNS topics, dashboard |
-| `090-bootstrap-bucket.yaml` | T-1.0 | S3 bucket for nested templates and SAM Lambda artifacts (encrypted, versioned, secure transport enforced) |
+| `010-network.yaml` | Future PR T-1.1 | VPC, subnets, Internet Gateway, route tables, security groups |
+| `020-secrets.yaml` | Future PR T-1.2 | KMS CMK, SSM Parameter Store placeholders for secrets |
+| `030-storage.yaml` | Future PR T-1.3 | S3 backup bucket, versioning, encryption, lifecycle rules |
+| `040-identity.yaml` | Future PR T-1.4 | Cognito user pool, custom domain, Google IdP, web client, resource server |
+| `050-lambda-presignup.yaml` | Future PR T-1.5 | Lambda function for Cognito PreSignUp trigger, execution role, permissions |
+| `060-compute.yaml` | Future PR T-1.6 | EC2 t4g.medium instance, IAM instance profile, EBS gp3, Elastic IP, termination protection |
+| `070-dns.yaml` | Future PR T-1.7 | Route 53 records (A, CNAME) for mem.*, app.*, auth.* subdomains |
+| `080-observability.yaml` | Future PR T-1.8 | CloudWatch log groups, custom metrics, alarms, SNS topics, dashboard |
+| `us-east-1/cert.yaml` | Future PR T-1.9 | ACM certificate for Cognito custom domain (must be in us-east-1) |
+| `root.yaml` | Future PR T-1.10 | Root stack composing all nested stacks via SAM CLI |
+| `090-bootstrap-bucket.yaml` | T-1.0 (this PR) | S3 bucket for nested templates and SAM Lambda artifacts (encrypted, versioned, secure transport enforced) |
 
 ## Parameter Overrides
 
