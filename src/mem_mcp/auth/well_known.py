@@ -45,7 +45,7 @@ def make_well_known_router(
     """
     router = APIRouter(tags=["well-known"])
 
-    prm_payload = {
+    prm_payload: dict[str, object] = {
         "resource": resource_url,
         "authorization_servers": [resource_url],
         "scopes_supported": list(mcp_scopes),
@@ -53,13 +53,12 @@ def make_well_known_router(
         "resource_documentation": f"{resource_url}/docs",
     }
 
-    asm_payload = {
+    asm_payload: dict[str, object] = {
         "issuer": resource_url,
         "authorization_endpoint": f"https://{cognito_domain}/oauth2/authorize",
         "token_endpoint": f"https://{cognito_domain}/oauth2/token",
         "jwks_uri": (
-            f"https://cognito-idp.{region}.amazonaws.com/"
-            f"{user_pool_id}/.well-known/jwks.json"
+            f"https://cognito-idp.{region}.amazonaws.com/" f"{user_pool_id}/.well-known/jwks.json"
         ),
         "registration_endpoint": f"{resource_url}/oauth/register",
         "scopes_supported": list(_STANDARD_OIDC_SCOPES) + list(mcp_scopes),
