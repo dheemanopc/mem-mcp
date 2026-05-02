@@ -48,7 +48,7 @@ strict = true
 warn_unused_ignores = true
 warn_redundant_casts = true
 warn_unreachable = true
-files = ["src/mem_mcp", "tests", "lambdas/presignup/handler.py"]
+files = ["src/mem_mcp", "tests", "lambdas"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "lambdas"]

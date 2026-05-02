@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import Any
 
 # Add lambda dir to path so we can import handler
 _LAMBDA_DIR = Path(__file__).resolve().parent.parent
@@ -12,7 +13,7 @@ sys.path.insert(0, str(_LAMBDA_DIR))
 import handler  # noqa: E402
 
 
-def _mk_event(email: str = "user@example.com") -> dict:
+def _mk_event(email: str = "user@example.com") -> dict[str, Any]:
     return {
         "version": "1",
         "region": "ap-south-1",
