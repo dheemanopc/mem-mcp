@@ -20,7 +20,7 @@ infra/cfn/
 │   ├── 080-observability.yaml          # CloudWatch, alarms, SNS (T-1.8 — this PR)
 │   └── 090-bootstrap-bucket.yaml       # Bootstrap bucket for nested templates + Lambda zips (T-1.0)
 ├── us-east-1/                          # ACM cert stack (us-east-1 only)
-│   └── cert.yaml                       # Cognito custom domain cert (T-1.9)
+│   └── cert.yaml                       # Cognito custom domain cert (T-1.9 — this PR)
 └── parameters/
     ├── prod.json.example               # Example parameter file for prod
     └── staging.json.example            # Example parameter file for staging (future)
@@ -115,10 +115,11 @@ aws cloudformation deploy \
   --parameter-overrides \
     DomainName=dheemantech.in \
     MemAuthSubdomain=memauth \
+    HostedZoneId=ZXXXXXXXXXX \
   --capabilities CAPABILITY_NAMED_IAM
 ```
 
-Wait for stack creation to complete. Note the certificate ARN for Step 4.
+After this stack reaches CREATE_COMPLETE (~5-10 minutes for DNS propagation), copy the `CertificateArn` output into `infra/cfn/parameters/prod.json` as `UsEast1CertArn`.
 
 ### Step 3: Upload nested templates
 
@@ -164,8 +165,8 @@ sam deploy \
 | `050-lambda-presignup.yaml` | T-1.5 | Lambda function for Cognito PreSignUp trigger, execution role, permissions |
 | `060-compute.yaml` | T-1.6 | EC2 t4g.medium instance, IAM instance profile, EBS gp3, Elastic IP, termination protection, DLM snapshots |
 | `070-dns.yaml` | T-1.7 | Route 53 records (A, CNAME) for mem.*, app.*, auth.* subdomains |
-| `080-observability.yaml` | T-1.8 (this PR) | CloudWatch log groups, custom metrics, alarms, SNS topics, dashboard |
-| `us-east-1/cert.yaml` | Future PR T-1.9 | ACM certificate for Cognito custom domain (must be in us-east-1) |
+| `080-observability.yaml` | T-1.8 | CloudWatch log groups, custom metrics, alarms, SNS topics, dashboard |
+| `us-east-1/cert.yaml` | T-1.9 (this PR) | ACM certificate for Cognito custom domain (must be in us-east-1) |
 | `root.yaml` | Future PR T-1.10 | Root stack composing all nested stacks via SAM CLI |
 | `090-bootstrap-bucket.yaml` | T-1.0 (this PR) | S3 bucket for nested templates and SAM Lambda artifacts (encrypted, versioned, secure transport enforced) |
 
