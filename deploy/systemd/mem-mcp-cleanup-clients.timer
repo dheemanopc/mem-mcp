@@ -1,0 +1,11 @@
+[Unit]
+Description=Run mem-mcp DCR client cleanup daily at 04:00 IST
+Requires=mem-mcp-cleanup-clients.service
+
+[Timer]
+OnCalendar=*-*-* 22:30:00 UTC
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target
