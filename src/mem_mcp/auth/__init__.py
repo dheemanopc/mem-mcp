@@ -31,6 +31,13 @@ from mem_mcp.auth.dcr_admin import (
     OauthClientLookup,
     make_dcr_admin_router,
 )
+from mem_mcp.auth.internal_invite import (
+    DbInviteStore,
+    InviteCheckRequest,
+    InviteCheckResponse,
+    InviteStore,
+    make_internal_invite_router,
+)
 from mem_mcp.auth.jwks import (
     HttpxJwksFetcher,
     JwkKey,
@@ -56,13 +63,6 @@ from mem_mcp.auth.middleware import (
 from mem_mcp.auth.well_known import (
     DEFAULT_MCP_SCOPES,
     make_well_known_router,
-)
-from mem_mcp.auth.internal_invite import (
-    DbInviteStore,
-    InviteCheckRequest,
-    InviteCheckResponse,
-    InviteStore,
-    make_internal_invite_router,
 )
 
 __all__ = [
