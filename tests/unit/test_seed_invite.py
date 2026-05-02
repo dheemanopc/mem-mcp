@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import sys
+from datetime import UTC
 from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -18,7 +19,7 @@ sys.path.insert(0, str(_SCRIPT_DIR))
 def _reset_module() -> None:
     if "seed_invite" in sys.modules:
         del sys.modules["seed_invite"]
-    import seed_invite  # noqa: F401
+    import seed_invite  # noqa: F401  # type: ignore[import-not-found]
 
 
 @pytest.fixture
@@ -44,14 +45,17 @@ def _patch_connect(fake_conn: AsyncMock) -> Any:
 class TestAffectedCount:
     def test_update_one(self) -> None:
         import seed_invite
+
         assert seed_invite._affected_count("UPDATE 1") == 1
 
     def test_delete_zero(self) -> None:
         import seed_invite
+
         assert seed_invite._affected_count("DELETE 0") == 0
 
     def test_unparseable_returns_zero(self) -> None:
         import seed_invite
+
         assert seed_invite._affected_count("?") == 0
 
 
@@ -89,8 +93,11 @@ class TestAdd:
         import seed_invite
 
         fake_conn.fetchrow.return_value = {
-            "email": "x@y.com", "invited_by": None, "invited_at": "...",
-            "consumed_at": None, "notes": None,
+            "email": "x@y.com",
+            "invited_by": None,
+            "invited_at": "...",
+            "consumed_at": None,
+            "notes": None,
         }
         with _patch_connect(fake_conn):
             rc = seed_invite.main(["add", "x@y.com"])
@@ -116,7 +123,13 @@ class TestList:
         import seed_invite
 
         fake_conn.fetch.return_value = [
-            {"email": "a@b.com", "invited_by": "ops", "invited_at": "x", "consumed_at": None, "notes": "n"},
+            {
+                "email": "a@b.com",
+                "invited_by": "ops",
+                "invited_at": "x",
+                "consumed_at": None,
+                "notes": "n",
+            },
         ]
         with _patch_connect(fake_conn):
             seed_invite.main(["list"])
@@ -135,8 +148,11 @@ class TestShow:
         import seed_invite
 
         fake_conn.fetchrow.return_value = {
-            "email": "x@y.com", "invited_by": None, "invited_at": "...",
-            "consumed_at": None, "notes": None,
+            "email": "x@y.com",
+            "invited_by": None,
+            "invited_at": "...",
+            "consumed_at": None,
+            "notes": None,
         }
         with _patch_connect(fake_conn):
             rc = seed_invite.main(["show", "x@y.com"])
@@ -159,8 +175,9 @@ class TestShow:
 
 class TestRevoke:
     def test_marks_with_sentinel(self, fake_conn: AsyncMock) -> None:
+        from datetime import datetime
+
         import seed_invite
-        from datetime import datetime, timezone
 
         fake_conn.execute.return_value = "UPDATE 1"
         with _patch_connect(fake_conn):
@@ -168,7 +185,7 @@ class TestRevoke:
         assert rc == 0
         sql, sentinel, email = fake_conn.execute.call_args.args
         assert "UPDATE invited_emails SET consumed_at" in sql
-        assert sentinel == datetime(1970, 1, 1, tzinfo=timezone.utc)
+        assert sentinel == datetime(1970, 1, 1, tzinfo=UTC)
         assert email == "x@y.com"
 
     def test_not_found_returns_1(self, fake_conn: AsyncMock) -> None:

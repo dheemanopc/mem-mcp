@@ -21,7 +21,7 @@ import argparse
 import asyncio
 import os
 import sys
-from collections.abc import Iterable
+from datetime import UTC
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -111,9 +111,9 @@ async def cmd_show(args: argparse.Namespace) -> int:
 
 async def cmd_revoke(args: argparse.Namespace) -> int:
     """Mark as consumed via sentinel timestamp; row stays so audit history is preserved."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
-    sentinel = datetime(1970, 1, 1, tzinfo=timezone.utc)
+    sentinel = datetime(1970, 1, 1, tzinfo=UTC)
     conn = await _connect()
     try:
         result = await conn.execute(
@@ -206,7 +206,9 @@ def _build_parser() -> argparse.ArgumentParser:
     p_show.add_argument("email")
     p_show.set_defaults(func=cmd_show)
 
-    p_revoke = sub.add_parser("revoke", help="Mark as consumed (sentinel) so it can no longer be redeemed")
+    p_revoke = sub.add_parser(
+        "revoke", help="Mark as consumed (sentinel) so it can no longer be redeemed"
+    )
     p_revoke.add_argument("email")
     p_revoke.set_defaults(func=cmd_revoke)
 
