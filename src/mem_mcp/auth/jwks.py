@@ -19,7 +19,6 @@ from __future__ import annotations
 import time
 from typing import Any, Literal, Protocol, TypedDict
 
-
 # ---------------------------------------------------------------------------
 # Types
 # ---------------------------------------------------------------------------
@@ -76,8 +75,7 @@ class HttpxJwksFetcher:
 
     def __init__(self, region: str, user_pool_id: str, timeout_seconds: float = 5.0) -> None:
         self.url = (
-            f"https://cognito-idp.{region}.amazonaws.com/"
-            f"{user_pool_id}/.well-known/jwks.json"
+            f"https://cognito-idp.{region}.amazonaws.com/" f"{user_pool_id}/.well-known/jwks.json"
         )
         self.timeout_seconds = timeout_seconds
 
@@ -95,7 +93,11 @@ class HttpxJwksFetcher:
         except ValueError as exc:  # JSON decode error
             raise JwksError("invalid_payload", f"non-JSON response: {exc}") from exc
 
-        if not isinstance(payload, dict) or "keys" not in payload or not isinstance(payload["keys"], list):
+        if (
+            not isinstance(payload, dict)
+            or "keys" not in payload
+            or not isinstance(payload["keys"], list)
+        ):
             raise JwksError("invalid_payload", "missing or non-list 'keys'")
         return payload  # type: ignore[return-value]
 

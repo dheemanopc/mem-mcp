@@ -15,7 +15,6 @@ from mem_mcp.auth.jwks import (
     JwksPayload,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fakes
 # ---------------------------------------------------------------------------
@@ -97,7 +96,7 @@ class TestGetKey:
         cache = JwksCache(fetcher, ttl_seconds=60, clock=clock)
         await cache.get_key("k1")
         await cache.get_key("k1")
-        assert fetcher.calls == 1   # cached
+        assert fetcher.calls == 1  # cached
 
     @pytest.mark.asyncio
     async def test_ttl_expiry_triggers_refresh(self) -> None:
@@ -152,11 +151,11 @@ class TestRefresh:
         fetcher = FakeFetcherStatic(_payload("k1"))
         clock = ManualClock()
         cache = JwksCache(fetcher, ttl_seconds=60, clock=clock)
-        await cache.get_key("k1")            # call 1
-        clock.advance(30)                    # half TTL
-        await cache.refresh()                # call 2
-        clock.advance(30)                    # 60s since first warm — but only 30s since refresh
-        await cache.get_key("k1")            # cached, no call 3
+        await cache.get_key("k1")  # call 1
+        clock.advance(30)  # half TTL
+        await cache.refresh()  # call 2
+        clock.advance(30)  # 60s since first warm — but only 30s since refresh
+        await cache.get_key("k1")  # cached, no call 3
         assert fetcher.calls == 2
 
 
@@ -184,7 +183,10 @@ class TestJwksError:
 class TestHttpxJwksFetcherShape:
     def test_url_construction(self) -> None:
         f = HttpxJwksFetcher(region="ap-south-1", user_pool_id="ap-south-1_TESTPOOL")
-        assert f.url == "https://cognito-idp.ap-south-1.amazonaws.com/ap-south-1_TESTPOOL/.well-known/jwks.json"
+        assert (
+            f.url
+            == "https://cognito-idp.ap-south-1.amazonaws.com/ap-south-1_TESTPOOL/.well-known/jwks.json"
+        )
 
     def test_default_timeout(self) -> None:
         f = HttpxJwksFetcher(region="r", user_pool_id="u")
