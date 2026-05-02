@@ -61,9 +61,7 @@ def _encode_cursor(order_by_value: datetime | None, id_: UUID) -> str:
     if order_by_value is None:
         raise ValueError("order_by_value cannot be None")
     value_iso = order_by_value.isoformat()
-    return base64.urlsafe_b64encode(
-        json.dumps([value_iso, str(id_)]).encode()
-    ).decode()
+    return base64.urlsafe_b64encode(json.dumps([value_iso, str(id_)]).encode()).decode()
 
 
 def _decode_cursor(cursor: str) -> tuple[str, str]:

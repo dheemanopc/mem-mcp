@@ -100,10 +100,7 @@ class MemoryStatsTool(BaseTool):
                 """,
                 ctx.tenant_id,
             )
-            top_tags = [
-                TopTagItem(tag=row["tag"], count=row["count"])
-                for row in tag_rows
-            ]
+            top_tags = [TopTagItem(tag=row["tag"], count=row["count"]) for row in tag_rows]
 
             # Query 3: Oldest and newest
             bounds_row = await conn.fetchrow(
