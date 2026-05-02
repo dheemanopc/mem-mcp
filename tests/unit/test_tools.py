@@ -2,22 +2,22 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
+from pydantic import ValidationError
 
 from mem_mcp.audit.logger import NoopAuditLogger
 from mem_mcp.embeddings.bedrock import EmbeddingError, EmbedResult
 from mem_mcp.mcp.errors import JsonRpcError
 from mem_mcp.mcp.tools._base import ToolContext
 from mem_mcp.mcp.tools._deps import NoopQuotas, ToolDeps
-from mem_mcp.mcp.tools.get import MemoryGetInput, MemoryGetTool
-from mem_mcp.mcp.tools.search import MemorySearchInput, MemorySearchTool
-from mem_mcp.mcp.tools.write import MemoryWriteInput, MemoryWriteTool
-
+from mem_mcp.mcp.tools.get import MemoryGetInput, MemoryGetOutput, MemoryGetTool
+from mem_mcp.mcp.tools.search import MemorySearchInput, MemorySearchOutput, MemorySearchTool
+from mem_mcp.mcp.tools.write import MemoryWriteInput, MemoryWriteOutput, MemoryWriteTool
 
 # --------------------------------------------------------------------------
 # Helpers
@@ -68,7 +68,7 @@ def _patch_tenant_tx(monkeypatch: pytest.MonkeyPatch, conn: AsyncMock) -> None:
     from contextlib import asynccontextmanager
 
     @asynccontextmanager
-    async def fake_tx(pool, tenant_id):
+    async def fake_tx(pool: Any, tenant_id: Any) -> Any:
         yield conn
 
     # Patch in every module that imports tenant_tx
@@ -90,28 +90,26 @@ class TestMemoryWriteInput:
         assert m.force_new is False
 
     def test_content_required(self) -> None:
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             MemoryWriteInput.model_validate({})
 
     def test_content_max_len(self) -> None:
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             MemoryWriteInput.model_validate({"content": "x" * 32_769})
 
     def test_tag_charset(self) -> None:
         # Valid
-        MemoryWriteInput.model_validate(
-            {"content": "x", "tags": ["a-b", "p:q.r", "x_y"]}
-        )
+        MemoryWriteInput.model_validate({"content": "x", "tags": ["a-b", "p:q.r", "x_y"]})
         # Invalid (space)
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             MemoryWriteInput.model_validate({"content": "x", "tags": ["bad tag"]})
 
     def test_duplicate_tags_rejected(self) -> None:
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             MemoryWriteInput.model_validate({"content": "x", "tags": ["dup", "dup"]})
 
     def test_extra_fields_rejected(self) -> None:
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             MemoryWriteInput.model_validate({"content": "x", "junk": True})
 
 
@@ -131,7 +129,7 @@ class TestMemoryWriteTool:
             {
                 "id": uuid4(),
                 "version": 1,
-                "created_at": datetime.now(tz=timezone.utc),
+                "created_at": datetime.now(tz=UTC),
             },  # final INSERT
         ]
         _patch_tenant_tx(monkeypatch, conn)
@@ -140,13 +138,12 @@ class TestMemoryWriteTool:
         ctx = _build_ctx()
         result = await tool(ctx, MemoryWriteInput(content="brand new memory"))
 
+        assert isinstance(result, MemoryWriteOutput)
         assert result.deduped is False
         assert result.merged_into is None
 
     @pytest.mark.asyncio
-    async def test_dedupe_merge_on_hash_hit(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_dedupe_merge_on_hash_hit(self, monkeypatch: pytest.MonkeyPatch) -> None:
         existing = uuid4()
         conn = AsyncMock()
         conn.fetchrow.side_effect = [
@@ -154,58 +151,49 @@ class TestMemoryWriteTool:
             {
                 "id": existing,
                 "version": 3,
-                "created_at": datetime.now(tz=timezone.utc),
+                "created_at": datetime.now(tz=UTC),
             },  # UPDATE returning
         ]
         _patch_tenant_tx(monkeypatch, conn)
 
         tool = MemoryWriteTool()
         ctx = _build_ctx()
-        result = await tool(
-            ctx, MemoryWriteInput(content="x", tags=["new-tag"])
-        )
+        result = await tool(ctx, MemoryWriteInput(content="x", tags=["new-tag"]))
+        assert isinstance(result, MemoryWriteOutput)
         assert result.deduped is True
         assert result.merged_into == existing
         assert result.id == existing
 
     @pytest.mark.asyncio
-    async def test_force_new_skips_dedupe(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_force_new_skips_dedupe(self, monkeypatch: pytest.MonkeyPatch) -> None:
         conn = AsyncMock()
         conn.fetchrow.side_effect = [
             {
                 "id": uuid4(),
                 "version": 1,
-                "created_at": datetime.now(tz=timezone.utc),
+                "created_at": datetime.now(tz=UTC),
             },
         ]
         _patch_tenant_tx(monkeypatch, conn)
         tool = MemoryWriteTool()
         ctx = _build_ctx()
-        result = await tool(
-            ctx, MemoryWriteInput(content="x", force_new=True)
-        )
+        result = await tool(ctx, MemoryWriteInput(content="x", force_new=True))
+        assert isinstance(result, MemoryWriteOutput)
         assert result.deduped is False
 
     @pytest.mark.asyncio
-    async def test_embedding_failure_raises_jsonrpc(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        embed = FakeEmbeddings(
-            error=EmbeddingError("unavailable", "down", retry_after_seconds=4)
-        )
+    async def test_embedding_failure_raises_jsonrpc(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        embed = FakeEmbeddings(error=EmbeddingError("unavailable", "down", retry_after_seconds=4))
         ctx = _build_ctx(embeddings=embed)
         tool = MemoryWriteTool()
         with pytest.raises(JsonRpcError) as exc_info:
             await tool(ctx, MemoryWriteInput(content="x"))
         assert exc_info.value.code == -32000
+        assert exc_info.value.data is not None
         assert exc_info.value.data["code"] == "embedding_unavailable"
 
     @pytest.mark.asyncio
-    async def test_supersede_validates_target_type(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_supersede_validates_target_type(self, monkeypatch: pytest.MonkeyPatch) -> None:
         conn = AsyncMock()
         target = uuid4()
         # check_dup: no hash, no cosine. Then supersede target lookup returns wrong type.
@@ -228,18 +216,10 @@ class TestMemoryWriteTool:
             )
         assert exc_info.value.code == -32602  # invalid params
 
-    @pytest.mark.asyncio
-    async def test_supersede_only_versioned_types(self) -> None:
-        ctx = _build_ctx()
-        tool = MemoryWriteTool()
-        with pytest.raises(JsonRpcError) as exc_info:
-            await tool(
-                ctx,
-                MemoryWriteInput(
-                    content="x", type="note", supersedes=uuid4()
-                ),
-            )
-        assert exc_info.value.code == -32602
+    def test_supersede_only_versioned_types(self) -> None:
+        # Verify that supersedes is only allowed for versioned types (decision/fact)
+        with pytest.raises(ValidationError):
+            MemoryWriteInput(content="x", type="note", supersedes=uuid4())
 
 
 # --------------------------------------------------------------------------
@@ -252,7 +232,7 @@ class TestMemorySearchTool:
     async def test_returns_results(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from mem_mcp.memory.hybrid_query import SearchResult
 
-        async def fake_hybrid_search(conn, tenant_id, params):
+        async def fake_hybrid_search(conn: Any, tenant_id: Any, params: Any) -> Any:
             return [
                 SearchResult(
                     id=uuid4(),
@@ -260,8 +240,8 @@ class TestMemorySearchTool:
                     type="note",
                     tags=["a"],
                     version=1,
-                    created_at=datetime.now(tz=timezone.utc),
-                    updated_at=datetime.now(tz=timezone.utc),
+                    created_at=datetime.now(tz=UTC),
+                    updated_at=datetime.now(tz=UTC),
                     sem_score=0.9,
                     kw_score=0.5,
                     recency_factor=0.95,
@@ -269,14 +249,13 @@ class TestMemorySearchTool:
                 )
             ]
 
-        monkeypatch.setattr(
-            "mem_mcp.mcp.tools.search.hybrid_search", fake_hybrid_search
-        )
+        monkeypatch.setattr("mem_mcp.mcp.tools.search.hybrid_search", fake_hybrid_search)
         _patch_tenant_tx(monkeypatch, AsyncMock())
 
         tool = MemorySearchTool()
         ctx = _build_ctx()
         result = await tool(ctx, MemorySearchInput(query="hello"))
+        assert isinstance(result, MemorySearchOutput)
         assert len(result.results) == 1
         assert result.results[0].score == 0.8
         assert result.results[0].scores_breakdown["semantic"] == 0.9
@@ -284,9 +263,7 @@ class TestMemorySearchTool:
 
     @pytest.mark.asyncio
     async def test_embedding_failure_raises_jsonrpc(self) -> None:
-        embed = FakeEmbeddings(
-            error=EmbeddingError("throttled", "slow", retry_after_seconds=2)
-        )
+        embed = FakeEmbeddings(error=EmbeddingError("throttled", "slow", retry_after_seconds=2))
         ctx = _build_ctx(embeddings=embed)
         tool = MemorySearchTool()
         with pytest.raises(JsonRpcError) as exc_info:
@@ -296,14 +273,14 @@ class TestMemorySearchTool:
 
 class TestMemorySearchInput:
     def test_query_required(self) -> None:
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             MemorySearchInput.model_validate({})
 
     def test_limit_range(self) -> None:
         MemorySearchInput.model_validate({"query": "x", "limit": 50})
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             MemorySearchInput.model_validate({"query": "x", "limit": 0})
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             MemorySearchInput.model_validate({"query": "x", "limit": 51})
 
     def test_default_limit(self) -> None:
@@ -330,8 +307,8 @@ class TestMemoryGetTool:
             "is_current": True,
             "supersedes": None,
             "superseded_by": None,
-            "created_at": datetime.now(tz=timezone.utc),
-            "updated_at": datetime.now(tz=timezone.utc),
+            "created_at": datetime.now(tz=UTC),
+            "updated_at": datetime.now(tz=UTC),
             "deleted_at": None,
         }
         conn = AsyncMock()
@@ -341,6 +318,7 @@ class TestMemoryGetTool:
         tool = MemoryGetTool()
         ctx = _build_ctx()
         result = await tool(ctx, MemoryGetInput(id=mid))
+        assert isinstance(result, MemoryGetOutput)
         assert result.memory.id == mid
         assert result.history == []
 
@@ -356,9 +334,7 @@ class TestMemoryGetTool:
         assert exc_info.value.code == -32602
 
     @pytest.mark.asyncio
-    async def test_include_history_walks_chain(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_include_history_walks_chain(self, monkeypatch: pytest.MonkeyPatch) -> None:
         mid = uuid4()
         row = {
             "id": mid,
@@ -370,8 +346,8 @@ class TestMemoryGetTool:
             "is_current": True,
             "supersedes": uuid4(),
             "superseded_by": None,
-            "created_at": datetime.now(tz=timezone.utc),
-            "updated_at": datetime.now(tz=timezone.utc),
+            "created_at": datetime.now(tz=UTC),
+            "updated_at": datetime.now(tz=UTC),
             "deleted_at": None,
         }
         conn = AsyncMock()
@@ -388,9 +364,8 @@ class TestMemoryGetTool:
         _patch_tenant_tx(monkeypatch, conn)
 
         tool = MemoryGetTool()
-        result = await tool(
-            _build_ctx(), MemoryGetInput(id=mid, include_history=True)
-        )
+        result = await tool(_build_ctx(), MemoryGetInput(id=mid, include_history=True))
+        assert isinstance(result, MemoryGetOutput)
         assert result.memory.version == 2
         assert len(result.history) == 1
         assert result.history[0].version == 1

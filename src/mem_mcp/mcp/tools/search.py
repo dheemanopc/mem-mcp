@@ -82,9 +82,7 @@ class MemorySearchTool(BaseTool):
             ) from exc
 
         recency = (
-            inp.recency_lambda
-            if inp.recency_lambda is not None
-            else recency_lambda_for(inp.type)
+            inp.recency_lambda if inp.recency_lambda is not None else recency_lambda_for(inp.type)
         )
         params = SearchParams(
             qvec=qembed.vector,
@@ -116,9 +114,7 @@ class MemorySearchTool(BaseTool):
                     "type": inp.type,
                 },
             )
-            await ctx.deps.quotas.increment_read(
-                ctx.tenant_id, qembed.input_tokens
-            )
+            await ctx.deps.quotas.increment_read(ctx.tenant_id, qembed.input_tokens)
 
         items = [
             SearchResultItem(

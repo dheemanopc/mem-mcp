@@ -48,13 +48,11 @@ class MemoryWriteInput(BaseModel):
 
     @field_validator("supersedes", mode="after")
     @classmethod
-    def _validate_supersedes(cls, v: UUID | None, info) -> UUID | None:
+    def _validate_supersedes(cls, v: UUID | None, info: Any) -> UUID | None:
         if v is not None:
             type_ = info.data.get("type", "note")
             if type_ not in VERSIONED_TYPES:
-                raise ValueError(
-                    f"supersedes only valid for {VERSIONED_TYPES}, got {type_!r}"
-                )
+                raise ValueError(f"supersedes only valid for {VERSIONED_TYPES}, got {type_!r}")
         return v
 
 
@@ -238,9 +236,7 @@ class MemoryWriteTool(BaseTool):
                         "embed_tokens": embed.input_tokens,
                     },
                 )
-                await ctx.deps.quotas.increment_write(
-                    ctx.tenant_id, embed.input_tokens
-                )
+                await ctx.deps.quotas.increment_write(ctx.tenant_id, embed.input_tokens)
                 return MemoryWriteOutput(
                     id=new_row["id"],
                     version=int(new_row["version"]),
@@ -287,9 +283,7 @@ class MemoryWriteTool(BaseTool):
                     "content_length": len(inp.content),
                 },
             )
-            await ctx.deps.quotas.increment_write(
-                ctx.tenant_id, embed.input_tokens
-            )
+            await ctx.deps.quotas.increment_write(ctx.tenant_id, embed.input_tokens)
             return MemoryWriteOutput(
                 id=row["id"],
                 version=int(row["version"]),
