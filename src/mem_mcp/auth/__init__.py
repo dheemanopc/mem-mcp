@@ -31,6 +31,10 @@ from mem_mcp.auth.middleware import (
     TouchSink,
     make_bearer_middleware,
 )
+from mem_mcp.auth.well_known import (
+    DEFAULT_MCP_SCOPES,
+    make_well_known_router,
+)
 
 __all__ = [
     "HttpxJwksFetcher",
@@ -49,4 +53,6 @@ __all__ = [
     "TenantResolver",
     "TouchSink",
     "make_bearer_middleware",
+    "DEFAULT_MCP_SCOPES",
+    "make_well_known_router",
 ]
