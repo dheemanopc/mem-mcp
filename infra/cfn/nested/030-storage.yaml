@@ -1,0 +1,126 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'mem-mcp 030-storage — S3 backup bucket (versioned, SSE-KMS, lifecycle to Glacier IR)'
+
+Parameters:
+  KmsKeyAlias:
+    Type: String
+    Default: alias/mem-mcp
+    AllowedPattern: '^alias/[a-zA-Z0-9/_-]+$'
+    Description: KMS alias for SSE-KMS encryption (operator-managed; T-0.7)
+
+  BackupRetentionDays:
+    Type: Number
+    Default: 730
+    MinValue: 30
+    MaxValue: 3650
+    Description: Days to retain backups before expiry. Default 730 (2 years) per spec §4.3.
+
+  GlacierTransitionDays:
+    Type: Number
+    Default: 30
+    MinValue: 1
+    MaxValue: 365
+    Description: Days in Standard before transitioning to Glacier IR. Default 30 per spec §4.3.
+
+  NoncurrentVersionExpirationDays:
+    Type: Number
+    Default: 90
+    MinValue: 1
+    MaxValue: 3650
+    Description: Days to retain noncurrent (overwritten) versions before expiry.
+
+Resources:
+  BackupBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub 'mem-mcp-backups-${AWS::AccountId}-aps1'
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:${KmsKeyAlias}'
+            BucketKeyEnabled: true
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: TransitionAndExpire
+            Status: Enabled
+            Transitions:
+              - StorageClass: GLACIER_IR
+                TransitionInDays: !Ref GlacierTransitionDays
+            ExpirationInDays: !Ref BackupRetentionDays
+            NoncurrentVersionExpiration:
+              NoncurrentDays: !Ref NoncurrentVersionExpirationDays
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+      Tags:
+        - Key: Name
+          Value: !Sub 'mem-mcp-backups-${AWS::AccountId}-aps1'
+        - Key: Project
+          Value: mem-mcp
+        - Key: Component
+          Value: storage
+
+  BackupBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref BackupBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          # Deny non-TLS access to ALL operations
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource:
+              - !GetAtt BackupBucket.Arn
+              - !Sub '${BackupBucket.Arn}/*'
+            Condition:
+              Bool:
+                aws:SecureTransport: 'false'
+
+          # Deny PutObject without SSE-KMS (defense in depth; default encryption already applies)
+          - Sid: DenyUnencryptedUpload
+            Effect: Deny
+            Principal: '*'
+            Action: s3:PutObject
+            Resource: !Sub '${BackupBucket.Arn}/*'
+            Condition:
+              StringNotEquals:
+                s3:x-amz-server-side-encryption: 'aws:kms'
+
+          # Deny PutObject if the KMS key ID doesn't match our key
+          - Sid: DenyWrongKmsKey
+            Effect: Deny
+            Principal: '*'
+            Action: s3:PutObject
+            Resource: !Sub '${BackupBucket.Arn}/*'
+            Condition:
+              StringNotEquals:
+                s3:x-amz-server-side-encryption-aws-kms-key-id: !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:${KmsKeyAlias}'
+
+          # TODO(T-1.6): once mem-mcp-instance-role exists, add a Deny on s3:*
+          # where aws:PrincipalArn != arn:aws:iam::${AWS::AccountId}:role/mem-mcp-instance-role
+          # to restrict access to the EC2 host's role only.
+
+Outputs:
+  BackupBucketName:
+    Description: Name of the S3 backup bucket
+    Value: !Ref BackupBucket
+
+  BackupBucketArn:
+    Description: ARN of the S3 backup bucket
+    Value: !GetAtt BackupBucket.Arn
+
+  BackupBucketDomainName:
+    Description: Domain name of the backup bucket
+    Value: !GetAtt BackupBucket.DomainName
