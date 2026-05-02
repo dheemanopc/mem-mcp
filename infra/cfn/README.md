@@ -50,6 +50,7 @@ Before deploying, ensure all of the following manual prerequisites are completed
 - **PreSignUp logic (T-4.8)**: handler.py is a STUB that approves all signups. Real `invited_emails` allowlist check lands in T-4.8. Do NOT route real Cognito traffic through this until T-4.8 ships.
 - **Log-filter alarms (T-9.6)**: 080-observability creates only the alarms whose metrics exist before app deploy (EC2 status, CPU, Bedrock throttles, custom backup-success metric, monthly budget, cost anomaly). The full spec §14.4 alarm set (App-5xx-rate, Auth-fail-spike, DCR-attempts, Token-reuse, Quota-circuit-breaker, etc.) requires `AWS::Logs::MetricFilter` patterns over log content the app emits — deferred to Phase 9 / T-9.6 once the app is deployed and we know the actual log shapes.
 - **CloudWatch disk usage alarm (future)**: Requires the CloudWatch agent running on EC2 with disk plugin. Not yet implemented.
+- **KMS key pending-window deletion (T-1.12)**: Step 10 of destroy.sh schedules KMS key deletion for 30 days. Within that window, recover via `aws kms cancel-key-deletion --key-id <key-id> --region ap-south-1`.
 
 ## SecureString Parameters (post-deploy)
 
@@ -210,9 +211,32 @@ This is run automatically on every PR and push to main. See `.github/workflows/i
 
 ## Destruction
 
-To destroy the entire infrastructure, see `deploy/scripts/destroy.sh` (future PR T-1.12).
+Full wipe (per LLD §3.2):
 
-For now: manual `aws cloudformation delete-stack` per stack in reverse order. Contact anand@dheemantech.com for runbook details.
+```bash
+DESTROY_CONFIRM=mem-mcp-prod-yes-i-mean-it ./deploy/scripts/destroy.sh
+```
+
+The script executes 11 idempotent steps:
+1. Safety gate (requires explicit env var + interactive confirmation)
+2. Drain Cognito users
+3. Drain DCR-created user pool clients (retains CFT-managed web client)
+4. Empty S3 backup bucket (current objects, noncurrent versions, delete markers)
+5. Empty CFN bootstrap bucket (same)
+6. Disable EC2 termination protection + Cognito DeletionProtection
+7. Delete root stack (mem-mcp-prod, waits for completion)
+8. Delete us-east-1 cert stack (mem-mcp-cert-use1)
+9. Delete bootstrap stack (mem-mcp-cfn-bootstrap)
+10. Schedule KMS key deletion (30-day pending window)
+11. Orphan check (exits non-zero if any resources remain)
+
+24h+ after destroy, verify zero cost + no orphans:
+
+```bash
+./deploy/scripts/verify_destroy.sh
+```
+
+**Partial destroy** (keep DB / keep S3 backups / keep Cognito users): see `docs/runbooks/destroy_partial.md`.
 
 ## Related
 
