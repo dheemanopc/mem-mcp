@@ -25,7 +25,7 @@ class TestGetPool:
     def test_returns_pool_after_manual_set(self) -> None:
         """Without a real DB we manually inject a sentinel via the module-private."""
         sentinel = object()
-        pool_module._pool = sentinel  # type: ignore[assignment]
+        pool_module._pool = sentinel
         try:
             assert get_pool() is sentinel
         finally:

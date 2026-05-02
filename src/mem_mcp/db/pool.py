@@ -7,7 +7,7 @@ lifespan handler (T-3.5). Tests skip the real pool entirely — see
 
 from __future__ import annotations
 
-import asyncpg
+import asyncpg  # type: ignore[import-untyped]
 
 from mem_mcp.config import get_settings
 

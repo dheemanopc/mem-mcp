@@ -23,13 +23,11 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 if TYPE_CHECKING:
-    import asyncpg
+    import asyncpg  # type: ignore[import-untyped]
 
 
 @contextlib.asynccontextmanager
-async def tenant_tx(
-    pool: "asyncpg.Pool", tenant_id: UUID
-) -> AsyncIterator["asyncpg.Connection"]:
+async def tenant_tx(pool: "asyncpg.Pool", tenant_id: UUID) -> AsyncIterator["asyncpg.Connection"]:  # noqa: UP037
     """Acquire a connection, open a transaction, set tenant context, yield.
 
     Usage:
@@ -50,7 +48,7 @@ async def tenant_tx(
 
 
 @contextlib.asynccontextmanager
-async def system_tx(pool: "asyncpg.Pool") -> AsyncIterator["asyncpg.Connection"]:
+async def system_tx(pool: "asyncpg.Pool") -> AsyncIterator["asyncpg.Connection"]:  # noqa: UP037
     """Acquire a connection for maintenance / system work (mem_maint role).
 
     Does NOT set ``app.current_tenant_id`` — callers operate against the
