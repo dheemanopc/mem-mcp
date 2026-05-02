@@ -25,7 +25,7 @@ from mem_mcp.mcp.errors import JsonRpcError, to_jsonrpc_error_response
 from mem_mcp.mcp.tools._base import ToolContext
 
 if TYPE_CHECKING:
-    import asyncpg
+    import asyncpg  # type: ignore[import-untyped]
 
     from mem_mcp.mcp.registry import ToolRegistry
 

@@ -17,7 +17,7 @@ from uuid import UUID
 from pydantic import BaseModel
 
 if TYPE_CHECKING:
-    import asyncpg
+    import asyncpg  # type: ignore[import-untyped]
 
 
 @dataclass(frozen=True)
