@@ -1,0 +1,150 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'mem-mcp 010-network — VPC, subnet, IGW, route table, security group'
+
+Parameters:
+  OperatorIpCidr:
+    Type: String
+    Description: >
+      CIDR block for operator SSH ingress (e.g., 203.0.113.45/32).
+      Restricted to port 22 from this CIDR only.
+    AllowedPattern: '^([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}$'
+    ConstraintDescription: Must be a valid CIDR block (e.g., 10.0.0.0/8 or 203.0.113.45/32)
+
+  AvailabilityZone:
+    Type: AWS::EC2::AvailabilityZone::Name
+    Description: Availability Zone for the public subnet
+    Default: ap-south-1a
+
+Resources:
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      InstanceTenancy: default
+      Tags:
+        - Key: Name
+          Value: mem-mcp-vpc
+        - Key: Project
+          Value: mem-mcp
+        - Key: Component
+          Value: network
+
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Ref AvailabilityZone
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: mem-mcp-subnet-public-a
+        - Key: Project
+          Value: mem-mcp
+        - Key: Component
+          Value: network
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: mem-mcp-igw
+        - Key: Project
+          Value: mem-mcp
+        - Key: Component
+          Value: network
+
+  VpcGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref Vpc
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: mem-mcp-rt-public
+        - Key: Project
+          Value: mem-mcp
+        - Key: Component
+          Value: network
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: VpcGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  SubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref PublicRouteTable
+
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for mem-mcp EC2 host (mem-mcp application)
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        # HTTPS from anywhere
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: HTTPS from anywhere
+        # HTTP from anywhere (ACME challenge via Caddy)
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+          Description: HTTP for ACME challenges (Caddy)
+        # SSH from operator IP only
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref OperatorIpCidr
+          Description: SSH from operator
+      SecurityGroupEgress:
+        # HTTPS to anywhere (AWS APIs, Bedrock, Cognito, Google, etc.)
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: HTTPS outbound (AWS APIs, Bedrock, external services)
+      Tags:
+        - Key: Name
+          Value: mem-mcp-sg
+        - Key: Project
+          Value: mem-mcp
+        - Key: Component
+          Value: network
+
+Outputs:
+  VpcId:
+    Description: VPC ID
+    Value: !Ref Vpc
+
+  PublicSubnetId:
+    Description: Public subnet ID
+    Value: !Ref PublicSubnet
+
+  SecurityGroupId:
+    Description: Security group ID for EC2 host
+    Value: !Ref SecurityGroup
+
+  RouteTableId:
+    Description: Public route table ID
+    Value: !Ref PublicRouteTable
+
+  VpcCidr:
+    Description: VPC CIDR block
+    Value: !GetAtt Vpc.CidrBlock
