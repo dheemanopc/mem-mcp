@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import json
-import os
 import sys
+from collections.abc import Generator
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -23,15 +23,13 @@ def _set_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AWS_REGION_NAME", "ap-south-1")
     monkeypatch.setenv("LOG_LEVEL", "DEBUG")
     # Reload the module so module-level globals pick up new env
-    import importlib
-
     if "handler" in sys.modules:
         del sys.modules["handler"]
     import handler  # noqa: F401
 
 
 @pytest.fixture(autouse=True)
-def _reset_secret_cache() -> None:
+def _reset_secret_cache() -> Generator[None, None, None]:
     """Clear the cached secret between tests."""
     import handler
 
@@ -102,7 +100,7 @@ class TestExtractProvider:
     def test_empty_list(self) -> None:
         import handler
 
-        attrs = {"identities": []}
+        attrs: dict[str, Any] = {"identities": []}
         assert handler._extract_provider(attrs) is None
 
 
@@ -119,8 +117,10 @@ class TestPostCheckInvite:
         mock_response.json.return_value = {"decision": "allow", "reason": "invited"}
         mock_response.raise_for_status.return_value = None
 
-        with patch.object(handler, "_load_secret", return_value="test-secret"), \
-             patch("httpx.Client") as mock_client_cls:
+        with (
+            patch.object(handler, "_load_secret", return_value="test-secret"),
+            patch("httpx.Client") as mock_client_cls,
+        ):
             mock_client = MagicMock()
             mock_client.__enter__.return_value = mock_client
             mock_client.__exit__.return_value = False
@@ -142,8 +142,10 @@ class TestPostCheckInvite:
         mock_response.json.return_value = {"decision": "allow", "reason": "invited"}
         mock_response.raise_for_status.return_value = None
 
-        with patch.object(handler, "_load_secret", return_value="test-secret"), \
-             patch("httpx.Client") as mock_client_cls:
+        with (
+            patch.object(handler, "_load_secret", return_value="test-secret"),
+            patch("httpx.Client") as mock_client_cls,
+        ):
             mock_client = MagicMock()
             mock_client.__enter__.return_value = mock_client
             mock_client.__exit__.return_value = False
@@ -207,7 +209,9 @@ class TestLambdaHandlerDeny:
         import handler
 
         with patch.object(
-            handler, "_post_check_invite", return_value={"decision": "deny", "reason": "not_invited"}
+            handler,
+            "_post_check_invite",
+            return_value={"decision": "deny", "reason": "not_invited"},
         ):
             event = _mk_event()
             with pytest.raises(RuntimeError, match="not currently available"):
@@ -217,7 +221,9 @@ class TestLambdaHandlerDeny:
         import handler
 
         with patch.object(
-            handler, "_post_check_invite", return_value={"decision": "deny", "reason": "already_consumed"}
+            handler,
+            "_post_check_invite",
+            return_value={"decision": "deny", "reason": "already_consumed"},
         ):
             event = _mk_event()
             with pytest.raises(RuntimeError):

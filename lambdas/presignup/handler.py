@@ -65,7 +65,7 @@ def _load_secret() -> str:
         return _cached_secret
 
     # Lazy import — keeps cold-start light if Lambda environment isn't fully wired
-    import boto3
+    import boto3  # type: ignore[import-untyped]
 
     client = boto3.client("ssm", region_name=_REGION)
     response = client.get_parameter(Name=_SECRET_SSM_NAME, WithDecryption=True)
@@ -125,7 +125,7 @@ def lambda_handler(event: dict[str, Any], context: object) -> dict[str, Any]:
 
     try:
         result = _post_check_invite(email, provider)
-    except Exception as exc:  # noqa: BLE001 — fail-closed; deny on any error
+    except Exception as exc:
         _log(
             "ERROR",
             event="presignup_check_invite_failed",
@@ -162,7 +162,9 @@ def _extract_provider(user_attrs: dict[str, Any]) -> str | None:
     if not identities_raw:
         return None
     try:
-        identities = json.loads(identities_raw) if isinstance(identities_raw, str) else identities_raw
+        identities = (
+            json.loads(identities_raw) if isinstance(identities_raw, str) else identities_raw
+        )
     except (ValueError, TypeError):
         return None
     if not isinstance(identities, list) or not identities:
