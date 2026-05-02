@@ -10,8 +10,8 @@ infra/cfn/
 ├── root.yaml                           # Root stack (future PR T-1.10)
 ├── samconfig.toml                      # SAM CLI config (cp from samconfig.toml.example)
 ├── nested/                             # Nested stacks
-│   ├── 010-network.yaml                # VPC, subnets, IGW, security groups (T-1.1 — this PR)
-│   ├── 020-secrets.yaml                # KMS, SSM parameters (T-1.2)
+│   ├── 010-network.yaml                # VPC, subnets, IGW, security groups (T-1.1)
+│   ├── 020-secrets.yaml                # KMS, SSM parameters (T-1.2 — this PR)
 │   ├── 030-storage.yaml                # S3 backup bucket + lifecycle (T-1.3)
 │   ├── 040-identity.yaml               # Cognito user pool + Google IdP (T-1.4)
 │   ├── 050-lambda-presignup.yaml       # Lambda PreSignUp trigger (T-1.5)
@@ -39,6 +39,40 @@ Before deploying, ensure all of the following manual prerequisites are completed
 - [ ] **Domain registration**: Confirm `dheemantech.in` is registered and owned
 - [ ] **Route 53 hosted zone**: Create or note the ID of existing Route 53 hosted zone for `dheemantech.in`
 - [ ] **KMS customer-managed key**: Create KMS CMK with alias `alias/mem-mcp` (required by 090-bootstrap-bucket.yaml)
+
+## SecureString Parameters (post-deploy)
+
+The 020-secrets stack creates **String** SSM parameters via CloudFormation. **SecureString** parameters cannot be safely created via CFN (the value would be visible in the template). After the stack deploys, run these commands to populate the SecureStrings:
+
+```bash
+KMS_KEY=alias/mem-mcp
+REGION=ap-south-1
+
+aws ssm put-parameter --region $REGION --type SecureString --key-id $KMS_KEY \
+  --name /mem-mcp/db/password --value "$(openssl rand -base64 32)" --overwrite
+aws ssm put-parameter --region $REGION --type SecureString --key-id $KMS_KEY \
+  --name /mem-mcp/db/maint_password --value "$(openssl rand -base64 32)" --overwrite
+aws ssm put-parameter --region $REGION --type SecureString --key-id $KMS_KEY \
+  --name /mem-mcp/internal/lambda_shared_secret --value "$(openssl rand -base64 32)" --overwrite
+aws ssm put-parameter --region $REGION --type SecureString --key-id $KMS_KEY \
+  --name /mem-mcp/backup/gpg_passphrase --value "$(openssl rand -base64 48)" --overwrite
+aws ssm put-parameter --region $REGION --type SecureString --key-id $KMS_KEY \
+  --name /mem-mcp/web/session_secret --value "$(openssl rand -base64 32)" --overwrite
+aws ssm put-parameter --region $REGION --type SecureString --key-id $KMS_KEY \
+  --name /mem-mcp/web/link_state_secret --value "$(openssl rand -base64 32)" --overwrite
+
+# Google OAuth — paste real values from Google Cloud Console (T-0.6)
+aws ssm put-parameter --region $REGION --type SecureString --key-id $KMS_KEY \
+  --name /mem-mcp/cognito/google_client_id --value "REPLACE_ME" --overwrite
+aws ssm put-parameter --region $REGION --type SecureString --key-id $KMS_KEY \
+  --name /mem-mcp/cognito/google_client_secret --value "REPLACE_ME" --overwrite
+
+# Cognito web client secret — paste from 040-identity stack outputs after deploy
+aws ssm put-parameter --region $REGION --type SecureString --key-id $KMS_KEY \
+  --name /mem-mcp/cognito/web_client_secret --value "REPLACE_ME" --overwrite
+```
+
+To rotate any secret, re-run with `--overwrite` and a new value. The application reads SSM at startup, so rotation requires a `systemctl restart mem-mcp`.
 
 ## Deploy Order
 
@@ -110,8 +144,8 @@ sam deploy \
 
 | Stack | Status | Description |
 |---|---|---|
-| `010-network.yaml` | T-1.1 (this PR) | VPC, subnets, Internet Gateway, route tables, security groups |
-| `020-secrets.yaml` | Future PR T-1.2 | KMS CMK, SSM Parameter Store placeholders for secrets |
+| `010-network.yaml` | T-1.1 | VPC, subnets, Internet Gateway, route tables, security groups |
+| `020-secrets.yaml` | T-1.2 (this PR) | KMS CMK, SSM Parameter Store placeholders for secrets |
 | `030-storage.yaml` | Future PR T-1.3 | S3 backup bucket, versioning, encryption, lifecycle rules |
 | `040-identity.yaml` | Future PR T-1.4 | Cognito user pool, custom domain, Google IdP, web client, resource server |
 | `050-lambda-presignup.yaml` | Future PR T-1.5 | Lambda function for Cognito PreSignUp trigger, execution role, permissions |
