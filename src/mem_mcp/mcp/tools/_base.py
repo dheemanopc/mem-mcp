@@ -19,6 +19,8 @@ from pydantic import BaseModel
 if TYPE_CHECKING:
     import asyncpg  # type: ignore[import-untyped]
 
+    from mem_mcp.mcp.tools._deps import ToolDeps
+
 
 @dataclass(frozen=True)
 class ToolContext:
@@ -34,7 +36,7 @@ class ToolContext:
     client_id: str
     scopes: frozenset[str]
     db_pool: asyncpg.Pool
-    # audit: "AuditLogger"  # T-5.12 — left out for now; tools just _log via structlog
+    deps: ToolDeps | None = None
 
 
 class BaseTool(Protocol):
