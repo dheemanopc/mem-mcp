@@ -69,7 +69,7 @@ class BedrockHealthChecker:
 
     async def check(self) -> CheckResult:
         try:
-            import boto3
+            import boto3  # type: ignore[import-untyped]
 
             boto3.client("bedrock-runtime", region_name=self.region)
             return CheckResult(self.name, "ok")
