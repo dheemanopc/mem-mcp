@@ -22,6 +22,15 @@ from mem_mcp.auth.dcr import (
     RateLimiter,
     make_dcr_router,
 )
+from mem_mcp.auth.dcr_admin import (
+    BotoCognitoClientDeleter,
+    CognitoClientDeleter,
+    DbOauthClientDeleter,
+    DbOauthClientLookup,
+    OauthClientDeleter,
+    OauthClientLookup,
+    make_dcr_admin_router,
+)
 from mem_mcp.auth.jwks import (
     HttpxJwksFetcher,
     JwkKey,
@@ -79,4 +88,11 @@ __all__ = [
     "OauthClientStore",
     "RateLimiter",
     "make_dcr_router",
+    "BotoCognitoClientDeleter",
+    "CognitoClientDeleter",
+    "DbOauthClientDeleter",
+    "DbOauthClientLookup",
+    "OauthClientDeleter",
+    "OauthClientLookup",
+    "make_dcr_admin_router",
 ]
