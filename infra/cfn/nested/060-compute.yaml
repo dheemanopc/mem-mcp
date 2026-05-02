@@ -1,0 +1,414 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'mem-mcp 060-compute — EC2 t4g.medium + IAM instance profile + EBS gp3 + Elastic IP + DLM snapshots'
+
+Parameters:
+  # EC2 configuration
+  Ec2AmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/canonical/ubuntu/server/24.04/stable/current/arm64/hvm/ebs-gp3/ami-id
+    Description: Ubuntu 24.04 ARM64 AMI for ap-south-1 (resolved from public Canonical SSM parameter)
+
+  Ec2InstanceType:
+    Type: String
+    Default: t4g.medium
+    AllowedValues: [t4g.small, t4g.medium, t4g.large]
+    Description: EC2 instance type (ARM64 Graviton2)
+
+  Ec2KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Existing EC2 key pair name for SSH access
+
+  RootVolumeSizeGib:
+    Type: Number
+    Default: 30
+    MinValue: 20
+    MaxValue: 200
+    Description: Root volume size in GiB
+
+  # Network configuration
+  PublicSubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: Public subnet ID (output from 010-network)
+
+  SecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: Security group ID (output from 010-network)
+
+  # Encryption & access
+  KmsKeyAlias:
+    Type: String
+    Default: alias/mem-mcp
+    AllowedPattern: '^alias/[a-zA-Z0-9/_-]+$'
+    Description: KMS alias for EBS encryption
+
+  # Cognito
+  UserPoolId:
+    Type: String
+    Description: Cognito user pool ID (output from 040-identity)
+
+  # Storage
+  BackupBucketName:
+    Type: String
+    Description: S3 backup bucket name (output from 030-storage)
+
+  # Domain
+  DomainName:
+    Type: String
+    Description: Apex domain for SES (e.g., dheemantech.in)
+
+Resources:
+  # ============================================================================
+  # IAM Instance Role & Policies
+  # ============================================================================
+
+  InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: mem-mcp-instance-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      Tags:
+        - Key: Name
+          Value: mem-mcp-instance-role
+        - Key: Project
+          Value: mem-mcp
+        - Key: Component
+          Value: compute
+
+  # Policy 1: Bedrock (titan-embed-text-v2:0 only)
+  BedrockPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: mem-mcp-bedrock
+      Roles:
+        - !Ref InstanceRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: InvokeTitanEmbedModel
+            Effect: Allow
+            Action:
+              - bedrock:InvokeModel
+            Resource:
+              - !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.titan-embed-text-v2:0'
+
+  # Policy 2: Cognito IdP (DCR shim + identity lifecycle)
+  CognitoPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: mem-mcp-cognito
+      Roles:
+        - !Ref InstanceRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DcrShimUserPoolClient
+            Effect: Allow
+            Action:
+              - cognito-idp:CreateUserPoolClient
+              - cognito-idp:DeleteUserPoolClient
+              - cognito-idp:UpdateUserPoolClient
+              - cognito-idp:DescribeUserPoolClient
+              - cognito-idp:ListUserPoolClients
+            Resource:
+              - !Sub 'arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${UserPoolId}'
+          - Sid: AdminIdentityLifecycle
+            Effect: Allow
+            Action:
+              - cognito-idp:AdminGetUser
+              - cognito-idp:AdminLinkProviderForUser
+              - cognito-idp:AdminDisableUser
+              - cognito-idp:AdminDeleteUser
+              - cognito-idp:AdminUserGlobalSignOut
+            Resource:
+              - !Sub 'arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${UserPoolId}'
+
+  # Policy 3: SES (SendEmail, SendRawEmail from noreply & support)
+  SesPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: mem-mcp-ses
+      Roles:
+        - !Ref InstanceRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: SendEmailFromNoreplyAndSupport
+            Effect: Allow
+            Action:
+              - ses:SendEmail
+              - ses:SendRawEmail
+            Resource: '*'
+            Condition:
+              StringLike:
+                ses:FromAddress:
+                  - !Sub 'noreply@${DomainName}'
+                  - !Sub 'support@${DomainName}'
+
+  # Policy 4: S3 Backup bucket (PutObject, GetObject, ListBucket)
+  S3Policy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: mem-mcp-s3-backup
+      Roles:
+        - !Ref InstanceRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: BackupBucketAccess
+            Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:GetObject
+            Resource:
+              - !Sub 'arn:aws:s3:::${BackupBucketName}/*'
+          - Sid: BackupBucketList
+            Effect: Allow
+            Action:
+              - s3:ListBucket
+            Resource:
+              - !Sub 'arn:aws:s3:::${BackupBucketName}'
+
+  # Policy 5: SSM Parameters (/mem-mcp/*)
+  SsmPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: mem-mcp-ssm
+      Roles:
+        - !Ref InstanceRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: GetMemMcpParameters
+            Effect: Allow
+            Action:
+              - ssm:GetParameter
+              - ssm:GetParameters
+              - ssm:GetParametersByPath
+            Resource:
+              - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/mem-mcp/*'
+
+  # Policy 6: KMS (Decrypt, Encrypt, GenerateDataKey on alias/mem-mcp)
+  KmsPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: mem-mcp-kms
+      Roles:
+        - !Ref InstanceRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: EncryptDecryptMemMcpKey
+            Effect: Allow
+            Action:
+              - kms:Decrypt
+              - kms:Encrypt
+              - kms:GenerateDataKey
+            Resource:
+              - !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:${KmsKeyAlias}'
+
+  # Policy 7: CloudWatch Logs (CreateLogStream, PutLogEvents, CreateLogGroup)
+  LogsPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: mem-mcp-logs
+      Roles:
+        - !Ref InstanceRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: CreateAndWriteMemMcpLogs
+            Effect: Allow
+            Action:
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource:
+              - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/mem-mcp/*'
+          - Sid: CreateLogGroup
+            Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+            Resource:
+              - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/mem-mcp/*'
+
+  # Policy 8: CloudWatch Metrics (PutMetricData in mem-mcp namespace)
+  MetricsPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: mem-mcp-metrics
+      Roles:
+        - !Ref InstanceRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: PutMetricsMemMcpNamespace
+            Effect: Allow
+            Action:
+              - cloudwatch:PutMetricData
+            Resource: '*'
+            Condition:
+              StringEquals:
+                cloudwatch:namespace: mem-mcp
+
+  # Instance Profile
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: mem-mcp-instance-profile
+      Roles:
+        - !Ref InstanceRole
+
+  # ============================================================================
+  # EC2 Instance
+  # ============================================================================
+
+  Ec2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref Ec2AmiId
+      InstanceType: !Ref Ec2InstanceType
+      KeyName: !Ref Ec2KeyName
+      SubnetId: !Ref PublicSubnetId
+      SecurityGroupIds:
+        - !Ref SecurityGroupId
+      IamInstanceProfile: !Ref InstanceProfile
+      DisableApiTermination: true
+      Monitoring: false
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: !Ref RootVolumeSizeGib
+            VolumeType: gp3
+            Encrypted: true
+            KmsKeyId: !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:${KmsKeyAlias}'
+            DeleteOnTermination: true
+      UserData:
+        Fn::Base64: |
+          #!/bin/bash
+          set -e
+          # T-1.11 placeholder: real cloud-init bootstrap (Caddy, Postgres, Python, Node, app deploy) lands in T-1.11
+          echo "T-1.11 not yet wired"
+          exit 0
+      Tags:
+        - Key: Name
+          Value: mem-mcp-host
+        - Key: Project
+          Value: mem-mcp
+        - Key: Component
+          Value: compute
+
+  # ============================================================================
+  # Elastic IP & Association
+  # ============================================================================
+
+  ElasticIp:
+    Type: AWS::EC2::EIP
+    DependsOn: Ec2Instance
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: mem-mcp-eip
+        - Key: Project
+          Value: mem-mcp
+        - Key: Component
+          Value: compute
+
+  EipAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      InstanceId: !Ref Ec2Instance
+      AllocationId: !GetAtt ElasticIp.AllocationId
+
+  # ============================================================================
+  # DLM Snapshot Policy & Execution Role
+  # ============================================================================
+
+  DlmExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: mem-mcp-dlm-execution-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: dlm.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSDataLifecycleManagerServiceRole
+      Tags:
+        - Key: Name
+          Value: mem-mcp-dlm-execution-role
+        - Key: Project
+          Value: mem-mcp
+        - Key: Component
+          Value: compute
+
+  SnapshotPolicy:
+    Type: AWS::DLM::LifecyclePolicy
+    Properties:
+      Description: Daily root-volume snapshots for mem-mcp-host, retain 7 days
+      State: ENABLED
+      ExecutionRoleArn: !GetAtt DlmExecutionRole.Arn
+      PolicyDetails:
+        ResourceTypes:
+          - INSTANCE
+        TargetTags:
+          - Key: Project
+            Value: mem-mcp
+        Schedules:
+          - Name: DailyRetain7
+            CreateRule:
+              Interval: 24
+              IntervalUnit: HOURS
+              Times:
+                - '21:30'
+            RetainRule:
+              Count: 7
+            CopyTags: true
+            TagsToAdd:
+              - Key: SnapshotPolicy
+                Value: mem-mcp-snap-daily
+
+Outputs:
+  Ec2InstanceId:
+    Description: EC2 instance ID
+    Value: !Ref Ec2Instance
+    Export:
+      Name: !Sub '${AWS::StackName}-Ec2InstanceId'
+
+  ElasticIp:
+    Description: Elastic IP address for mem-mcp-host
+    Value: !Ref ElasticIp
+    Export:
+      Name: !Sub '${AWS::StackName}-ElasticIp'
+
+  ElasticIpAllocationId:
+    Description: Elastic IP allocation ID
+    Value: !GetAtt ElasticIp.AllocationId
+    Export:
+      Name: !Sub '${AWS::StackName}-ElasticIpAllocationId'
+
+  InstanceRoleArn:
+    Description: ARN of the EC2 instance role
+    Value: !GetAtt InstanceRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-InstanceRoleArn'
+
+  InstanceRoleName:
+    Description: Name of the EC2 instance role
+    Value: !Ref InstanceRole
+    Export:
+      Name: !Sub '${AWS::StackName}-InstanceRoleName'
+
+  InstanceProfileArn:
+    Description: ARN of the EC2 instance profile
+    Value: !GetAtt InstanceProfile.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-InstanceProfileArn'
