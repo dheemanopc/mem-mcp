@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 import pytest
 from fastapi.testclient import TestClient
@@ -18,19 +18,20 @@ from mem_mcp.main import create_app
 class FakeChecker:
     """Returns a pre-canned CheckResult. Records call count."""
 
-    def __init__(self, name: str, status: str = "ok", message: str = "") -> None:
+    def __init__(
+        self,
+        name: str,
+        status: Literal["ok", "fail"] = "ok",
+        message: str = "",
+    ) -> None:
         self.name = name
-        self._status: str = status
+        self._status: Literal["ok", "fail"] = status
         self._message = message
         self.calls = 0
 
     async def check(self) -> CheckResult:
         self.calls += 1
-        return CheckResult(
-            self.name,
-            self._status,
-            self._message,  # type: ignore[arg-type]
-        )
+        return CheckResult(self.name, self._status, self._message)
 
 
 def _build_app(checkers: list[Any]) -> TestClient:
