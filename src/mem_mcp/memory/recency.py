@@ -7,9 +7,9 @@ from typing import Final
 # spec §10.4: decision/fact decay slowly; notes/snippets decay quickly
 RECENCY_LAMBDA_BY_TYPE: Final[dict[str, float]] = {
     "decision": 0.0019,
-    "fact":     0.0019,
-    "note":     0.05,
-    "snippet":  0.10,
+    "fact": 0.0019,
+    "note": 0.05,
+    "snippet": 0.10,
     "question": 0.05,
 }
 

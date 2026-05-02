@@ -1,4 +1,4 @@
-"""Hybrid retrieval: semantic top-50 ∪ keyword top-50, recency-decayed.
+"""Hybrid retrieval: semantic top-50 U keyword top-50, recency-decayed.
 
 The canonical SQL is in spec §10.3 — replicated here verbatim with positional
 parameters. The Python wrapper (hybrid_search) builds the param tuple and
@@ -115,17 +115,17 @@ async def hybrid_search(
     """Run the hybrid query for the tenant. Returns ranked results."""
     rows = await conn.fetch(
         _HYBRID_SQL,
-        params.qvec,        # $1
-        tenant_id,          # $2
-        params.type_,       # $3
-        params.tags,        # $4
-        params.since,       # $5
-        params.until,       # $6
-        params.qtxt,        # $7
+        params.qvec,  # $1
+        tenant_id,  # $2
+        params.type_,  # $3
+        params.tags,  # $4
+        params.since,  # $5
+        params.until,  # $6
+        params.qtxt,  # $7
         params.recency_lambda,  # $8
-        params.w_sem,       # $9
-        params.w_kw,        # $10
-        params.limit,       # $11
+        params.w_sem,  # $9
+        params.w_kw,  # $10
+        params.limit,  # $11
     )
     return [
         SearchResult(

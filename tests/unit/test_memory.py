@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 from hypothesis import given, settings
@@ -19,7 +19,6 @@ from mem_mcp.memory.recency import (
     recency_lambda_for,
 )
 from mem_mcp.memory.versioning import NON_VERSIONED_TYPES, VERSIONED_TYPES
-
 
 # --------------------------------------------------------------------------
 # normalize.py (T-5.5)
@@ -64,7 +63,11 @@ class TestHashContent:
 
     def test_normalization_invariance(self) -> None:
         # All collapse to "hello world" → same hash
-        assert hash_content("Hello WORLD") == hash_content("  hello   world  ") == hash_content("hello world")
+        assert (
+            hash_content("Hello WORLD")
+            == hash_content("  hello   world  ")
+            == hash_content("hello world")
+        )
 
     def test_different_content_different_hash(self) -> None:
         assert hash_content("a") != hash_content("b")
@@ -81,13 +84,16 @@ class TestHashContent:
 
 
 class TestRecencyLambda:
-    @pytest.mark.parametrize("type_,expected", [
-        ("decision", 0.0019),
-        ("fact", 0.0019),
-        ("note", 0.05),
-        ("snippet", 0.10),
-        ("question", 0.05),
-    ])
+    @pytest.mark.parametrize(
+        "type_,expected",
+        [
+            ("decision", 0.0019),
+            ("fact", 0.0019),
+            ("note", 0.05),
+            ("snippet", 0.10),
+            ("question", 0.05),
+        ],
+    )
     def test_known_types(self, type_: str, expected: float) -> None:
         assert recency_lambda_for(type_) == expected
 
@@ -99,7 +105,13 @@ class TestRecencyLambda:
 
     def test_table_completeness(self) -> None:
         # All 5 spec'd types covered
-        assert set(RECENCY_LAMBDA_BY_TYPE.keys()) == {"decision", "fact", "note", "snippet", "question"}
+        assert set(RECENCY_LAMBDA_BY_TYPE.keys()) == {
+            "decision",
+            "fact",
+            "note",
+            "snippet",
+            "question",
+        }
 
 
 # --------------------------------------------------------------------------
@@ -138,14 +150,14 @@ class TestCheckDup:
     async def test_hash_hit_short_circuits(self) -> None:
         existing = uuid4()
         conn = _FakeConn(returns=[{"id": existing}])
-        match = await check_dup(conn, uuid4(), "h", [0.0] * 1024, "note")  # type: ignore[arg-type]
+        match = await check_dup(conn, uuid4(), "h", [0.0] * 1024, "note")
         assert match == DedupeMatch(existing_id=existing, kind="hash")
         assert len(conn.calls) == 1  # second query NOT made
 
     @pytest.mark.asyncio
     async def test_no_hash_no_embedding_returns_none(self) -> None:
         conn = _FakeConn(returns=[None])
-        match = await check_dup(conn, uuid4(), "h", None, "note")  # type: ignore[arg-type]
+        match = await check_dup(conn, uuid4(), "h", None, "note")
         assert match is None
         assert len(conn.calls) == 1  # cosine query skipped (no embedding)
 
@@ -153,28 +165,28 @@ class TestCheckDup:
     async def test_no_hash_embedding_above_threshold(self) -> None:
         existing = uuid4()
         conn = _FakeConn(returns=[None, {"id": existing, "sim": 0.97}])
-        match = await check_dup(conn, uuid4(), "h", [0.0] * 1024, "note")  # type: ignore[arg-type]
+        match = await check_dup(conn, uuid4(), "h", [0.0] * 1024, "note")
         assert match == DedupeMatch(existing_id=existing, kind="embedding")
         assert len(conn.calls) == 2
 
     @pytest.mark.asyncio
     async def test_embedding_below_threshold_returns_none(self) -> None:
         conn = _FakeConn(returns=[None, {"id": uuid4(), "sim": 0.50}])
-        match = await check_dup(conn, uuid4(), "h", [0.0] * 1024, "note")  # type: ignore[arg-type]
+        match = await check_dup(conn, uuid4(), "h", [0.0] * 1024, "note")
         assert match is None
 
     @pytest.mark.asyncio
     async def test_embedding_at_threshold_returns_none(self) -> None:
         # Strict > 0.95 per spec
         conn = _FakeConn(returns=[None, {"id": uuid4(), "sim": 0.95}])
-        match = await check_dup(conn, uuid4(), "h", [0.0] * 1024, "note")  # type: ignore[arg-type]
+        match = await check_dup(conn, uuid4(), "h", [0.0] * 1024, "note")
         assert match is None
 
     @pytest.mark.asyncio
     async def test_embedding_query_includes_type(self) -> None:
         """Spec §10.5: the cosine probe is type-scoped."""
         conn = _FakeConn(returns=[None, None])
-        await check_dup(conn, uuid4(), "h", [0.0] * 1024, "decision")  # type: ignore[arg-type]
+        await check_dup(conn, uuid4(), "h", [0.0] * 1024, "decision")
         # 2nd call's args: tenant_id, type_, embedding
         _, args = conn.calls[1]
         assert args[1] == "decision"
@@ -204,8 +216,8 @@ def _row(score: float = 0.5, **overrides: Any) -> dict[str, Any]:
         "type": "note",
         "tags": ["a"],
         "version": 1,
-        "created_at": datetime.now(tz=timezone.utc),
-        "updated_at": datetime.now(tz=timezone.utc),
+        "created_at": datetime.now(tz=UTC),
+        "updated_at": datetime.now(tz=UTC),
         "sem_score": 0.5,
         "kw_score": 0.5,
         "recency_factor": 1.0,
@@ -230,7 +242,7 @@ class TestHybridSearch:
             limit=10,
             recency_lambda=0.05,
         )
-        results = await hybrid_search(conn, uuid4(), params)  # type: ignore[arg-type]
+        results = await hybrid_search(conn, uuid4(), params)
         assert len(results) == 2
         assert all(isinstance(r, SearchResult) for r in results)
 
@@ -243,14 +255,14 @@ class TestHybridSearch:
             qtxt="hello world",
             type_="decision",
             tags=["project:ew"],
-            since=datetime(2025, 1, 1, tzinfo=timezone.utc),
-            until=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            since=datetime(2025, 1, 1, tzinfo=UTC),
+            until=datetime(2026, 1, 1, tzinfo=UTC),
             limit=15,
             recency_lambda=0.0019,
             w_sem=0.8,
             w_kw=0.2,
         )
-        await hybrid_search(conn, tenant, params)  # type: ignore[arg-type]
+        await hybrid_search(conn, tenant, params)
         assert len(conn.calls) == 1
         _, args = conn.calls[0]
         assert len(args) == 11
@@ -267,13 +279,19 @@ class TestHybridSearch:
     @pytest.mark.asyncio
     async def test_default_weights(self) -> None:
         from mem_mcp.memory.hybrid_query import SEARCH_DEFAULT_W_KW, SEARCH_DEFAULT_W_SEM
+
         assert SEARCH_DEFAULT_W_SEM == 0.7
         assert SEARCH_DEFAULT_W_KW == 0.3
         # Both default if not specified
         params = SearchParams(
-            qvec=[0.0] * 1024, qtxt="x",
-            type_=None, tags=None, since=None, until=None,
-            limit=1, recency_lambda=0.05,
+            qvec=[0.0] * 1024,
+            qtxt="x",
+            type_=None,
+            tags=None,
+            since=None,
+            until=None,
+            limit=1,
+            recency_lambda=0.05,
         )
         assert params.w_sem == 0.7
         assert params.w_kw == 0.3
