@@ -16,9 +16,8 @@ Skips any path not under ``mcp_path_prefix`` (default '/mcp'). Web routes
 from __future__ import annotations
 
 import asyncio
-import json
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, Protocol
 from uuid import UUID
 
@@ -30,7 +29,7 @@ from mem_mcp.db import system_tx
 from mem_mcp.logging_setup import get_logger
 
 if TYPE_CHECKING:
-    import asyncpg
+    import asyncpg  # type: ignore[import-untyped]
 
 
 _log = get_logger("mem_mcp.auth.middleware")
@@ -53,7 +52,7 @@ class TenantContext:
 class TenantResolution:
     """Result of cognito_sub + client_id → DB lookup."""
 
-    tenant_id: UUID | None        # None when not_found
+    tenant_id: UUID | None  # None when not_found
     identity_id: UUID | None
     tenant_status: ResolutionOutcome
     client_known: bool
@@ -130,7 +129,7 @@ class DbTouch:
                     "UPDATE oauth_clients SET last_used_at = now() WHERE id = $1",
                     client_id,
                 )
-        except Exception as exc:  # noqa: BLE001 — fire-and-forget, never propagate
+        except Exception as exc:
             _log.warning(
                 "touch_last_seen_failed",
                 identity_id=str(identity_id),
@@ -164,7 +163,7 @@ def make_bearer_middleware(
         auth = request.headers.get("authorization", "")
         if not auth.lower().startswith("bearer "):
             return _unauthorized(resource_metadata_url, "missing_token", "Bearer token required")
-        token = auth[len("Bearer "):].strip()
+        token = auth[len("Bearer ") :].strip()
         if not token:
             return _unauthorized(resource_metadata_url, "missing_token", "empty token")
 
@@ -202,7 +201,9 @@ def make_bearer_middleware(
 
         # Fire-and-forget last_seen / last_used update
         # (asyncio.create_task is safe inside an async middleware running on the loop)
-        asyncio.create_task(touch.touch(resolution.identity_id, claims.client_id))
+        # TODO(T-5.12): add audit log call here via mem_mcp.audit.logger
+        task = asyncio.create_task(touch.touch(resolution.identity_id, claims.client_id))
+        task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
 
         return await call_next(request)
 

@@ -17,7 +17,6 @@ from mem_mcp.auth.middleware import (
     make_bearer_middleware,
 )
 
-
 _RESOURCE_METADATA = "https://memsys.dheemantech.in/.well-known/oauth-protected-resource"
 
 
@@ -63,7 +62,9 @@ class FakeTouch:
 # --------------------------------------------------------------------------
 
 
-def _claims(sub: str = "cog-sub-1", client_id: str = "client-1", scopes: str = "memory.read memory.write") -> JwtClaims:
+def _claims(
+    sub: str = "cog-sub-1", client_id: str = "client-1", scopes: str = "memory.read memory.write"
+) -> JwtClaims:
     return JwtClaims(
         sub=sub,
         iss="https://cognito-idp.ap-south-1.amazonaws.com/p1",
@@ -94,9 +95,7 @@ def _resolution(
     )
 
 
-def _build_app(
-    validator: Any, resolver: Any, touch: Any, mcp_prefix: str = "/mcp"
-) -> TestClient:
+def _build_app(validator: Any, resolver: Any, touch: Any, mcp_prefix: str = "/mcp") -> TestClient:
     app = FastAPI()
 
     @app.get("/healthz")
@@ -153,7 +152,9 @@ class TestPathSkip:
 
 class TestAuthorizationHeader:
     def test_missing_header_returns_401(self) -> None:
-        client = _build_app(FakeValidator(claims=_claims()), FakeResolver(_resolution()), FakeTouch())
+        client = _build_app(
+            FakeValidator(claims=_claims()), FakeResolver(_resolution()), FakeTouch()
+        )
         resp = client.post("/mcp", json={})
         assert resp.status_code == 401
         assert resp.json() == {"error": "missing_token", "reason": "Bearer token required"}
@@ -162,12 +163,16 @@ class TestAuthorizationHeader:
         assert _RESOURCE_METADATA in resp.headers["WWW-Authenticate"]
 
     def test_non_bearer_scheme_returns_401(self) -> None:
-        client = _build_app(FakeValidator(claims=_claims()), FakeResolver(_resolution()), FakeTouch())
+        client = _build_app(
+            FakeValidator(claims=_claims()), FakeResolver(_resolution()), FakeTouch()
+        )
         resp = client.post("/mcp", json={}, headers={"Authorization": "Basic dXNlcjpwYXNz"})
         assert resp.status_code == 401
 
     def test_empty_token_returns_401(self) -> None:
-        client = _build_app(FakeValidator(claims=_claims()), FakeResolver(_resolution()), FakeTouch())
+        client = _build_app(
+            FakeValidator(claims=_claims()), FakeResolver(_resolution()), FakeTouch()
+        )
         resp = client.post("/mcp", json={}, headers={"Authorization": "Bearer "})
         assert resp.status_code == 401
         assert resp.json()["reason"] == "empty token"
@@ -274,6 +279,7 @@ class TestTouch:
         # not have run by response time. So we check via a small awaitable that
         # yields control. Easiest: use an asyncio.Event the touch sets.
         import asyncio
+
         seen = asyncio.Event()
         captured: list[tuple[Any, ...]] = []
 
