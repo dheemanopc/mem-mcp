@@ -40,6 +40,20 @@ Before deploying, ensure all of the following manual prerequisites are completed
 - [ ] **Route 53 hosted zone**: Create or note the ID of existing Route 53 hosted zone for `dheemantech.in` (operator-managed; its ID is passed as `HostedZoneId` parameter to 070-dns.yaml)
 - [ ] **KMS customer-managed key**: Create KMS CMK with alias `alias/mem-mcp` (required by 090-bootstrap-bucket.yaml)
 
+## Onboarding Beta Users (post-deploy)
+
+Once the EC2 host is up, beta-user onboarding goes through the `seed_invite.py` CLI on the host (or anywhere with `MEM_MCP_DB_MAINT_DSN` env var). Per T-4.11.
+
+```bash
+cd /opt/mem-mcp
+poetry run python deploy/scripts/seed_invite.py add anand@dheemantech.com --invited-by anand --notes "founder/operator"
+poetry run python deploy/scripts/seed_invite.py list
+```
+
+Other commands: `show`, `revoke` (sentinel-based, preserves audit trail), `delete` (hard delete; escape hatch).
+
+The PreSignUp Lambda (T-4.8) calls `/internal/check_invite` (T-4.7) which queries this table. Adding an email here is the prerequisite for that user being able to sign up via Cognito.
+
 ## Known Gaps
 
 - **030-storage IAM role restriction (T-1.6)**: The bucket policy currently denies non-TLS access and enforces SSE-KMS encryption. IAM-role-based access restriction to `mem-mcp-instance-role` is now available. See the TODO comment in 030-storage.yaml bucket policy for how to wire it.
