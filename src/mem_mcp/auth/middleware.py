@@ -80,7 +80,7 @@ class TouchSink(Protocol):
 class DbTenantResolver:
     """Production resolver: single LEFT JOIN against the asyncpg pool."""
 
-    def __init__(self, pool: "asyncpg.Pool") -> None:
+    def __init__(self, pool: asyncpg.Pool) -> None:
         self._pool = pool
 
     async def resolve(self, cognito_sub: str, client_id: str) -> TenantResolution:
@@ -115,7 +115,7 @@ class DbTenantResolver:
 class DbTouch:
     """Best-effort UPDATE of last_seen_at + last_used_at; never raises to caller."""
 
-    def __init__(self, pool: "asyncpg.Pool") -> None:
+    def __init__(self, pool: asyncpg.Pool) -> None:
         self._pool = pool
 
     async def touch(self, identity_id: UUID, client_id: str) -> None:
