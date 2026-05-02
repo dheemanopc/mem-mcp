@@ -17,6 +17,11 @@ from mem_mcp.auth.jwks import (
     JwksFetcher,
     JwksPayload,
 )
+from mem_mcp.auth.jwt_validator import (
+    JwtClaims,
+    JwtError,
+    JwtValidator,
+)
 
 __all__ = [
     "HttpxJwksFetcher",
@@ -25,4 +30,7 @@ __all__ = [
     "JwksError",
     "JwksFetcher",
     "JwksPayload",
+    "JwtClaims",
+    "JwtError",
+    "JwtValidator",
 ]
