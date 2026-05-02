@@ -28,8 +28,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="MEM_MCP_",
         frozen=True,
-        extra="ignore",       # SSM may return params we don't have fields for
-        case_sensitive=False, # MEM_MCP_DB_DSN, mem_mcp_db_dsn both work
+        extra="ignore",  # SSM may return params we don't have fields for
+        case_sensitive=False,  # MEM_MCP_DB_DSN, mem_mcp_db_dsn both work
     )
 
     region: str = "ap-south-1"
@@ -58,9 +58,7 @@ class SsmLoader(Protocol):
     GUIDELINES §1.2 (no moto, no localstack).
     """
 
-    def get_parameters_by_path(
-        self, path: str, with_decryption: bool = True
-    ) -> dict[str, str]:
+    def get_parameters_by_path(self, path: str, with_decryption: bool = True) -> dict[str, str]:
         """Return {full_ssm_path: value} for all params under ``path``."""
         ...
 
@@ -74,21 +72,17 @@ class BotoSsmLoader:
 
     def __init__(self, region: str | None = None) -> None:
         # Imported here so unit tests don't pay the boto3 import cost
-        import boto3
+        import boto3  # type: ignore[import-untyped]
 
         kwargs = {}
         if region:
             kwargs["region_name"] = region
         self._client = boto3.client("ssm", **kwargs)
 
-    def get_parameters_by_path(
-        self, path: str, with_decryption: bool = True
-    ) -> dict[str, str]:
+    def get_parameters_by_path(self, path: str, with_decryption: bool = True) -> dict[str, str]:
         result: dict[str, str] = {}
         paginator = self._client.get_paginator("get_parameters_by_path")
-        for page in paginator.paginate(
-            Path=path, Recursive=True, WithDecryption=with_decryption
-        ):
+        for page in paginator.paginate(Path=path, Recursive=True, WithDecryption=with_decryption):
             for param in page["Parameters"]:
                 result[param["Name"]] = param["Value"]
         return result
@@ -98,7 +92,7 @@ def _ssm_key_to_env_key(ssm_path: str) -> str:
     """e.g. '/mem-mcp/db/password' → 'MEM_MCP_DB_PASSWORD'."""
     if not ssm_path.startswith(_SSM_PREFIX):
         raise ValueError(f"SSM path must start with {_SSM_PREFIX!r}: {ssm_path!r}")
-    suffix = ssm_path[len(_SSM_PREFIX):]
+    suffix = ssm_path[len(_SSM_PREFIX) :]
     return "MEM_MCP_" + suffix.upper().replace("/", "_").replace("-", "_")
 
 
@@ -137,7 +131,7 @@ def get_settings(loader: SsmLoader | None = None) -> Settings:
     init_kwargs: dict[str, str] = {}
     for env_key, value in merged.items():
         if env_key.startswith("MEM_MCP_"):
-            init_kwargs[env_key[len("MEM_MCP_"):].lower()] = value
+            init_kwargs[env_key[len("MEM_MCP_") :].lower()] = value
 
     return Settings(**init_kwargs)
 

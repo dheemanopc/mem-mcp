@@ -20,7 +20,6 @@ from mem_mcp.config import (
     get_settings,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fake SsmLoader
 # ---------------------------------------------------------------------------
@@ -33,9 +32,7 @@ class FakeSsmLoader:
         self.params = params or {}
         self.calls: list[tuple[str, bool]] = []
 
-    def get_parameters_by_path(
-        self, path: str, with_decryption: bool = True
-    ) -> dict[str, str]:
+    def get_parameters_by_path(self, path: str, with_decryption: bool = True) -> dict[str, str]:
         self.calls.append((path, with_decryption))
         return {k: v for k, v in self.params.items() if k.startswith(path)}
 
@@ -91,8 +88,7 @@ class TestSsmKeyToEnvKey:
 
     def test_nested_key(self) -> None:
         assert (
-            _ssm_key_to_env_key("/mem-mcp/cognito/user_pool_id")
-            == "MEM_MCP_COGNITO_USER_POOL_ID"
+            _ssm_key_to_env_key("/mem-mcp/cognito/user_pool_id") == "MEM_MCP_COGNITO_USER_POOL_ID"
         )
 
     def test_dashes_become_underscores(self) -> None:
@@ -147,18 +143,22 @@ class TestGetSettings:
         assert s.region == "ap-south-1"  # default
 
     def test_missing_required_field_raises(self) -> None:
+        from pydantic import ValidationError
+
         partial = {"/mem-mcp/db/dsn": "x"}  # only one of many required fields
         loader = FakeSsmLoader(partial)
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(ValidationError) as exc_info:
             get_settings(loader)
         # Pydantic raises ValidationError; just check it mentions a missing field
         assert "field" in str(exc_info.value).lower() or "required" in str(exc_info.value).lower()
 
     def test_settings_is_frozen(self) -> None:
+        from pydantic import ValidationError
+
         loader = FakeSsmLoader(_FULL_SSM_PARAMS)
         s = get_settings(loader)
-        with pytest.raises(Exception):  # Pydantic raises ValidationError on frozen
-            s.region = "us-west-2"  # type: ignore[misc]
+        with pytest.raises(ValidationError):
+            s.region = "us-west-2"
 
     def test_get_settings_is_cached(self) -> None:
         loader = FakeSsmLoader(_FULL_SSM_PARAMS)
