@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
 
 from mem_mcp.jobs.cleanup_clients import _classify, run
-
 
 # --------------------------------------------------------------------------
 # Fakes
@@ -57,7 +56,7 @@ def _candidate(
         "id": client_id,
         "client_name": client_name,
         "last_used_at": last_used_at,
-        "created_at": created_at or datetime.now(tz=timezone.utc) - timedelta(days=1),
+        "created_at": created_at or datetime.now(tz=UTC) - timedelta(days=1),
         "disabled": disabled,
     }
 
@@ -72,16 +71,13 @@ class TestClassify:
         assert _classify({"disabled": True, "last_used_at": None}) == "disabled"
 
     def test_disabled_overrides_other(self) -> None:
-        assert (
-            _classify({"disabled": True, "last_used_at": datetime.now(tz=timezone.utc)})
-            == "disabled"
-        )
+        assert _classify({"disabled": True, "last_used_at": datetime.now(tz=UTC)}) == "disabled"
 
     def test_never_used(self) -> None:
         assert _classify({"disabled": False, "last_used_at": None}) == "never_used"
 
     def test_stale(self) -> None:
-        old = datetime.now(tz=timezone.utc) - timedelta(days=120)
+        old = datetime.now(tz=UTC) - timedelta(days=120)
         assert _classify({"disabled": False, "last_used_at": old}) == "stale_90d"
 
 

@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from collections.abc import Iterable
 from typing import TYPE_CHECKING, Protocol
 
 from mem_mcp.config import get_settings
@@ -21,7 +20,7 @@ from mem_mcp.db import system_tx
 from mem_mcp.logging_setup import get_logger, setup_logging
 
 if TYPE_CHECKING:
-    import asyncpg
+    import asyncpg  # type: ignore[import-untyped]
 
 
 _log = get_logger("mem_mcp.jobs.cleanup_clients")
@@ -101,14 +100,13 @@ class BotoCognitoClientDeleter:
 
     async def delete_user_pool_client(self, client_id: str) -> None:
         import asyncio as _aio
-        import boto3
+
+        import boto3  # type: ignore[import-untyped]
 
         def _call() -> None:
             client = boto3.client("cognito-idp", region_name=self.region)
             try:
-                client.delete_user_pool_client(
-                    UserPoolId=self.user_pool_id, ClientId=client_id
-                )
+                client.delete_user_pool_client(UserPoolId=self.user_pool_id, ClientId=client_id)
             except client.exceptions.ResourceNotFoundException:
                 # Already gone in Cognito — fine, the job just tombstones locally
                 pass
@@ -149,7 +147,7 @@ async def run(
         # Best-effort Cognito delete
         try:
             await cognito_deleter.delete_user_pool_client(client_id)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _log.warning(
                 "cleanup_clients_cognito_delete_failed",
                 client_id=client_id,
@@ -162,7 +160,7 @@ async def run(
         try:
             await tombstone.mark_deleted(client_id)
             affected += 1
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _log.warning(
                 "cleanup_clients_tombstone_failed",
                 client_id=client_id,

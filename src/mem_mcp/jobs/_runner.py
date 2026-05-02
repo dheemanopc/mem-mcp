@@ -11,11 +11,12 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable, Coroutine
+from typing import Any
 
 from mem_mcp.jobs.cleanup_clients import main as cleanup_clients_main
 
-_JobMain = Callable[..., Awaitable[int]]
+_JobMain = Callable[..., Coroutine[Any, Any, int]]
 
 _JOBS: dict[str, _JobMain] = {
     "cleanup_clients": cleanup_clients_main,
@@ -35,7 +36,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv if argv is not None else sys.argv[1:])
     job = _JOBS[args.job]
-    affected = asyncio.run(job(dry_run=args.dry_run))
+    affected: int = asyncio.run(job(dry_run=args.dry_run))
     print(f"job={args.job} dry_run={args.dry_run} affected={affected}")
     return 0
 
