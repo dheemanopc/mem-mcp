@@ -1,0 +1,226 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'mem-mcp 040-identity — Cognito user pool, custom domain, resource server, Google IdP, web app client'
+
+Parameters:
+  DomainName:
+    Type: String
+    Description: Apex domain (e.g., dheemantech.in)
+    AllowedPattern: '^[a-z0-9]+([-.][a-z0-9]+)*\.[a-z]{2,}$'
+
+  MemSysSubdomain:
+    Type: String
+    Default: memsys
+    Description: Subdomain for MCP API server
+
+  MemAppSubdomain:
+    Type: String
+    Default: memapp
+    Description: Subdomain for web UI
+
+  MemAuthSubdomain:
+    Type: String
+    Default: memauth
+    Description: Subdomain for Cognito custom domain
+
+  UsEast1CertArn:
+    Type: String
+    Description: ACM cert ARN in us-east-1 for Cognito custom domain (T-1.9)
+    AllowedPattern: '^arn:aws:acm:us-east-1:\d+:certificate/.+$'
+
+  GoogleClientIdSsmName:
+    Type: AWS::SSM::Parameter::Name
+    Default: /mem-mcp/cognito/google_client_id
+    Description: SSM parameter name for Google OAuth client ID
+
+  GoogleClientSecretSsmName:
+    Type: AWS::SSM::Parameter::Name
+    Default: /mem-mcp/cognito/google_client_secret
+    Description: SSM parameter name for Google OAuth client secret
+
+Resources:
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      UserPoolName: mem-mcp-pool
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: false
+      AliasAttributes: []
+      AutoVerifiedAttributes:
+        - email
+      DeletionProtection: ACTIVE
+      EmailConfiguration:
+        EmailSendingAccount: COGNITO_DEFAULT
+      MfaConfiguration: 'OFF'
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 12
+          RequireLowercase: true
+          RequireUppercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+          TemporaryPasswordValidityDays: 7
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: true
+        - Name: given_name
+          AttributeDataType: String
+          Required: false
+          Mutable: true
+        - Name: family_name
+          AttributeDataType: String
+          Required: false
+          Mutable: true
+        - Name: picture
+          AttributeDataType: String
+          Required: false
+          Mutable: true
+      UsernameAttributes:
+        - email
+      UsernameConfiguration:
+        CaseSensitive: false
+      UserPoolAddOns:
+        AdvancedSecurityMode: AUDIT
+      UserPoolTags:
+        Project: mem-mcp
+        Component: identity
+
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Sub '${MemAuthSubdomain}.${DomainName}'
+      UserPoolId: !Ref UserPool
+      CustomDomainConfig:
+        CertificateArn: !Ref UsEast1CertArn
+
+  ResourceServer:
+    Type: AWS::Cognito::UserPoolResourceServer
+    Properties:
+      UserPoolId: !Ref UserPool
+      Identifier: !Sub 'https://${MemSysSubdomain}.${DomainName}'
+      Name: mem-mcp-api
+      Scopes:
+        - ScopeName: memory.read
+          ScopeDescription: Read memories
+        - ScopeName: memory.write
+          ScopeDescription: Write, update, delete memories
+        - ScopeName: memory.admin
+          ScopeDescription: Admin operations (export, supersede, cascade delete)
+        - ScopeName: account.manage
+          ScopeDescription: Manage account (linking, closure)
+
+  GoogleIdentityProvider:
+    Type: AWS::Cognito::UserPoolIdentityProvider
+    Properties:
+      UserPoolId: !Ref UserPool
+      ProviderName: Google
+      ProviderType: Google
+      ProviderDetails:
+        client_id: !Sub '{{resolve:ssm:${GoogleClientIdSsmName}:1}}'
+        client_secret: !Sub '{{resolve:ssm-secure:${GoogleClientSecretSsmName}:1}}'
+        authorize_scopes: 'openid email profile'
+      AttributeMapping:
+        email: email
+        email_verified: email_verified
+        given_name: given_name
+        family_name: family_name
+        picture: picture
+      IdpIdentifiers: []
+
+  WebAppClient:
+    Type: AWS::Cognito::UserPoolClient
+    DependsOn:
+      - ResourceServer
+      - GoogleIdentityProvider
+    Properties:
+      ClientName: mem-web-client
+      UserPoolId: !Ref UserPool
+      GenerateSecret: true
+      AllowedOAuthFlows:
+        - code
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthScopes:
+        - openid
+        - email
+        - profile
+        - !Sub 'https://${MemSysSubdomain}.${DomainName}/memory.read'
+        - !Sub 'https://${MemSysSubdomain}.${DomainName}/memory.write'
+        - !Sub 'https://${MemSysSubdomain}.${DomainName}/memory.admin'
+        - !Sub 'https://${MemSysSubdomain}.${DomainName}/account.manage'
+      CallbackURLs:
+        - !Sub 'https://${MemAppSubdomain}.${DomainName}/auth/callback'
+      LogoutURLs:
+        - !Sub 'https://${MemAppSubdomain}.${DomainName}/'
+      SupportedIdentityProviders:
+        - Google
+      ExplicitAuthFlows: []
+      EnableTokenRevocation: true
+      PreventUserExistenceErrors: ENABLED
+      AccessTokenValidity: 60
+      IdTokenValidity: 60
+      RefreshTokenValidity: 30
+      TokenValidityUnits:
+        AccessToken: minutes
+        IdToken: minutes
+        RefreshToken: days
+      ReadAttributes:
+        - email
+        - email_verified
+        - given_name
+        - family_name
+        - picture
+      WriteAttributes:
+        - email
+        - given_name
+        - family_name
+        - picture
+
+Outputs:
+  UserPoolId:
+    Description: Cognito User Pool ID
+    Value: !Ref UserPool
+    Export:
+      Name: !Sub '${AWS::StackName}-UserPoolId'
+
+  UserPoolArn:
+    Description: Cognito User Pool ARN
+    Value: !GetAtt UserPool.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-UserPoolArn'
+
+  UserPoolProviderUrl:
+    Description: Cognito user pool provider URL (used in JWT iss claim)
+    Value: !GetAtt UserPool.ProviderURL
+    Export:
+      Name: !Sub '${AWS::StackName}-ProviderUrl'
+
+  UserPoolDomain:
+    Description: Cognito custom domain
+    Value: !Ref UserPoolDomain
+    Export:
+      Name: !Sub '${AWS::StackName}-Domain'
+
+  CloudFrontDistribution:
+    Description: CloudFront distribution for the custom domain (used to create Route 53 alias in T-1.7)
+    Value: !GetAtt UserPoolDomain.CloudFrontDistribution
+    Export:
+      Name: !Sub '${AWS::StackName}-CloudFrontDistribution'
+
+  ResourceServerIdentifier:
+    Description: Resource server identifier (audience for access tokens)
+    Value: !Sub 'https://${MemSysSubdomain}.${DomainName}'
+    Export:
+      Name: !Sub '${AWS::StackName}-ResourceServerIdentifier'
+
+  WebClientId:
+    Description: Web app Cognito client ID
+    Value: !Ref WebAppClient
+    Export:
+      Name: !Sub '${AWS::StackName}-WebClientId'
