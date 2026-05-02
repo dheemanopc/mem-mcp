@@ -35,7 +35,7 @@ _REDACT_SUBSTRINGS: tuple[str, ...] = (
     "passphrase",
     "authorization",
     "cookie",
-    "session",      # mem_session, web_session_secret, etc.
+    "session",  # mem_session, web_session_secret, etc.
     "private_key",
     "client_secret",
     "refresh_token",
@@ -59,8 +59,11 @@ def _redact(value: Any) -> Any:
     Other types: return as-is.
     """
     if isinstance(value, Mapping):
-        return {k: (_REDACTED_VALUE if _is_sensitive_key(str(k)) else _redact(v)) for k, v in value.items()}
-    if isinstance(value, (list, tuple)):
+        return {
+            k: (_REDACTED_VALUE if _is_sensitive_key(str(k)) else _redact(v))
+            for k, v in value.items()
+        }
+    if isinstance(value, list | tuple):
         return type(value)(_redact(v) for v in value)
     return value
 
@@ -76,7 +79,7 @@ def _redact_processor(_logger: object, _method: str, event_dict: EventDict) -> E
     for k in list(event_dict.keys()):
         if _is_sensitive_key(k):
             event_dict[k] = _REDACTED_VALUE
-        elif isinstance(event_dict[k], (Mapping, list, tuple)):
+        elif isinstance(event_dict[k], Mapping | list | tuple):
             event_dict[k] = _redact(event_dict[k])
     return event_dict
 
@@ -107,13 +110,13 @@ def setup_logging(level: str = "INFO") -> None:
     )
 
     processors: list[Processor] = [
-        structlog.contextvars.merge_contextvars,        # request_id, tenant_id, ...
-        structlog.processors.add_log_level,             # 'level' field
+        structlog.contextvars.merge_contextvars,  # request_id, tenant_id, ...
+        structlog.processors.add_log_level,  # 'level' field
         structlog.processors.TimeStamper(fmt="iso", utc=True),  # 'timestamp' ISO 8601 UTC
-        _redact_processor,                              # scrub sensitive keys
+        _redact_processor,  # scrub sensitive keys
         structlog.processors.StackInfoRenderer(),
-        structlog.processors.format_exc_info,           # exc_info → traceback string
-        structlog.processors.JSONRenderer(),            # final: dict → JSON string
+        structlog.processors.format_exc_info,  # exc_info → traceback string
+        structlog.processors.JSONRenderer(),  # final: dict → JSON string
     ]
 
     structlog.configure(

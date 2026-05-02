@@ -7,7 +7,6 @@ import json
 from collections.abc import Iterator
 
 import pytest
-import structlog
 
 from mem_mcp.logging_setup import (
     _is_sensitive_key,
@@ -20,7 +19,6 @@ from mem_mcp.logging_setup import (
     setup_logging,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -32,15 +30,6 @@ def _isolate_logging() -> Iterator[None]:
     _reset_for_tests()
     yield
     _reset_for_tests()
-
-
-@pytest.fixture
-def captured_stdout(monkeypatch: pytest.MonkeyPatch) -> io.StringIO:
-    """Replace sys.stdout with an in-memory buffer; setup_logging writes JSON there."""
-    buf = io.StringIO()
-    import sys
-    monkeypatch.setattr(sys, "stdout", buf)
-    return buf
 
 
 # ---------------------------------------------------------------------------
@@ -137,12 +126,17 @@ class TestRedactProcessor:
 
 
 class TestSetupLogging:
-    def test_emits_json_with_required_fields(self, captured_stdout: io.StringIO) -> None:
+    def test_emits_json_with_required_fields(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        buf = io.StringIO()
+        import sys
+
+        monkeypatch.setattr(sys, "stdout", buf)
+
         setup_logging("INFO")
         log = get_logger()
         log.info("test_event", action="memory.write", tenant_id="t1", latency_ms=42)
 
-        output = captured_stdout.getvalue().strip()
+        output = buf.getvalue().strip()
         assert output, "no output captured"
         # The output should be valid JSON
         record = json.loads(output)
@@ -154,36 +148,53 @@ class TestSetupLogging:
         assert "timestamp" in record
         assert record["timestamp"].endswith("Z") or "+" in record["timestamp"]  # ISO UTC
 
-    def test_secrets_redacted_in_emitted_json(self, captured_stdout: io.StringIO) -> None:
+    def test_secrets_redacted_in_emitted_json(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        buf = io.StringIO()
+        import sys
+
+        monkeypatch.setattr(sys, "stdout", buf)
+
         setup_logging("INFO")
         log = get_logger()
-        log.info("auth_attempt",
-                 user_id="u1",
-                 password="hunter2",
-                 client_secret="abcd",
-                 access_token="xyz")
+        log.info(
+            "auth_attempt",
+            user_id="u1",
+            password="hunter2",
+            client_secret="abcd",
+            access_token="xyz",
+        )
 
-        record = json.loads(captured_stdout.getvalue().strip())
+        record = json.loads(buf.getvalue().strip())
         assert record["user_id"] == "u1"
         assert record["password"] == "<redacted>"
         assert record["client_secret"] == "<redacted>"
         assert record["access_token"] == "<redacted>"
         # Original values must not leak ANYWHERE in the rendered string
-        raw = captured_stdout.getvalue()
+        raw = buf.getvalue()
         assert "hunter2" not in raw
         assert "abcd" not in raw
 
-    def test_setup_is_idempotent(self, captured_stdout: io.StringIO) -> None:
+    def test_setup_is_idempotent(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        buf = io.StringIO()
+        import sys
+
+        monkeypatch.setattr(sys, "stdout", buf)
+
         setup_logging("INFO")
         setup_logging("DEBUG")  # second call: no-op (returns early)
         log = get_logger()
         log.info("hello")
-        record = json.loads(captured_stdout.getvalue().strip())
+        record = json.loads(buf.getvalue().strip())
         # Level on the EVENT is INFO regardless; the wrapper class was set at INFO threshold.
         # Just verify setup didn't crash and log went through.
         assert record["event"] == "hello"
 
-    def test_request_context_binds_and_clears(self, captured_stdout: io.StringIO) -> None:
+    def test_request_context_binds_and_clears(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        buf = io.StringIO()
+        import sys
+
+        monkeypatch.setattr(sys, "stdout", buf)
+
         setup_logging("INFO")
         log = get_logger()
 
@@ -192,7 +203,7 @@ class TestSetupLogging:
         clear_request_context()
         log.info("second")
 
-        lines = [json.loads(line) for line in captured_stdout.getvalue().strip().split("\n") if line]
+        lines = [json.loads(line) for line in buf.getvalue().strip().split("\n") if line]
         assert len(lines) == 2
         assert lines[0]["request_id"] == "req-abc"
         assert lines[0]["tenant_id"] == "t1"
