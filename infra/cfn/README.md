@@ -12,8 +12,8 @@ infra/cfn/
 ├── nested/                             # Nested stacks
 │   ├── 010-network.yaml                # VPC, subnets, IGW, security groups (T-1.1)
 │   ├── 020-secrets.yaml                # KMS, SSM parameters (T-1.2)
-│   ├── 030-storage.yaml                # S3 backup bucket + lifecycle (T-1.3 — this PR)
-│   ├── 040-identity.yaml               # Cognito user pool + Google IdP (T-1.4)
+│   ├── 030-storage.yaml                # S3 backup bucket + lifecycle (T-1.3)
+│   ├── 040-identity.yaml               # Cognito user pool + Google IdP (T-1.4 — this PR)
 │   ├── 050-lambda-presignup.yaml       # Lambda PreSignUp trigger (T-1.5)
 │   ├── 060-compute.yaml                # EC2, IAM instance profile (T-1.6)
 │   ├── 070-dns.yaml                    # Route 53 records (T-1.7)
@@ -43,6 +43,7 @@ Before deploying, ensure all of the following manual prerequisites are completed
 ## Known Gaps
 
 - **030-storage IAM role restriction (T-1.6)**: The bucket policy currently denies non-TLS access and enforces SSE-KMS encryption. IAM-role-based access restriction to `mem-mcp-instance-role` is deferred to T-1.6 (compute stack) once the role exists. See the TODO comment in 030-storage.yaml bucket policy.
+- **Cognito DNS alias (T-1.7)**: 040-identity creates the user pool custom domain, but the Route 53 ALIAS pointing `memauth.dheemantech.in` at the Cognito CloudFront distribution is created in T-1.7 (DNS stack). Sign-in won't work until both are deployed.
 
 ## SecureString Parameters (post-deploy)
 
@@ -144,14 +145,16 @@ sam deploy \
   --no-fail-on-empty-changeset
 ```
 
+**Cognito custom domain prerequisite:** the us-east-1 cert (T-1.9 / `us-east-1/cert.yaml`) MUST be deployed and validated BEFORE deploying 040-identity.yaml in the root stack. Pass the cert ARN via the `UsEast1CertArn` parameter. The Cognito custom domain creation can take 10-15 minutes (CloudFront propagation).
+
 ## Nested Stack Reference
 
 | Stack | Status | Description |
 |---|---|---|
 | `010-network.yaml` | T-1.1 | VPC, subnets, Internet Gateway, route tables, security groups |
 | `020-secrets.yaml` | T-1.2 | KMS CMK, SSM Parameter Store placeholders for secrets |
-| `030-storage.yaml` | T-1.3 (this PR) | S3 backup bucket, versioning, encryption, lifecycle rules |
-| `040-identity.yaml` | Future PR T-1.4 | Cognito user pool, custom domain, Google IdP, web client, resource server |
+| `030-storage.yaml` | T-1.3 | S3 backup bucket, versioning, encryption, lifecycle rules |
+| `040-identity.yaml` | T-1.4 (this PR) | Cognito user pool, custom domain, Google IdP, web client, resource server |
 | `050-lambda-presignup.yaml` | Future PR T-1.5 | Lambda function for Cognito PreSignUp trigger, execution role, permissions |
 | `060-compute.yaml` | Future PR T-1.6 | EC2 t4g.medium instance, IAM instance profile, EBS gp3, Elastic IP, termination protection |
 | `070-dns.yaml` | Future PR T-1.7 | Route 53 records (A, CNAME) for mem.*, app.*, auth.* subdomains |
