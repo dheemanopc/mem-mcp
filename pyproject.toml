@@ -48,10 +48,10 @@ strict = true
 warn_unused_ignores = true
 warn_redundant_casts = true
 warn_unreachable = true
-files = ["src/mem_mcp", "tests"]
+files = ["src/mem_mcp", "tests", "lambdas"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "lambdas"]
 asyncio_mode = "auto"
 markers = [
     "live_aws: opt-in tests against real AWS (require --live-aws)",

@@ -1,0 +1,96 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: 'mem-mcp 050-lambda-presignup — Cognito PreSignUp trigger Lambda (Python 3.12, ARM64, SAM-packaged)'
+
+Parameters:
+  UserPoolArn:
+    Type: String
+    Description: Cognito user pool ARN (output from 040-identity)
+    AllowedPattern: '^arn:aws:cognito-idp:[a-z0-9-]+:\d+:userpool/.+$'
+
+  UserPoolId:
+    Type: String
+    Description: Cognito user pool ID (output from 040-identity)
+
+  KmsKeyAlias:
+    Type: String
+    Default: alias/mem-mcp
+    Description: KMS alias for SSM SecureString decryption
+
+  MemSysSubdomain:
+    Type: String
+    Default: memsys
+
+  DomainName:
+    Type: String
+    Description: Apex domain (e.g., dheemantech.in)
+
+  LogRetentionDays:
+    Type: Number
+    Default: 90
+    AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653]
+    Description: Lambda CloudWatch log retention (days). Lambda logs treated as audit-adjacent; default 90.
+
+Resources:
+  PreSignUpFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: mem-mcp-presignup
+      Description: Cognito PreSignUp trigger — checks invited_emails allowlist via internal HTTPS endpoint
+      Runtime: python3.12
+      Architectures: [arm64]
+      Handler: handler.lambda_handler
+      CodeUri: ../../../lambdas/presignup/
+      MemorySize: 256
+      Timeout: 5
+      Environment:
+        Variables:
+          INTERNAL_INVITE_URL: !Sub 'https://${MemSysSubdomain}.${DomainName}/internal/check_invite'
+          INTERNAL_INVITE_SECRET_SSM: /mem-mcp/internal/lambda_shared_secret
+          AWS_REGION_NAME: !Ref AWS::Region
+          LOG_LEVEL: INFO
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ssm:GetParameter
+              Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/mem-mcp/internal/lambda_shared_secret'
+            - Effect: Allow
+              Action: kms:Decrypt
+              Resource: !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/*'
+              Condition:
+                StringEquals:
+                  kms:EncryptionContext:PARAMETER_ARN: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/mem-mcp/internal/lambda_shared_secret'
+      Tags:
+        Project: mem-mcp
+        Component: lambda-presignup
+
+  # Allow Cognito to invoke the function
+  PreSignUpInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref PreSignUpFn
+      Principal: cognito-idp.amazonaws.com
+      SourceArn: !Ref UserPoolArn
+
+  # Explicit log group with retention (SAM creates one without retention by default)
+  PreSignUpLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${PreSignUpFn}'
+      RetentionInDays: !Ref LogRetentionDays
+
+Outputs:
+  PreSignUpFunctionArn:
+    Description: ARN of the PreSignUp Lambda function (passed to Cognito user pool LambdaConfig)
+    Value: !GetAtt PreSignUpFn.Arn
+
+  PreSignUpFunctionName:
+    Description: Name of the PreSignUp Lambda function
+    Value: !Ref PreSignUpFn
+
+  PreSignUpLogGroupName:
+    Description: CloudWatch log group for the PreSignUp Lambda
+    Value: !Ref PreSignUpLogGroup
