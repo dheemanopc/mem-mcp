@@ -22,6 +22,15 @@ from mem_mcp.auth.jwt_validator import (
     JwtError,
     JwtValidator,
 )
+from mem_mcp.auth.middleware import (
+    DbTenantResolver,
+    DbTouch,
+    TenantContext,
+    TenantResolution,
+    TenantResolver,
+    TouchSink,
+    make_bearer_middleware,
+)
 
 __all__ = [
     "HttpxJwksFetcher",
@@ -33,4 +42,11 @@ __all__ = [
     "JwtClaims",
     "JwtError",
     "JwtValidator",
+    "DbTenantResolver",
+    "DbTouch",
+    "TenantContext",
+    "TenantResolution",
+    "TenantResolver",
+    "TouchSink",
+    "make_bearer_middleware",
 ]
