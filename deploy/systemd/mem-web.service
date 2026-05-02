@@ -1,0 +1,22 @@
+[Unit]
+Description=mem-mcp Next.js web UI
+After=network.target
+
+[Service]
+Type=exec
+User=memmcp
+Group=memmcp
+WorkingDirectory=/opt/mem-mcp/web
+EnvironmentFile=/etc/mem-mcp/env
+ExecStart=/usr/bin/node node_modules/next/dist/bin/next start --hostname 127.0.0.1 --port 8081
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

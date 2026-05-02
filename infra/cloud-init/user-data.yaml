@@ -1,0 +1,100 @@
+#cloud-config
+# mem-mcp EC2 first-boot bootstrap.
+# Runs as root; cloud-init logs to /var/log/cloud-init-output.log.
+
+package_update: true
+package_upgrade: true
+
+packages:
+  # System tools
+  - awscli
+  - jq
+  - curl
+  - git
+  - unzip
+  - gnupg
+  - ca-certificates
+  - lsb-release
+  - software-properties-common
+  - fail2ban
+  - unattended-upgrades
+  - logrotate
+  - rsync
+  # Python build deps (in case Poetry needs to compile a wheel)
+  - python3.12
+  - python3.12-venv
+  - python3.12-dev
+  - python3-pip
+  - build-essential
+  - libffi-dev
+  - libssl-dev
+  - libpq-dev
+  # Postgres 16 + pgvector are installed via custom apt repos in runcmd below
+  # because the Ubuntu defaults are PG14/15
+
+write_files:
+  - path: /etc/mem-mcp/instance.env
+    permissions: '0640'
+    owner: root:root
+    content: |
+      # Set by cloud-init from CFN parameters; sourced by bootstrap.sh
+      MEM_MCP_REGION="${region}"
+      MEM_MCP_REPO_URL="${repo_url}"
+      MEM_MCP_REPO_REF="${repo_ref}"
+  - path: /etc/apt/sources.list.d/pgdg.list
+    permissions: '0644'
+    content: |
+      deb http://apt.postgresql.org/pub/repos/apt noble-pgdg main
+  - path: /etc/apt/sources.list.d/caddy-stable.list
+    permissions: '0644'
+    content: |
+      deb [signed-by=/usr/share/keyrings/caddy-stable-archive-keyring.gpg] https://dl.cloudsmith.io/public/caddy/stable/deb/debian any-version main
+  - path: /etc/apt/sources.list.d/nodesource.list
+    permissions: '0644'
+    content: |
+      deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main
+
+users:
+  - name: memmcp
+    system: true
+    shell: /bin/bash
+    home: /home/memmcp
+    create_home: true
+
+runcmd:
+  # 1) Set hostname
+  - hostnamectl set-hostname mem-mcp-host
+
+  # 2) Add Postgres 16 apt key + install Postgres 16 + pgvector
+  - curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/pgdg-archive-keyring.gpg
+  - sed -i 's|deb http://|deb [signed-by=/usr/share/keyrings/pgdg-archive-keyring.gpg] http://|' /etc/apt/sources.list.d/pgdg.list
+
+  # 3) Caddy apt key
+  - curl -fsSL https://dl.cloudsmith.io/public/caddy/stable/gpg.key | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+
+  # 4) Node.js 20 apt key
+  - mkdir -p /etc/apt/keyrings
+  - curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
+
+  # 5) apt update + install
+  - apt-get update
+  - DEBIAN_FRONTEND=noninteractive apt-get install -y postgresql-16 postgresql-16-pgvector caddy nodejs
+  - npm install -g pnpm@9
+
+  # 6) Install Poetry for the memmcp user
+  - su - memmcp -c "curl -sSL https://install.python-poetry.org | python3 -"
+  - su - memmcp -c "echo 'export PATH=\$HOME/.local/bin:\$PATH' >> ~/.bashrc"
+
+  # 7) Clone the mem-mcp repo
+  - mkdir -p /opt/mem-mcp
+  - chown memmcp:memmcp /opt/mem-mcp
+  - su - memmcp -c "git clone ${repo_url} /opt/mem-mcp && cd /opt/mem-mcp && git checkout ${repo_ref}"
+
+  # 8) Run bootstrap.sh as memmcp (with sudo for postgres + systemd steps)
+  - chmod +x /opt/mem-mcp/deploy/scripts/bootstrap.sh
+  - bash /opt/mem-mcp/deploy/scripts/bootstrap.sh 2>&1 | tee /var/log/mem-mcp-bootstrap.log
+
+  # 9) Emit success metric
+  - aws --region ${region} cloudwatch put-metric-data --namespace mem-mcp --metric-name bootstrap.success --value 1 || true
+
+final_message: "mem-mcp cloud-init complete. See /var/log/mem-mcp-bootstrap.log for app bootstrap details."
