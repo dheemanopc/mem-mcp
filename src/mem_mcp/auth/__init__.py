@@ -57,6 +57,13 @@ from mem_mcp.auth.well_known import (
     DEFAULT_MCP_SCOPES,
     make_well_known_router,
 )
+from mem_mcp.auth.internal_invite import (
+    DbInviteStore,
+    InviteCheckRequest,
+    InviteCheckResponse,
+    InviteStore,
+    make_internal_invite_router,
+)
 
 __all__ = [
     "HttpxJwksFetcher",
@@ -95,4 +102,9 @@ __all__ = [
     "OauthClientDeleter",
     "OauthClientLookup",
     "make_dcr_admin_router",
+    "DbInviteStore",
+    "InviteCheckRequest",
+    "InviteCheckResponse",
+    "InviteStore",
+    "make_internal_invite_router",
 ]

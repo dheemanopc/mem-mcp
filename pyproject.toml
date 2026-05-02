@@ -11,7 +11,7 @@ python = "^3.12"
 fastapi = "^0.115"
 uvicorn = { version = "^0.32", extras = ["standard"] }
 asyncpg = "^0.30"
-pydantic = "^2.9"
+pydantic = {extras = ["email"], version = "^2.13.3"}
 pydantic-settings = "^2.6"
 structlog = "^24.4"
 boto3 = "^1.35"
