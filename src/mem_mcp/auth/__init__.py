@@ -31,6 +31,13 @@ from mem_mcp.auth.dcr_admin import (
     OauthClientLookup,
     make_dcr_admin_router,
 )
+from mem_mcp.auth.internal_invite import (
+    DbInviteStore,
+    InviteCheckRequest,
+    InviteCheckResponse,
+    InviteStore,
+    make_internal_invite_router,
+)
 from mem_mcp.auth.jwks import (
     HttpxJwksFetcher,
     JwkKey,
@@ -95,4 +102,9 @@ __all__ = [
     "OauthClientDeleter",
     "OauthClientLookup",
     "make_dcr_admin_router",
+    "DbInviteStore",
+    "InviteCheckRequest",
+    "InviteCheckResponse",
+    "InviteStore",
+    "make_internal_invite_router",
 ]
