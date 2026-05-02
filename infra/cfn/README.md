@@ -65,7 +65,7 @@ aws ssm put-parameter --region $REGION --type SecureString --key-id $KMS_KEY \
 aws ssm put-parameter --region $REGION --type SecureString --key-id $KMS_KEY \
   --name /mem-mcp/db/maint_password --value "$(openssl rand -base64 32)" --overwrite
 aws ssm put-parameter --region $REGION --type SecureString --key-id $KMS_KEY \
-  --name /mem-mcp/internal/lambda_shared_secret --value "$(openssl rand -base64 32)" --overwrite
+  --name /mem-mcp/internal/lambda/secret --value "$(openssl rand -base64 32)" --overwrite
 aws ssm put-parameter --region $REGION --type SecureString --key-id $KMS_KEY \
   --name /mem-mcp/backup/gpg_passphrase --value "$(openssl rand -base64 48)" --overwrite
 aws ssm put-parameter --region $REGION --type SecureString --key-id $KMS_KEY \
