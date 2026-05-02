@@ -15,7 +15,7 @@ infra/cfn/
 │   ├── 030-storage.yaml                # S3 backup bucket + lifecycle (T-1.3)
 │   ├── 040-identity.yaml               # Cognito user pool + Google IdP (T-1.4)
 │   ├── 050-lambda-presignup.yaml       # Lambda PreSignUp trigger (T-1.5)
-│   ├── 060-compute.yaml                # EC2, IAM instance profile (T-1.6)
+│   ├── 060-compute.yaml                # EC2, IAM instance profile (T-1.6, UserData updated in T-1.11)
 │   ├── 070-dns.yaml                    # Route 53 records (T-1.7)
 │   ├── 080-observability.yaml          # CloudWatch, alarms, SNS (T-1.8 — this PR)
 │   └── 090-bootstrap-bucket.yaml       # Bootstrap bucket for nested templates + Lambda zips (T-1.0)
@@ -43,12 +43,13 @@ Before deploying, ensure all of the following manual prerequisites are completed
 ## Known Gaps
 
 - **030-storage IAM role restriction (T-1.6)**: The bucket policy currently denies non-TLS access and enforces SSE-KMS encryption. IAM-role-based access restriction to `mem-mcp-instance-role` is now available. See the TODO comment in 030-storage.yaml bucket policy for how to wire it.
-- **EC2 user-data is a stub (T-1.11)**: 060-compute.yaml installs the EC2 with a placeholder UserData that just echoes "T-1.11 not yet wired" and exits 0. The real cloud-init bootstrap (Caddy, Postgres, Python, Node, app deploy) lands in T-1.11.
+- **FastAPI app missing (T-3.5)**: The mem-mcp.service systemd unit references `mem_mcp.main:app`, which does not yet exist. The service will keep restarting on failure until Phase 3 / T-3.5 ships the application code. This is harmless and expected on first boot.
+- **Next.js web missing (Phase 8)**: The mem-web.service systemd unit and web/ directory build are skipped on first bootstrap if web/ is not present. Once Phase 8 ships the web UI, bootstrap will build and start it.
 - **DLM snapshot start time is 21:30 UTC = 03:00 IST**: matches spec §14.3 retention windows. If timezone needs adjusting later, change the `Times:` field on `SnapshotPolicy.PolicyDetails.Schedules`.
 - **PreSignUp trigger wiring (T-1.10)**: Resolved via inline custom resource in root.yaml. The custom resource calls `cognito-idp:UpdateUserPool` to wire `LambdaConfig.PreSignUp` after both 040-identity and 050-lambda stacks exist. On stack delete, the custom resource removes the LambdaConfig, allowing clean pool deletion.
 - **PreSignUp logic (T-4.8)**: handler.py is a STUB that approves all signups. Real `invited_emails` allowlist check lands in T-4.8. Do NOT route real Cognito traffic through this until T-4.8 ships.
 - **Log-filter alarms (T-9.6)**: 080-observability creates only the alarms whose metrics exist before app deploy (EC2 status, CPU, Bedrock throttles, custom backup-success metric, monthly budget, cost anomaly). The full spec §14.4 alarm set (App-5xx-rate, Auth-fail-spike, DCR-attempts, Token-reuse, Quota-circuit-breaker, etc.) requires `AWS::Logs::MetricFilter` patterns over log content the app emits — deferred to Phase 9 / T-9.6 once the app is deployed and we know the actual log shapes.
-- **Disk usage alarm (T-1.11)**: requires the CloudWatch agent running on EC2 with disk plugin. Lands with cloud-init T-1.11.
+- **CloudWatch disk usage alarm (future)**: Requires the CloudWatch agent running on EC2 with disk plugin. Not yet implemented.
 
 ## SecureString Parameters (post-deploy)
 
@@ -166,8 +167,9 @@ sam deploy \
 | `070-dns.yaml` | T-1.7 | Route 53 records (A, CNAME) for mem.*, app.*, auth.* subdomains |
 | `080-observability.yaml` | T-1.8 | CloudWatch log groups, custom metrics, alarms, SNS topics, dashboard |
 | `us-east-1/cert.yaml` | T-1.9 | ACM certificate for Cognito custom domain (must be in us-east-1) |
-| `root.yaml` | T-1.10 (this PR) | Root stack composing 8 nested stacks (010-080) + PreSignUp wiring + SSM bridge |
+| `root.yaml` | T-1.10 | Root stack composing 8 nested stacks (010-080) + PreSignUp wiring + SSM bridge |
 | `090-bootstrap-bucket.yaml` | T-1.0 | S3 bucket for nested templates and SAM Lambda artifacts (encrypted, versioned, secure transport enforced) |
+| Cloud-init + bootstrap scripts | T-1.11 (this PR) | EC2 UserData (cloud-init), bootstrap.sh, deploy.sh, systemd units, Caddyfile |
 
 ## Parameter Overrides
 

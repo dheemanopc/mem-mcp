@@ -1,0 +1,41 @@
+# mem-mcp Caddy config. TLS via Let's Encrypt (auto).
+
+{
+  email anand@dheemantech.com
+  # Use staging during initial cert issuance to avoid LE rate limits if needed:
+  # acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+}
+
+memsys.dheemantech.in {
+  encode zstd gzip
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    X-Content-Type-Options "nosniff"
+    Referrer-Policy "no-referrer"
+  }
+  reverse_proxy 127.0.0.1:8080
+  log {
+    output file /var/log/caddy/memsys-access.log
+  }
+}
+
+memapp.dheemantech.in {
+  encode zstd gzip
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    X-Content-Type-Options "nosniff"
+    Referrer-Policy "no-referrer"
+    Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; connect-src 'self' https://cognito-idp.ap-south-1.amazonaws.com https://memauth.dheemantech.in; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://memauth.dheemantech.in"
+  }
+
+  # API + auth routes go to FastAPI :8080 (single origin per LLD §8.2)
+  @apiweb path /api/web/* /auth/*
+  reverse_proxy @apiweb 127.0.0.1:8080
+
+  # Everything else → Next.js :8081
+  reverse_proxy 127.0.0.1:8081
+
+  log {
+    output file /var/log/caddy/memapp-access.log
+  }
+}
