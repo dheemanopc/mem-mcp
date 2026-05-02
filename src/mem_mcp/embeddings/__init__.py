@@ -9,10 +9,10 @@ Public API:
 
 from mem_mcp.embeddings.bedrock import (
     BedrockEmbeddingClient,
-    EmbedResult,
     EmbeddingClient,
     EmbeddingError,
     EmbeddingErrorCode,
+    EmbedResult,
 )
 
 __all__ = [

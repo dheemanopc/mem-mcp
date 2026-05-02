@@ -22,11 +22,11 @@ def _ok_response(vector: list[float] | None = None, tokens: int = 12) -> dict[st
     return {"body": io.BytesIO(body)}
 
 
-def _client_error(code: str, message: str = "boom") -> Exception:
+def _client_error(code: str, message: str = "boom") -> BaseException:
     """Construct a botocore.exceptions.ClientError for the given Bedrock code."""
-    from botocore.exceptions import ClientError
+    from botocore.exceptions import ClientError  # type: ignore[import-untyped]
 
-    return ClientError(
+    return ClientError(  # type: ignore[no-any-return]
         error_response={"Error": {"Code": code, "Message": message}},
         operation_name="InvokeModel",
     )

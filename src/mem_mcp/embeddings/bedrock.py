@@ -113,16 +113,14 @@ class BedrockEmbeddingClient:
 
     def _get_client(self) -> Any:
         if self._client is None:
-            import boto3
+            import boto3  # type: ignore[import-untyped]
 
             self._client = boto3.client("bedrock-runtime", region_name=self.region)
         return self._client
 
     def _invoke_sync(self, text: str) -> dict[str, Any]:
         """Synchronous Bedrock call. Wrapped by asyncio.to_thread."""
-        body = json.dumps(
-            {"inputText": text, "dimensions": self.dimensions, "normalize": True}
-        )
+        body = json.dumps({"inputText": text, "dimensions": self.dimensions, "normalize": True})
         client = self._get_client()
         resp = client.invoke_model(
             modelId=self.model_id,
@@ -155,7 +153,7 @@ class BedrockEmbeddingClient:
             async for attempt in retrying:
                 with attempt:
                     payload = await asyncio.to_thread(self._invoke_sync, text)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             if _is_input_invalid(exc):
                 raise EmbeddingError("invalid_input", str(exc)[:200]) from exc
             if _is_retryable(exc):
