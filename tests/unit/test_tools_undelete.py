@@ -16,6 +16,13 @@ from mem_mcp.mcp.tools._deps import NoopQuotas, ToolDeps
 from mem_mcp.mcp.tools.undelete import MemoryUndeleteInput, MemoryUndeleteOutput, MemoryUndeleteTool
 
 
+class _StubEmbeddings:
+    """Stub embeddings client; delete/undelete don't embed but ToolDeps requires one."""
+
+    async def embed(self, text: str):  # type: ignore[no-untyped-def]
+        raise RuntimeError("delete/undelete should never embed")
+
+
 def _patch_tenant_tx(monkeypatch: pytest.MonkeyPatch, conn: AsyncMock) -> None:
     """Patch tenant_tx to yield our fake conn."""
     from contextlib import asynccontextmanager
@@ -30,7 +37,7 @@ def _patch_tenant_tx(monkeypatch: pytest.MonkeyPatch, conn: AsyncMock) -> None:
 def _build_ctx(scopes: tuple[str, ...] = ("memory.write",)) -> ToolContext:
     """Build a ToolContext with proper dependencies."""
     deps = ToolDeps(
-        embeddings=None,  # Not used in undelete
+        embeddings=_StubEmbeddings(),
         audit=NoopAuditLogger(),
         quotas=NoopQuotas(),
     )
@@ -154,7 +161,9 @@ class TestMemoryUndelete:
         assert "not found" in exc.value.message.lower()
 
     @pytest.mark.asyncio
-    async def test_undelete_versioned_with_conflicting_sibling(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_undelete_versioned_with_conflicting_sibling(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Undelete versioned type with conflicting current sibling restores but not current."""
         tool = MemoryUndeleteTool()
         ctx = _build_ctx()
@@ -185,8 +194,8 @@ class TestMemoryUndelete:
         _patch_tenant_tx(monkeypatch, conn)
 
         output = await tool(ctx, inp)
-        assert output.deleted_at is None
-        assert output.is_current is False
+        assert output.deleted_at is None  # type: ignore[attr-defined]
+        assert output.is_current is False  # type: ignore[attr-defined]
 
     @pytest.mark.asyncio
     async def test_undelete_versioned_no_conflict(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -219,8 +228,8 @@ class TestMemoryUndelete:
         _patch_tenant_tx(monkeypatch, conn)
 
         output = await tool(ctx, inp)
-        assert output.deleted_at is None
-        assert output.is_current is True
+        assert output.deleted_at is None  # type: ignore[attr-defined]
+        assert output.is_current is True  # type: ignore[attr-defined]
 
     @pytest.mark.asyncio
     async def test_undelete_at_grace_boundary(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -251,4 +260,4 @@ class TestMemoryUndelete:
         _patch_tenant_tx(monkeypatch, conn)
 
         output = await tool(ctx, inp)
-        assert output.deleted_at is None
+        assert output.deleted_at is None  # type: ignore[attr-defined]

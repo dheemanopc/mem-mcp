@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
@@ -14,6 +14,13 @@ from mem_mcp.mcp.errors import JsonRpcError
 from mem_mcp.mcp.tools._base import ToolContext
 from mem_mcp.mcp.tools._deps import NoopQuotas, ToolDeps
 from mem_mcp.mcp.tools.delete import MemoryDeleteInput, MemoryDeleteOutput, MemoryDeleteTool
+
+
+class _StubEmbeddings:
+    """Stub embeddings client; delete/undelete don't embed but ToolDeps requires one."""
+
+    async def embed(self, text: str):  # type: ignore[no-untyped-def]
+        raise RuntimeError("delete/undelete should never embed")
 
 
 def _patch_tenant_tx(monkeypatch: pytest.MonkeyPatch, conn: AsyncMock) -> None:
@@ -30,7 +37,7 @@ def _patch_tenant_tx(monkeypatch: pytest.MonkeyPatch, conn: AsyncMock) -> None:
 def _build_ctx(scopes: tuple[str, ...] = ("memory.write",)) -> ToolContext:
     """Build a ToolContext with proper dependencies."""
     deps = ToolDeps(
-        embeddings=None,  # Not used in delete
+        embeddings=_StubEmbeddings(),
         audit=NoopAuditLogger(),
         quotas=NoopQuotas(),
     )
@@ -49,7 +56,9 @@ class TestMemoryDelete:
     """Tests for memory.delete tool."""
 
     @pytest.mark.asyncio
-    async def test_delete_current_version_non_versioned(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_delete_current_version_non_versioned(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Plain delete on non-versioned type sets deleted_at."""
         tool = MemoryDeleteTool()
         ctx = _build_ctx()
@@ -154,7 +163,7 @@ class TestMemoryDelete:
         _patch_tenant_tx(monkeypatch, conn)
 
         output = await tool(ctx, inp)
-        assert output.cascaded_count == 1  # one additional version
+        assert output.cascaded_count == 1  # type: ignore[attr-defined]
 
     @pytest.mark.asyncio
     async def test_delete_versioned_promotes_prior(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -183,7 +192,7 @@ class TestMemoryDelete:
         _patch_tenant_tx(monkeypatch, conn)
 
         output = await tool(ctx, inp)
-        assert output.promoted_version_id == prior_id
+        assert output.promoted_version_id == prior_id  # type: ignore[attr-defined]
 
     @pytest.mark.asyncio
     async def test_delete_non_current_no_promotion(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -206,7 +215,7 @@ class TestMemoryDelete:
         _patch_tenant_tx(monkeypatch, conn)
 
         output = await tool(ctx, inp)
-        assert output.promoted_version_id is None
+        assert output.promoted_version_id is None  # type: ignore[attr-defined]
 
     @pytest.mark.asyncio
     async def test_delete_versioned_no_prior(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -229,4 +238,4 @@ class TestMemoryDelete:
         _patch_tenant_tx(monkeypatch, conn)
 
         output = await tool(ctx, inp)
-        assert output.promoted_version_id is None
+        assert output.promoted_version_id is None  # type: ignore[attr-defined]
