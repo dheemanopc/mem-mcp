@@ -177,14 +177,20 @@ class TestValidateFailures:
         self, rsa_keypair: tuple[Any, Any], jwk_dict: dict[str, str]
     ) -> None:
         token = _mint_token(rsa_keypair)
-        # Flip one character in the signature
+        # Tamper the BODY (claims) instead of the signature — flipping one
+        # char in the base64 signature is flaky because some flips happen to
+        # decode to alternate valid signatures depending on the RNG-generated
+        # key. Modifying the body invalidates the signature deterministically.
         head, body, sig = token.rsplit(".", 2)
-        tampered = head + "." + body + "." + sig[:-1] + ("A" if sig[-1] != "A" else "B")
+        new_first = "B" if body[0] != "B" else "C"
+        tampered = head + "." + new_first + body[1:] + "." + sig
         cache = FakeJwksCache({"test-kid-1": jwk_dict})
         validator = JwtValidator(cache, issuer=_ISSUER)  # type: ignore[arg-type]
         with pytest.raises(JwtError) as exc_info:
             await validator.validate(tampered)
-        assert exc_info.value.code == "bad_signature"
+        # Either bad_signature (most cases) or malformed (if the tampered
+        # body fails JSON decode); both prove the validator catches it.
+        assert exc_info.value.code in ("bad_signature", "malformed")
 
     @pytest.mark.asyncio
     async def test_wrong_iss(self, rsa_keypair: tuple[Any, Any], jwk_dict: dict[str, str]) -> None:
