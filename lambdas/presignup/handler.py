@@ -31,18 +31,20 @@ def lambda_handler(event: dict[str, Any], context: object) -> dict[str, Any]:
     Returning the event unchanged = approve.
     Raising an exception = deny (Cognito surfaces the message to the user).
     """
-    email = (event.get("request", {})
-                  .get("userAttributes", {})
-                  .get("email", "<missing>"))
+    email = event.get("request", {}).get("userAttributes", {}).get("email", "<missing>")
 
-    logger.info(json.dumps({
-        "event": "presignup_invoked",
-        "email_hash": _hash_email(email),  # never log raw email
-        "trigger": event.get("triggerSource"),
-        "user_pool_id": event.get("userPoolId"),
-        "decision": "STUB_ALLOW",
-        "warning": "T-4.8 not yet wired; allowing all signups",
-    }))
+    logger.info(
+        json.dumps(
+            {
+                "event": "presignup_invoked",
+                "email_hash": _hash_email(email),  # never log raw email
+                "trigger": event.get("triggerSource"),
+                "user_pool_id": event.get("userPoolId"),
+                "decision": "STUB_ALLOW",
+                "warning": "T-4.8 not yet wired; allowing all signups",
+            }
+        )
+    )
 
     # STUB: approve. Real T-4.8 will call /internal/check_invite and decide.
     return event
