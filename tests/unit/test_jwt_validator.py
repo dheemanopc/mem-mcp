@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-from mem_mcp.auth.jwks import JwksCache, JwksError
+from mem_mcp.auth.jwks import JwksError
 from mem_mcp.auth.jwt_validator import JwtClaims, JwtError, JwtValidator
 
 _ISSUER = "https://cognito-idp.ap-south-1.amazonaws.com/ap-south-1_TESTPOOL"
@@ -55,8 +55,8 @@ def _mint_token(
     issuer: str = _ISSUER,
 ) -> str:
     """Mint a test JWT with sensible Cognito-shaped defaults."""
-    from jose import jwt
     from cryptography.hazmat.primitives import serialization
+    from jose import jwt
 
     private, _ = rsa_keypair
     now = int(time.time())
@@ -143,8 +143,8 @@ class TestValidateFailures:
     async def test_missing_kid(
         self, rsa_keypair: tuple[Any, Any], jwk_dict: dict[str, str]
     ) -> None:
-        from jose import jwt
         from cryptography.hazmat.primitives import serialization
+        from jose import jwt
 
         private, _ = rsa_keypair
         pem_priv = private.private_bytes(
@@ -187,9 +187,7 @@ class TestValidateFailures:
         assert exc_info.value.code == "bad_signature"
 
     @pytest.mark.asyncio
-    async def test_wrong_iss(
-        self, rsa_keypair: tuple[Any, Any], jwk_dict: dict[str, str]
-    ) -> None:
+    async def test_wrong_iss(self, rsa_keypair: tuple[Any, Any], jwk_dict: dict[str, str]) -> None:
         token = _mint_token(rsa_keypair, overrides={"iss": "https://attacker.example/"})
         cache = FakeJwksCache({"test-kid-1": jwk_dict})
         validator = JwtValidator(cache, issuer=_ISSUER)  # type: ignore[arg-type]
@@ -209,13 +207,9 @@ class TestValidateFailures:
         assert exc_info.value.code == "wrong_aud"
 
     @pytest.mark.asyncio
-    async def test_expired(
-        self, rsa_keypair: tuple[Any, Any], jwk_dict: dict[str, str]
-    ) -> None:
+    async def test_expired(self, rsa_keypair: tuple[Any, Any], jwk_dict: dict[str, str]) -> None:
         now = int(time.time())
-        token = _mint_token(
-            rsa_keypair, overrides={"exp": now - 1, "iat": now - 3600}
-        )
+        token = _mint_token(rsa_keypair, overrides={"exp": now - 1, "iat": now - 3600})
         cache = FakeJwksCache({"test-kid-1": jwk_dict})
         validator = JwtValidator(cache, issuer=_ISSUER)  # type: ignore[arg-type]
         with pytest.raises(JwtError) as exc_info:
@@ -238,8 +232,8 @@ class TestValidateFailures:
     async def test_missing_required_claim(
         self, rsa_keypair: tuple[Any, Any], jwk_dict: dict[str, str]
     ) -> None:
-        from jose import jwt
         from cryptography.hazmat.primitives import serialization
+        from jose import jwt
 
         private, _ = rsa_keypair
         now = int(time.time())
@@ -282,7 +276,10 @@ class TestClockInjection:
         token = _mint_token(rsa_keypair, overrides={"iat": now + 30, "exp": now + 3600})
         cache = FakeJwksCache({"test-kid-1": jwk_dict})
         validator = JwtValidator(
-            cache, issuer=_ISSUER, clock=lambda: float(now), clock_skew_seconds=60  # type: ignore[arg-type]
+            cache,  # type: ignore[arg-type]
+            issuer=_ISSUER,
+            clock=lambda: float(now),  # type: ignore[arg-type]
+            clock_skew_seconds=60,
         )
         # Should pass — 30s is within the 60s skew tolerance
         claims = await validator.validate(token)
@@ -296,7 +293,10 @@ class TestClockInjection:
         token = _mint_token(rsa_keypair, overrides={"iat": now + 120, "exp": now + 3600})
         cache = FakeJwksCache({"test-kid-1": jwk_dict})
         validator = JwtValidator(
-            cache, issuer=_ISSUER, clock=lambda: float(now), clock_skew_seconds=60  # type: ignore[arg-type]
+            cache,  # type: ignore[arg-type]
+            issuer=_ISSUER,
+            clock=lambda: float(now),  # type: ignore[arg-type]
+            clock_skew_seconds=60,
         )
         with pytest.raises(JwtError) as exc_info:
             await validator.validate(token)

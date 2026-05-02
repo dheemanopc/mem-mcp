@@ -81,7 +81,7 @@ class JwtValidator:
     ) -> None:
         self._jwks = jwks_cache
         self._issuer = issuer
-        self._clock = clock or time.time  # type: ignore[assignment]
+        self._clock = clock if clock is not None else time.time
         self._clock_skew = clock_skew_seconds
 
     async def validate(self, token: str) -> JwtClaims:
@@ -102,17 +102,13 @@ class JwtValidator:
         if not kid:
             raise JwtError("malformed", "missing 'kid' in header")
         if alg != "RS256":
-            raise JwtError(
-                "malformed", f"unsupported alg: {alg!r}; only RS256 accepted"
-            )
+            raise JwtError("malformed", f"unsupported alg: {alg!r}; only RS256 accepted")
 
         # 2) Fetch the public key
         try:
             jwk_dict = await self._jwks.get_key(kid)
         except JwksError as exc:
-            raise JwtError(
-                "bad_signature", f"jwks lookup failed: {exc.code}"
-            ) from exc
+            raise JwtError("bad_signature", f"jwks lookup failed: {exc.code}") from exc
 
         # 3) Verify signature manually (python-jose's jwt.decode requires options
         #    we want full control over — verify each piece explicitly)
@@ -123,11 +119,9 @@ class JwtValidator:
             raise JwtError("malformed", f"unparseable token: {exc}") from exc
 
         try:
-            public_key = jwk.construct(jwk_dict, algorithm="RS256")
+            public_key = jwk.construct(dict(jwk_dict), algorithm="RS256")
         except (JWTError, ValueError, KeyError) as exc:
-            raise JwtError(
-                "bad_signature", f"jwk construct failed: {exc}"
-            ) from exc
+            raise JwtError("bad_signature", f"jwk construct failed: {exc}") from exc
 
         if not public_key.verify(message.encode("utf-8"), decoded_signature):
             raise JwtError("bad_signature", "signature does not match")
@@ -141,9 +135,7 @@ class JwtValidator:
         # 5) Check required claims present
         for required in ("sub", "iss", "client_id", "token_use", "exp", "iat"):
             if required not in claims:
-                raise JwtError(
-                    "missing_claim", f"missing required claim: {required!r}"
-                )
+                raise JwtError("missing_claim", f"missing required claim: {required!r}")
 
         # 6) iss
         if claims["iss"] != self._issuer:
@@ -160,7 +152,7 @@ class JwtValidator:
             )
 
         # 8) Time validation
-        now = float(self._clock())  # type: ignore[operator]
+        now = float(self._clock())
         exp = int(claims["exp"])
         iat = int(claims["iat"])
 
