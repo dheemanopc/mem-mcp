@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from typing import Any
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
@@ -15,7 +14,6 @@ from mem_mcp.audit.logger import (
     NoopAuditLogger,
 )
 
-
 # --------------------------------------------------------------------------
 # AUDIT_ACTIONS
 # --------------------------------------------------------------------------
@@ -25,17 +23,34 @@ class TestAuditActions:
     def test_completeness_per_spec(self) -> None:
         # FR-5.5.5 lists at least these — verify each is present
         required = {
-            "auth.token_issued", "auth.token_refresh", "auth.token_refresh_reuse",
-            "auth.token_revoked", "auth.session_started",
-            "oauth.dcr_register", "oauth.dcr_rejected", "oauth.client_revoked",
-            "tenant.created", "tenant.suspended", "tenant.deletion_requested",
-            "tenant.deletion_cancelled", "tenant.deleted",
-            "identity.linked", "identity.unlinked",
-            "memory.write", "memory.search", "memory.get", "memory.list",
-            "memory.update", "memory.delete", "memory.undelete",
-            "memory.supersede", "memory.export", "memory.feedback",
+            "auth.token_issued",
+            "auth.token_refresh",
+            "auth.token_refresh_reuse",
+            "auth.token_revoked",
+            "auth.session_started",
+            "oauth.dcr_register",
+            "oauth.dcr_rejected",
+            "oauth.client_revoked",
+            "tenant.created",
+            "tenant.suspended",
+            "tenant.deletion_requested",
+            "tenant.deletion_cancelled",
+            "tenant.deleted",
+            "identity.linked",
+            "identity.unlinked",
+            "memory.write",
+            "memory.search",
+            "memory.get",
+            "memory.list",
+            "memory.update",
+            "memory.delete",
+            "memory.undelete",
+            "memory.supersede",
+            "memory.export",
+            "memory.feedback",
             "memory.dedupe_merged",
-            "quota.exceeded", "ratelimit.exceeded",
+            "quota.exceeded",
+            "ratelimit.exceeded",
         }
         present = set(AUDIT_ACTIONS)
         missing = required - present
@@ -75,17 +90,17 @@ class TestDbAuditLogger:
         sql, *args = conn.execute.await_args.args
         assert "INSERT INTO audit_log" in sql
         # Verify the positional args in the order our SQL expects them
-        assert args[0] == tenant_id          # tenant_id
-        assert args[1] == "client-1"         # actor_client_id
-        assert args[2] == identity_id        # actor_identity_id
-        assert args[3] == "memory.write"     # action
-        assert args[4] == target_id          # target_id
-        assert args[5] == "memory"           # target_kind
+        assert args[0] == tenant_id  # tenant_id
+        assert args[1] == "client-1"  # actor_client_id
+        assert args[2] == identity_id  # actor_identity_id
+        assert args[3] == "memory.write"  # action
+        assert args[4] == target_id  # target_id
+        assert args[5] == "memory"  # target_kind
         assert args[6] == "203.0.113.45"
         assert args[7] == "claude-code/2.x"
         assert args[8] == "req-abc"
-        assert args[9] == "success"          # result
-        assert args[10] is None              # error_code
+        assert args[9] == "success"  # result
+        assert args[10] is None  # error_code
         # details JSON-encoded
         assert json.loads(args[11]) == {"deduped": False, "embed_tokens": 142}
 
