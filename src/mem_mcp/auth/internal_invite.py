@@ -23,7 +23,7 @@ from mem_mcp.db import system_tx
 from mem_mcp.logging_setup import get_logger
 
 if TYPE_CHECKING:
-    import asyncpg
+    import asyncpg  # type: ignore[import-untyped]
 
 
 _log = get_logger("mem_mcp.auth.internal_invite")

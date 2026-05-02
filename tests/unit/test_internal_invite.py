@@ -6,7 +6,6 @@ import hmac
 from hashlib import sha256
 from typing import Any, Literal
 
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -15,7 +14,6 @@ from mem_mcp.auth.internal_invite import (
     _verify_hmac,
     make_internal_invite_router,
 )
-
 
 _SECRET = "test-shared-secret-32-bytes-of-randomness-or-so"
 
@@ -33,9 +31,7 @@ class FakeStore:
         self.states = states or {}
         self.calls: list[str] = []
 
-    async def lookup(
-        self, email: str
-    ) -> Literal["invited", "not_invited", "already_consumed"]:
+    async def lookup(self, email: str) -> Literal["invited", "not_invited", "already_consumed"]:
         self.calls.append(email)
         return self.states.get(email.lower(), "not_invited")
 
