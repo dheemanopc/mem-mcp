@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -14,7 +13,6 @@ from mem_mcp.auth.dcr_admin import (
     _verify_token,
     make_dcr_admin_router,
 )
-
 
 _RESOURCE = "https://memsys.dheemantech.in"
 _CLIENT_ID = "cognito-client-1"

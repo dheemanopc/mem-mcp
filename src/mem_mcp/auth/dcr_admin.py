@@ -20,7 +20,7 @@ from mem_mcp.db import system_tx
 from mem_mcp.logging_setup import get_logger
 
 if TYPE_CHECKING:
-    import asyncpg
+    import asyncpg  # type: ignore[import-untyped]
 
 
 _log = get_logger("mem_mcp.auth.dcr_admin")
@@ -109,7 +109,8 @@ class BotoCognitoClientDeleter:
 
     async def delete_user_pool_client(self, client_id: str) -> None:
         import asyncio
-        import boto3
+
+        import boto3  # type: ignore[import-untyped]
 
         def _call() -> None:
             client = boto3.client("cognito-idp", region_name=self.region)
@@ -134,7 +135,7 @@ def _extract_bearer(request: Request) -> str | None:
     auth = request.headers.get("authorization", "")
     if not auth.lower().startswith("bearer "):
         return None
-    token = auth[len("Bearer "):].strip()
+    token = auth[len("Bearer ") :].strip()
     return token or None
 
 
@@ -218,7 +219,7 @@ def make_dcr_admin_router(
         # client_known + disabled). Cleanup job T-4.9 will retry.
         try:
             await cognito_deleter.delete_user_pool_client(client_id)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _log.warning(
                 "dcr_admin_cognito_delete_failed",
                 client_id=client_id,
