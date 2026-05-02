@@ -86,8 +86,7 @@ class TestAuthorizationServerMetadata:
     def test_jwks_uri(self) -> None:
         body = _build_client().get("/.well-known/oauth-authorization-server").json()
         assert body["jwks_uri"] == (
-            f"https://cognito-idp.{_REGION}.amazonaws.com/"
-            f"{_POOL_ID}/.well-known/jwks.json"
+            f"https://cognito-idp.{_REGION}.amazonaws.com/" f"{_POOL_ID}/.well-known/jwks.json"
         )
 
     def test_registration_endpoint(self) -> None:
