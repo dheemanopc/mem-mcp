@@ -1,0 +1,67 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'mem-mcp CFN bootstrap bucket — holds nested templates + SAM Lambda artifacts'
+
+Parameters:
+  KmsKeyAlias:
+    Type: String
+    Default: alias/mem-mcp
+    Description: >
+      KMS customer-managed key alias for S3 SSE-KMS encryption.
+      The key must already exist; this stack does not create it.
+      Typically created in T-0.7 (manual prerequisite).
+
+Resources:
+  BootstrapBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'mem-mcp-cfn-${AWS::AccountId}-aps1'
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:${KmsKeyAlias}'
+            BucketKeyEnabled: true
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: AbortIncompleteMultipartUpload
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+      Tags:
+        - Key: Project
+          Value: mem-mcp
+        - Key: Component
+          Value: cfn-bootstrap
+
+  BootstrapBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref BootstrapBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+            Resource: !Sub '${BootstrapBucket.Arn}/*'
+            Condition:
+              Bool:
+                aws:SecureTransport: 'false'
+
+Outputs:
+  BootstrapBucketName:
+    Description: Name of the bootstrap bucket (holds nested templates and SAM artifacts)
+    Value: !Ref BootstrapBucket
+  BootstrapBucketArn:
+    Description: ARN of the bootstrap bucket
+    Value: !GetAtt BootstrapBucket.Arn

@@ -1,0 +1,10 @@
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "mem-mcp-prod"
+region = "ap-south-1"
+s3_bucket = "REPLACE_WITH_BOOTSTRAP_BUCKET_NAME"
+s3_prefix = "sam-pkg"
+capabilities = "CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND"
+confirm_changeset = true
+fail_on_empty_changeset = false
