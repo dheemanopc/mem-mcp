@@ -10,7 +10,7 @@ infra/cfn/
 ├── root.yaml                           # Root stack (future PR T-1.10)
 ├── samconfig.toml                      # SAM CLI config (cp from samconfig.toml.example)
 ├── nested/                             # Nested stacks
-│   ├── 010-network.yaml                # VPC, subnets, IGW, security groups (T-1.1)
+│   ├── 010-network.yaml                # VPC, subnets, IGW, security groups (T-1.1 — this PR)
 │   ├── 020-secrets.yaml                # KMS, SSM parameters (T-1.2)
 │   ├── 030-storage.yaml                # S3 backup bucket + lifecycle (T-1.3)
 │   ├── 040-identity.yaml               # Cognito user pool + Google IdP (T-1.4)
@@ -110,7 +110,7 @@ sam deploy \
 
 | Stack | Status | Description |
 |---|---|---|
-| `010-network.yaml` | Future PR T-1.1 | VPC, subnets, Internet Gateway, route tables, security groups |
+| `010-network.yaml` | T-1.1 (this PR) | VPC, subnets, Internet Gateway, route tables, security groups |
 | `020-secrets.yaml` | Future PR T-1.2 | KMS CMK, SSM Parameter Store placeholders for secrets |
 | `030-storage.yaml` | Future PR T-1.3 | S3 backup bucket, versioning, encryption, lifecycle rules |
 | `040-identity.yaml` | Future PR T-1.4 | Cognito user pool, custom domain, Google IdP, web client, resource server |
