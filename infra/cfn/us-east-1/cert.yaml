@@ -1,0 +1,44 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'mem-mcp cert (us-east-1) — ACM certificate for Cognito custom domain. Cognito requires the cert in us-east-1 because the custom domain is CloudFront-fronted.'
+
+Parameters:
+  DomainName:
+    Type: String
+    Description: Apex domain (e.g., dheemantech.in)
+    AllowedPattern: '^[a-z0-9]+([-.][a-z0-9]+)*\.[a-z]{2,}$'
+
+  MemAuthSubdomain:
+    Type: String
+    Default: memauth
+    Description: Subdomain for the Cognito Hosted UI (e.g., 'memauth' → memauth.dheemantech.in)
+
+  HostedZoneId:
+    Type: AWS::Route53::HostedZone::Id
+    Description: Route 53 hosted zone ID (operator-managed; T-0.1) — used for DNS validation
+
+Resources:
+  AuthCertificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: !Sub '${MemAuthSubdomain}.${DomainName}'
+      ValidationMethod: DNS
+      DomainValidationOptions:
+        - DomainName: !Sub '${MemAuthSubdomain}.${DomainName}'
+          HostedZoneId: !Ref HostedZoneId
+      KeyAlgorithm: RSA_2048
+      Tags:
+        - Key: Name
+          Value: !Sub 'mem-mcp-${MemAuthSubdomain}-cert'
+        - Key: Project
+          Value: mem-mcp
+        - Key: Component
+          Value: cert
+
+Outputs:
+  CertificateArn:
+    Description: ARN of the ACM certificate (paste into root stack UsEast1CertArn parameter)
+    Value: !Ref AuthCertificate
+
+  CertificateDomain:
+    Description: FQDN the cert covers
+    Value: !Sub '${MemAuthSubdomain}.${DomainName}'
