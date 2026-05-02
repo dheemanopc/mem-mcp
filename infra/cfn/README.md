@@ -7,7 +7,7 @@ This directory contains CloudFormation templates and configuration for the mem-m
 ```
 infra/cfn/
 ├── README.md                           # This file
-├── root.yaml                           # Root stack (future PR T-1.10)
+├── root.yaml                           # Root stack (T-1.10 — this PR)
 ├── samconfig.toml                      # SAM CLI config (cp from samconfig.toml.example)
 ├── nested/                             # Nested stacks
 │   ├── 010-network.yaml                # VPC, subnets, IGW, security groups (T-1.1)
@@ -45,8 +45,7 @@ Before deploying, ensure all of the following manual prerequisites are completed
 - **030-storage IAM role restriction (T-1.6)**: The bucket policy currently denies non-TLS access and enforces SSE-KMS encryption. IAM-role-based access restriction to `mem-mcp-instance-role` is now available. See the TODO comment in 030-storage.yaml bucket policy for how to wire it.
 - **EC2 user-data is a stub (T-1.11)**: 060-compute.yaml installs the EC2 with a placeholder UserData that just echoes "T-1.11 not yet wired" and exits 0. The real cloud-init bootstrap (Caddy, Postgres, Python, Node, app deploy) lands in T-1.11.
 - **DLM snapshot start time is 21:30 UTC = 03:00 IST**: matches spec §14.3 retention windows. If timezone needs adjusting later, change the `Times:` field on `SnapshotPolicy.PolicyDetails.Schedules`.
-- **070-dns must deploy AFTER 040-identity (T-1.7)**: The Cognito custom domain creation takes 10-15 minutes for CloudFront propagation. The root stack must order `DnsStack DependsOn IdentityStack` so the CloudFront distribution exists before the MemAuth ALIAS record can be created. Root stack wiring is in T-1.10.
-- **PreSignUp trigger wiring (T-1.10)**: `050-lambda-presignup.yaml` creates the function. The `LambdaConfig.PreSignUp` field on the user pool (which makes Cognito actually call this function) is wired in the root stack (T-1.10) to avoid circular dependencies between 040-identity and 050-lambda. Until then, the function exists but is never invoked.
+- **PreSignUp trigger wiring (T-1.10)**: Resolved via inline custom resource in root.yaml. The custom resource calls `cognito-idp:UpdateUserPool` to wire `LambdaConfig.PreSignUp` after both 040-identity and 050-lambda stacks exist. On stack delete, the custom resource removes the LambdaConfig, allowing clean pool deletion.
 - **PreSignUp logic (T-4.8)**: handler.py is a STUB that approves all signups. Real `invited_emails` allowlist check lands in T-4.8. Do NOT route real Cognito traffic through this until T-4.8 ships.
 - **Log-filter alarms (T-9.6)**: 080-observability creates only the alarms whose metrics exist before app deploy (EC2 status, CPU, Bedrock throttles, custom backup-success metric, monthly budget, cost anomaly). The full spec §14.4 alarm set (App-5xx-rate, Auth-fail-spike, DCR-attempts, Token-reuse, Quota-circuit-breaker, etc.) requires `AWS::Logs::MetricFilter` patterns over log content the app emits — deferred to Phase 9 / T-9.6 once the app is deployed and we know the actual log shapes.
 - **Disk usage alarm (T-1.11)**: requires the CloudWatch agent running on EC2 with disk plugin. Lands with cloud-init T-1.11.
@@ -166,9 +165,9 @@ sam deploy \
 | `060-compute.yaml` | T-1.6 | EC2 t4g.medium instance, IAM instance profile, EBS gp3, Elastic IP, termination protection, DLM snapshots |
 | `070-dns.yaml` | T-1.7 | Route 53 records (A, CNAME) for mem.*, app.*, auth.* subdomains |
 | `080-observability.yaml` | T-1.8 | CloudWatch log groups, custom metrics, alarms, SNS topics, dashboard |
-| `us-east-1/cert.yaml` | T-1.9 (this PR) | ACM certificate for Cognito custom domain (must be in us-east-1) |
-| `root.yaml` | Future PR T-1.10 | Root stack composing all nested stacks via SAM CLI |
-| `090-bootstrap-bucket.yaml` | T-1.0 (this PR) | S3 bucket for nested templates and SAM Lambda artifacts (encrypted, versioned, secure transport enforced) |
+| `us-east-1/cert.yaml` | T-1.9 | ACM certificate for Cognito custom domain (must be in us-east-1) |
+| `root.yaml` | T-1.10 (this PR) | Root stack composing 8 nested stacks (010-080) + PreSignUp wiring + SSM bridge |
+| `090-bootstrap-bucket.yaml` | T-1.0 | S3 bucket for nested templates and SAM Lambda artifacts (encrypted, versioned, secure transport enforced) |
 
 ## Parameter Overrides
 
