@@ -1,0 +1,38 @@
+name: infra-lint
+
+on:
+  pull_request:
+    paths:
+      - 'infra/cfn/**'
+      - 'pyproject.toml'
+      - 'poetry.lock'
+      - '.github/workflows/infra-lint.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'infra/cfn/**'
+
+jobs:
+  cfn-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+      - name: Install Poetry
+        run: pip install poetry==1.8.4
+      - name: Install dependencies (cfn-lint)
+        run: poetry install --only main,dev
+      - name: Run cfn-lint
+        run: |
+          shopt -s globstar nullglob
+          files=( infra/cfn/**/*.yaml )
+          if (( ${#files[@]} == 0 )); then
+            echo "No CFN templates found; skipping."
+            exit 0
+          fi
+          poetry run cfn-lint "${files[@]}"
+        shell: bash

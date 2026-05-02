@@ -10,6 +10,7 @@ Personal Memory MCP — a multi-tenant memory service for AI clients (Claude Cod
 - [`MEMORY_MCP_LLD_V1.md`](./MEMORY_MCP_LLD_V1.md) — low-level design v1 (deltas + module signatures + sequence diagrams + CFT layout + destroy plan)
 - [`TASKS_V1.md`](./TASKS_V1.md) — task list (1:1 with GitHub issues)
 - [`GUIDELINES.md`](./GUIDELINES.md) — engineering guidelines (XP, AWS-not-simulated, code quality gates, workflow, ops, security)
+- [`infra/cfn/README.md`](./infra/cfn/README.md) — CloudFormation operator runbook (pre-deploy checklist, deploy order, destroy)
 
 Open issues are the source of truth for what's next; the markdown task list mirrors them.
 

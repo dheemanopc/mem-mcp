@@ -47,3 +47,8 @@ secrets/
 *.log
 *.tmp
 *.bak
+
+# CFN env-specific (committed only as .example)
+infra/cfn/parameters/prod.json
+infra/cfn/parameters/staging.json
+infra/cfn/samconfig.toml
