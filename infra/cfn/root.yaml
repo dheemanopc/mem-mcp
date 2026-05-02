@@ -346,7 +346,7 @@ Resources:
 
   PreSignUpWiring:
     Type: Custom::PreSignUpWiring
-    DependsOn: [IdentityStack, LambdaPreSignUpStack]
+    # IdentityStack + LambdaPreSignUpStack deps are implicit via GetAtt below
     Properties:
       ServiceToken: !GetAtt PreSignUpWiringFn.Arn
       UserPoolId: !GetAtt IdentityStack.Outputs.UserPoolId
