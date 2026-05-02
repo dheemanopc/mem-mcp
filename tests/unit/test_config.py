@@ -44,18 +44,18 @@ class FakeSsmLoader:
 _FULL_SSM_PARAMS = {
     "/mem-mcp/db/dsn": "postgresql://mem_app@/mem_mcp?host=/var/run/postgresql",
     "/mem-mcp/db/maint/dsn": "postgresql+psycopg://mem_maint@/mem_mcp?host=/var/run/postgresql",
-    "/mem-mcp/cognito/user_pool_id": "ap-south-1_TESTPOOL",
+    "/mem-mcp/cognito/user/pool/id": "ap-south-1_TESTPOOL",
     "/mem-mcp/cognito/domain": "memauth.dheemantech.in",
     "/mem-mcp/resource/url": "https://memsys.dheemantech.in",
     "/mem-mcp/web/url": "https://memapp.dheemantech.in",
-    "/mem-mcp/cognito/web_client_id": "test-client-id",
-    "/mem-mcp/cognito/web_client_secret": "test-client-secret",
-    "/mem-mcp/internal/lambda_secret": "test-internal-secret",
+    "/mem-mcp/web/client/id": "test-client-id",
+    "/mem-mcp/web/client/secret": "test-client-secret",
+    "/mem-mcp/internal/lambda/secret": "test-internal-secret",
     "/mem-mcp/ses/from": "noreply@dheemantech.com",
     "/mem-mcp/backup/bucket": "mem-mcp-backups-test",
-    "/mem-mcp/backup/gpg_passphrase": "test-gpg-pass",
-    "/mem-mcp/web/session_secret": "test-session-sec",
-    "/mem-mcp/web/link_state_secret": "test-link-sec",
+    "/mem-mcp/backup/gpg/passphrase": "test-gpg-pass",
+    "/mem-mcp/web/session/secret": "test-session-sec",
+    "/mem-mcp/link/state/secret": "test-link-sec",
 }
 
 
