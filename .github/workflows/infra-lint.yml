@@ -2,16 +2,12 @@ name: infra-lint
 
 on:
   pull_request:
-    paths:
-      - 'infra/cfn/**'
-      - 'pyproject.toml'
-      - 'poetry.lock'
-      - '.github/workflows/infra-lint.yml'
   push:
     branches:
       - main
-    paths:
-      - 'infra/cfn/**'
+# No path filter: cfn-lint runs on every PR so it can be a required status
+# check in branch protection. The job exits cleanly when no CFN files match
+# (~30s overhead is acceptable). Required by repo branch-protection rule.
 
 jobs:
   cfn-lint:
