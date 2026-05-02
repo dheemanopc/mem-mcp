@@ -67,12 +67,12 @@ class ManualClock:
         self.t += seconds
 
 
-def _key(kid: str) -> dict:
+def _key(kid: str) -> dict[str, str]:
     return {"kid": kid, "kty": "RSA", "n": "x", "e": "AQAB", "alg": "RS256", "use": "sig"}
 
 
 def _payload(*kids: str) -> JwksPayload:
-    return {"keys": [_key(k) for k in kids]}  # type: ignore[typeddict-item]
+    return {"keys": [_key(k) for k in kids]}  # type: ignore[misc]
 
 
 # ---------------------------------------------------------------------------
