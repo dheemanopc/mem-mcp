@@ -46,20 +46,20 @@ Resources:
       Environment:
         Variables:
           INTERNAL_INVITE_URL: !Sub 'https://${MemSysSubdomain}.${DomainName}/internal/check_invite'
-          INTERNAL_INVITE_SECRET_SSM: /mem-mcp/internal/lambda_shared_secret
+          INTERNAL_INVITE_SECRET_SSM: /mem-mcp/internal/lambda/secret
           AWS_REGION_NAME: !Ref AWS::Region
           LOG_LEVEL: INFO
       Policies:
         - Statement:
             - Effect: Allow
               Action: ssm:GetParameter
-              Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/mem-mcp/internal/lambda_shared_secret'
+              Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/mem-mcp/internal/lambda/secret'
             - Effect: Allow
               Action: kms:Decrypt
               Resource: !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/*'
               Condition:
                 StringEquals:
-                  kms:EncryptionContext:PARAMETER_ARN: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/mem-mcp/internal/lambda_shared_secret'
+                  kms:EncryptionContext:PARAMETER_ARN: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/mem-mcp/internal/lambda/secret'
       Tags:
         Project: mem-mcp
         Component: lambda-presignup
