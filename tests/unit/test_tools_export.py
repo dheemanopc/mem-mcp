@@ -10,6 +10,7 @@ from uuid import uuid4
 import pytest
 
 from mem_mcp.audit.logger import NoopAuditLogger
+from mem_mcp.embeddings.bedrock import EmbedResult
 from mem_mcp.mcp.errors import JsonRpcError
 from mem_mcp.mcp.tools._base import ToolContext
 from mem_mcp.mcp.tools._deps import NoopQuotas, ToolDeps
@@ -23,7 +24,7 @@ from mem_mcp.mcp.tools.export import (
 class _StubEmbeddings:
     """Stub embeddings client; export doesn't embed but ToolDeps requires one."""
 
-    async def embed(self, text: str) -> None:
+    async def embed(self, text: str) -> EmbedResult:
         raise RuntimeError("export should never embed")
 
 
@@ -203,6 +204,7 @@ class TestMemoryExport:
         _patch_tenant_tx(monkeypatch, conn)
 
         output = await tool(ctx, inp)
+        assert isinstance(output, MemoryExportOutput)
         assert len(output.memories) == 3
         # Verify deleted and non-current are included
         deleted_in_output = [m for m in output.memories if m["id"] == id_deleted]

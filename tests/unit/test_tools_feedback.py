@@ -11,6 +11,7 @@ import pytest
 from pydantic import ValidationError
 
 from mem_mcp.audit.logger import NoopAuditLogger
+from mem_mcp.embeddings.bedrock import EmbedResult
 from mem_mcp.mcp.tools._base import ToolContext
 from mem_mcp.mcp.tools._deps import NoopQuotas, ToolDeps
 from mem_mcp.mcp.tools.feedback import (
@@ -23,7 +24,7 @@ from mem_mcp.mcp.tools.feedback import (
 class _StubEmbeddings:
     """Stub embeddings client; feedback doesn't embed but ToolDeps requires one."""
 
-    async def embed(self, text: str) -> None:
+    async def embed(self, text: str) -> EmbedResult:
         raise RuntimeError("feedback should never embed")
 
 
