@@ -18,7 +18,7 @@ from mem_mcp.ratelimit.token_bucket import _reset_buckets_for_tests
 class _StubEmbeddings:
     """Stub embeddings client."""
 
-    async def embed(self, text: str) -> None:  # type: ignore[no-untyped-def]
+    async def embed(self, text: str) -> None:
         pass
 
 
@@ -142,6 +142,7 @@ class TestQuotaEnforcer:
 
         err = exc_info.value
         assert err.code == -32000
+        assert err.data is not None
         assert err.data["code"] == "quota_exceeded"
         assert err.data["quota"] == "memories_count"
         assert err.data["tier"] == "premium"
@@ -162,13 +163,13 @@ class TestQuotaEnforcer:
         _patch_system_tx(monkeypatch, system_conn)
 
         # Premium is 100_000 tokens/day. Today we've used 99_500.
-        # Estimate = 100 // 4 = 25. Total would be 99_525, still under.
-        # But estimate = 2000 // 4 = 500 would push to 100_000, which is at limit.
+        # Estimate = 2000 // 4 = 500 would push to 100_001, exceeding the limit.
         tenant_conn = AsyncMock()
-        tenant_conn.fetchval.side_effect = [
-            0,  # memory count
-            99_501,  # today's embed_tokens
-        ]
+        tenant_conn.fetchrow.return_value = {
+            "embed_tokens": 99_501,
+            "writes_count": 0,
+        }
+        tenant_conn.fetchval.return_value = 0
         _patch_tenant_tx(monkeypatch, tenant_conn)
 
         enforcer = QuotaEnforcer(pool)
@@ -178,6 +179,7 @@ class TestQuotaEnforcer:
             await enforcer.check_write(tenant_id, content_len_estimate=2000)
 
         err = exc_info.value
+        assert err.data is not None
         assert err.data["code"] == "quota_exceeded"
         assert err.data["quota"] == "embed_tokens_daily"
 
@@ -225,6 +227,7 @@ class TestQuotaEnforcer:
             await enforcer.check_read(tenant_id)
 
         err = exc_info.value
+        assert err.data is not None
         assert err.data["code"] == "quota_exceeded"
         assert err.data["quota"] == "reads_per_minute"
 

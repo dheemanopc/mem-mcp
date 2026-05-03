@@ -103,12 +103,15 @@ class TestTokenBucket:
         assert bucket.try_take(10) is True
         assert bucket.try_take(1) is False
 
-        # After 0.5 sec, 1 token available
+        # After 0.5 sec, 1 token available (0.5 * 2.0 = 1)
         now_val = 0.5
         assert bucket.try_take(1) is True
         assert bucket.try_take(1) is False
 
-        # After 2.5 more sec (3.0 total), 5 tokens refilled, minus 1 we just took = 4 available
+        # After 2.5 more sec (3.0 total), refill 5 tokens (2.5 * 2.0)
+        # We had 0 tokens after the last take, so now we have 5
         now_val = 3.0
         assert bucket.try_take(4) is True
+        # We have 1 token left
+        assert bucket.try_take(1) is True
         assert bucket.try_take(1) is False
