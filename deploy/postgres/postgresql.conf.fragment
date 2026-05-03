@@ -1,0 +1,35 @@
+# postgresql.conf fragment for mem-mcp on t4g.medium (4 GB RAM, ARM64).
+# Per spec §8.1. Drop-in via:
+#   sudo cp postgresql.conf.fragment /etc/postgresql/16/main/conf.d/mem-mcp.conf
+#   sudo systemctl reload postgresql
+#
+# Verify after reload:
+#   sudo -u postgres psql -c "SHOW shared_buffers"
+
+# --- Memory ---
+shared_buffers = 1GB
+effective_cache_size = 2GB
+work_mem = 32MB
+maintenance_work_mem = 256MB
+
+# --- Connections ---
+max_connections = 100
+listen_addresses = '127.0.0.1'
+
+# --- Write-ahead log ---
+wal_compression = on
+synchronous_commit = on
+
+# --- Logging ---
+log_min_duration_statement = 250ms
+log_checkpoints = on
+log_connections = off
+log_disconnections = off
+log_lock_waits = on
+log_temp_files = 0
+
+# --- Auto-vacuum (default thresholds OK for t4g.medium scale) ---
+# autovacuum = on (default)
+
+# --- Extensions auto-load (set in shared_preload_libraries if needed) ---
+# pgvector / pg_trgm / pgcrypto are session-loaded; no preload needed.
