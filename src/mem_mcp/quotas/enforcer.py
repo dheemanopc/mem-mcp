@@ -99,8 +99,9 @@ class QuotaEnforcer:
         """
         async with tenant_tx(self._pool, tenant_id) as conn:
             row = await conn.fetchrow(
-                "SELECT embed_tokens, writes_count FROM tenant_daily_usage WHERE usage_date = $1",
+                "SELECT embed_tokens, writes_count FROM tenant_daily_usage WHERE usage_date = $1 AND tenant_id = $2",
                 _today_ist(),
+                tenant_id,
             )
 
         if row is None:

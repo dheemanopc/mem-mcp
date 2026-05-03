@@ -217,9 +217,10 @@ class MemoryWriteTool(BaseTool):
                 )
                 # Mark old as superseded
                 await conn.execute(
-                    "UPDATE memories SET is_current = false, superseded_by = $1 WHERE id = $2",
+                    "UPDATE memories SET is_current = false, superseded_by = $1 WHERE id = $2 AND tenant_id = $3",
                     new_row["id"],
                     inp.supersedes,
+                    ctx.tenant_id,
                 )
                 await ctx.deps.audit.audit(
                     conn,
