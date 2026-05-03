@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from mem_mcp.jobs.retention_tokens import RetentionTokensStats, run
-
 
 # --------------------------------------------------------------------------
 # Helpers

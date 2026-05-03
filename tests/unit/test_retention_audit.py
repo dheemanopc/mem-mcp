@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
 
 from mem_mcp.jobs.retention_audit import RetentionAuditStats, run
-
 
 # --------------------------------------------------------------------------
 # Helpers
