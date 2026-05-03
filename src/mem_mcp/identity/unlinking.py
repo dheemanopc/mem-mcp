@@ -90,9 +90,10 @@ async def unlink_identity(
         await conn.execute(
             """
             DELETE FROM tenant_identities
-            WHERE id = $1
+            WHERE id = $1 AND tenant_id = $2
             """,
             identity_id,
+            tenant_id,
         )
 
         # Call Cognito to delete user
@@ -160,9 +161,10 @@ async def promote_primary(
             """
             UPDATE tenant_identities
             SET is_primary = true
-            WHERE id = $1
+            WHERE id = $1 AND tenant_id = $2
             """,
             identity_id,
+            tenant_id,
         )
 
         # Audit

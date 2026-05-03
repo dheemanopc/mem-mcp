@@ -21,13 +21,12 @@ repos:
     hooks:
       - id: gitleaks
 
-# TODO: T-6.1 — Add tenant-scope-linter hook when linter is implemented.
-# - repo: local
-#   hooks:
-#     - id: tenant-scope-linter
-#       name: tenant-scope-linter
-#       entry: poetry run python tools/lint_tenant_scope.py
-#       language: system
-#       types: [python]
-#       pass_filenames: false
-#       stages: [commit]
+  - repo: local
+    hooks:
+      - id: tenant-scope-linter
+        name: tenant-scope-linter
+        entry: poetry run python tools/lint_tenant_scope.py
+        language: system
+        types: [python]
+        pass_filenames: false
+        stages: [commit]

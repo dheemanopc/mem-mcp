@@ -31,3 +31,6 @@ jobs:
 
       - name: mypy
         run: poetry run mypy src/mem_mcp tests
+
+      - name: Tenant-scope linter
+        run: poetry run python tools/lint_tenant_scope.py

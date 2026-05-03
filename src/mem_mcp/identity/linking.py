@@ -240,9 +240,10 @@ async def complete_link(
         existing = await conn.fetchval(
             """
             SELECT id FROM tenant_identities
-            WHERE cognito_sub = $1
+            WHERE cognito_sub = $1 AND tenant_id = $2
             """,
             user_info.cognito_sub,
+            state_tenant_id,
         )
 
         if existing is not None:
@@ -276,9 +277,10 @@ async def complete_link(
             """
             UPDATE link_state
             SET consumed_at = now()
-            WHERE nonce = $1
+            WHERE nonce = $1 AND tenant_id = $2
             """,
             state_nonce,
+            state_tenant_id,
         )
 
         # Audit
