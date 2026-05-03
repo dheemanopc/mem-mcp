@@ -1,0 +1,8 @@
+name: mem-recall
+version: "1.0.0"
+description: Retrieves relevant prior memories when a user message references past context.
+connector_url: https://memsys.dheemantech.in/mcp
+connector_type: mcp
+required_scopes:
+  - memory.read
+homepage: https://memapp.dheemantech.in/skills

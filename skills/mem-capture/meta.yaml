@@ -1,0 +1,8 @@
+name: mem-capture
+version: "1.0.0"
+description: Stores user decisions, facts, and notable conclusions to long-term memory.
+connector_url: https://memsys.dheemantech.in/mcp
+connector_type: mcp
+required_scopes:
+  - memory.write
+homepage: https://memapp.dheemantech.in/skills
