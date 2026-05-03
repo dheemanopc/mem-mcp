@@ -1,0 +1,11 @@
+[Unit]
+Description=Run mem-mcp retention_audit daily at 04:00 IST (22:45 UTC)
+Requires=mem-mcp-retention-audit.service
+
+[Timer]
+OnCalendar=*-*-* 22:45:00 UTC
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

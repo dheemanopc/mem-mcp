@@ -6,7 +6,6 @@ and finalizes their account closure.
 
 from __future__ import annotations
 
-import argparse
 import asyncio
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
@@ -146,15 +145,63 @@ class RetentionDeletionJob:
 # --------------------------------------------------------------------------
 
 
-async def main() -> None:
-    """Run retention deletion job standalone."""
-    parser = argparse.ArgumentParser(description="Retention deletion job")
-    parser.parse_args()
+async def main(dry_run: bool = False) -> int:
+    """Run retention deletion job standalone.
 
-    setup_logging()
+    Args:
+        dry_run: if True, scan and report only; don't call finalize_closure.
 
-    # This would normally wire up real Cognito clients; for now just log.
-    _log.info("Retention deletion job not fully wired in this entry point")
+    Returns:
+        Count of finalized tenants.
+    """
+    from mem_mcp.config import get_settings
+
+    setup_logging(get_settings().log_level)
+    settings = get_settings()
+
+    # Build production pool
+    import asyncpg
+
+    pool = await asyncpg.create_pool(
+        dsn=settings.db_maint_dsn,
+        min_size=1,
+        max_size=2,
+        command_timeout=30,
+        server_settings={"application_name": "mem-mcp-retention-deletion"},
+    )
+    try:
+        # For dry_run, just count candidates without calling finalize_closure
+        async with system_tx(pool) as conn:
+            candidate_rows = await conn.fetch(
+                f"""
+                SELECT id FROM tenants
+                WHERE status = 'pending_deletion'
+                  AND deletion_requested_at < now() - interval '{GRACE_PERIOD_HOURS} hours'
+                ORDER BY deletion_requested_at ASC
+                """
+            )
+
+        candidates = [row["id"] for row in candidate_rows]
+        finalized = len(candidates) if dry_run else 0
+
+        if dry_run:
+            _log.info(
+                "retention_deletion_dry_run",
+                scanned=len(candidates),
+                finalized=0,
+            )
+        else:
+            # Stub: In production, would wire real Cognito clients and call finalize_closure
+            # For now, log that job structure is correct.
+            _log.info(
+                "retention_deletion_not_fully_wired",
+                scanned=len(candidates),
+                finalized=finalized,
+            )
+
+        return finalized
+    finally:
+        await pool.close()
 
 
 if __name__ == "__main__":
