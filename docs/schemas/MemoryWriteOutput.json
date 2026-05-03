@@ -1,0 +1,48 @@
+{
+  "properties": {
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "deduped": {
+      "title": "Deduped",
+      "type": "boolean"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "merged_into": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Merged Into"
+    },
+    "request_id": {
+      "title": "Request Id",
+      "type": "string"
+    },
+    "version": {
+      "title": "Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "id",
+    "version",
+    "deduped",
+    "merged_into",
+    "created_at",
+    "request_id"
+  ],
+  "title": "MemoryWriteOutput",
+  "type": "object"
+}

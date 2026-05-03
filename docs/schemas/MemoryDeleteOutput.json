@@ -1,0 +1,43 @@
+{
+  "properties": {
+    "cascaded_count": {
+      "default": 0,
+      "title": "Cascaded Count",
+      "type": "integer"
+    },
+    "deleted_at": {
+      "format": "date-time",
+      "title": "Deleted At",
+      "type": "string"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "promoted_version_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Promoted Version Id"
+    },
+    "request_id": {
+      "title": "Request Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "deleted_at",
+    "promoted_version_id",
+    "request_id"
+  ],
+  "title": "MemoryDeleteOutput",
+  "type": "object"
+}

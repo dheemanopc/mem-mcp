@@ -1,0 +1,22 @@
+{
+  "additionalProperties": false,
+  "description": "Input for memory.feedback tool.",
+  "properties": {
+    "metadata": {
+      "additionalProperties": true,
+      "title": "Metadata",
+      "type": "object"
+    },
+    "text": {
+      "maxLength": 4096,
+      "minLength": 1,
+      "title": "Text",
+      "type": "string"
+    }
+  },
+  "required": [
+    "text"
+  ],
+  "title": "MemoryFeedbackInput",
+  "type": "object"
+}

@@ -25,6 +25,42 @@ Open issues are the source of truth for what's next; the markdown task list mirr
 
 See `MEMORY_MCP_LLD_V1.md` §0 for v1 simplifications relative to the spec.
 
+## Development quick-start
+
+```bash
+# Install
+poetry install
+
+# Pre-commit hooks
+pre-commit install
+
+# Run all gates locally (mirrors CI)
+poetry run ruff check
+poetry run ruff format --check
+poetry run mypy src/mem_mcp tests
+poetry run python tools/lint_tenant_scope.py
+poetry run pytest
+
+# Run a single test
+poetry run pytest tests/unit/test_<file>.py -v
+
+# Run live AWS / live DB tests
+MEM_MCP_TEST_DSN=postgresql://localhost/mem_mcp_test poetry run pytest --live-aws
+```
+
+## Engineering guidelines
+
+See [GUIDELINES.md](./GUIDELINES.md). TL;DR:
+- TDD: red commit (failing test) → green commit (impl) → refactor.
+- All cross-tenant queries go through `tenant_tx` (RLS-scoped); maintenance jobs use `system_tx`. The `tools/lint_tenant_scope.py` linter enforces this.
+- Tests use Protocol-shaped fakes — never reach real AWS / live DB without `--live-aws` flag.
+- Commits follow conventional commits (`feat:`, `fix:`, `test:`, `docs:`, `style:`, `ops:`, `chore:`).
+- PRs land via squash-merge with `Closes #N` (one per line — multi-issue close on one line doesn't work in GitHub).
+
+## Contributing
+
+This is currently a closed-beta project. External PRs not solicited. Existing contributors: see internal handoff notes.
+
 ## License
 
 Apache 2.0 — see [`LICENSE`](./LICENSE).

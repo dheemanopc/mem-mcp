@@ -1,0 +1,90 @@
+{
+  "$defs": {
+    "SearchResultItem": {
+      "properties": {
+        "content": {
+          "title": "Content",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "score": {
+          "title": "Score",
+          "type": "number"
+        },
+        "scores_breakdown": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Scores Breakdown",
+          "type": "object"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        },
+        "type": {
+          "title": "Type",
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        },
+        "version": {
+          "title": "Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "content",
+        "type",
+        "tags",
+        "version",
+        "created_at",
+        "updated_at",
+        "score",
+        "scores_breakdown"
+      ],
+      "title": "SearchResultItem",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "query_embedding_tokens": {
+      "title": "Query Embedding Tokens",
+      "type": "integer"
+    },
+    "request_id": {
+      "title": "Request Id",
+      "type": "string"
+    },
+    "results": {
+      "items": {
+        "$ref": "#/$defs/SearchResultItem"
+      },
+      "title": "Results",
+      "type": "array"
+    }
+  },
+  "required": [
+    "results",
+    "query_embedding_tokens",
+    "request_id"
+  ],
+  "title": "MemorySearchOutput",
+  "type": "object"
+}

@@ -1,0 +1,29 @@
+{
+  "description": "Per-tier quota limits.",
+  "properties": {
+    "embed_tokens_daily": {
+      "title": "Embed Tokens Daily",
+      "type": "integer"
+    },
+    "memories_limit": {
+      "title": "Memories Limit",
+      "type": "integer"
+    },
+    "reads_per_minute": {
+      "title": "Reads Per Minute",
+      "type": "integer"
+    },
+    "writes_per_minute": {
+      "title": "Writes Per Minute",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "memories_limit",
+    "embed_tokens_daily",
+    "writes_per_minute",
+    "reads_per_minute"
+  ],
+  "title": "TierLimits",
+  "type": "object"
+}

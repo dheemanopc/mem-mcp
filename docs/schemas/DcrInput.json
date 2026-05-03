@@ -1,0 +1,90 @@
+{
+  "additionalProperties": false,
+  "description": "RFC 7591 request body.",
+  "properties": {
+    "client_name": {
+      "maxLength": 128,
+      "title": "Client Name",
+      "type": "string"
+    },
+    "client_uri": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Client Uri"
+    },
+    "grant_types": {
+      "default": [
+        "authorization_code",
+        "refresh_token"
+      ],
+      "items": {
+        "type": "string"
+      },
+      "title": "Grant Types",
+      "type": "array"
+    },
+    "redirect_uris": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 5,
+      "minItems": 1,
+      "title": "Redirect Uris",
+      "type": "array"
+    },
+    "response_types": {
+      "default": [
+        "code"
+      ],
+      "items": {
+        "type": "string"
+      },
+      "title": "Response Types",
+      "type": "array"
+    },
+    "scope": {
+      "default": "memory.read memory.write",
+      "title": "Scope",
+      "type": "string"
+    },
+    "software_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Software Id",
+      "type": "string"
+    },
+    "software_version": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Software Version"
+    },
+    "token_endpoint_auth_method": {
+      "const": "none",
+      "default": "none",
+      "title": "Token Endpoint Auth Method",
+      "type": "string"
+    }
+  },
+  "required": [
+    "client_name",
+    "redirect_uris",
+    "software_id"
+  ],
+  "title": "DcrInput",
+  "type": "object"
+}
