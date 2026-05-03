@@ -1,0 +1,7 @@
+{
+  "_note": "Baseline numbers will be populated after first staging run. Until then, regression detection runs against the mock store via the unit tests.",
+  "recorded_at": null,
+  "git_sha": null,
+  "overall": null,
+  "by_category": null
+}
