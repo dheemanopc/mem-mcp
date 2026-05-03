@@ -1,0 +1,93 @@
+{
+  "properties": {
+    "backup_bucket": {
+      "title": "Backup Bucket",
+      "type": "string"
+    },
+    "backup_gpg_passphrase": {
+      "title": "Backup Gpg Passphrase",
+      "type": "string"
+    },
+    "bedrock_model_id": {
+      "default": "amazon.titan-embed-text-v2:0",
+      "title": "Bedrock Model Id",
+      "type": "string"
+    },
+    "cognito_domain": {
+      "title": "Cognito Domain",
+      "type": "string"
+    },
+    "cognito_user_pool_id": {
+      "title": "Cognito User Pool Id",
+      "type": "string"
+    },
+    "db_dsn": {
+      "title": "Db Dsn",
+      "type": "string"
+    },
+    "db_maint_dsn": {
+      "title": "Db Maint Dsn",
+      "type": "string"
+    },
+    "internal_lambda_secret": {
+      "title": "Internal Lambda Secret",
+      "type": "string"
+    },
+    "link_state_secret": {
+      "title": "Link State Secret",
+      "type": "string"
+    },
+    "log_level": {
+      "default": "INFO",
+      "title": "Log Level",
+      "type": "string"
+    },
+    "region": {
+      "default": "ap-south-1",
+      "title": "Region",
+      "type": "string"
+    },
+    "resource_url": {
+      "title": "Resource Url",
+      "type": "string"
+    },
+    "ses_from": {
+      "title": "Ses From",
+      "type": "string"
+    },
+    "web_client_id": {
+      "title": "Web Client Id",
+      "type": "string"
+    },
+    "web_client_secret": {
+      "title": "Web Client Secret",
+      "type": "string"
+    },
+    "web_session_secret": {
+      "title": "Web Session Secret",
+      "type": "string"
+    },
+    "web_url": {
+      "title": "Web Url",
+      "type": "string"
+    }
+  },
+  "required": [
+    "db_dsn",
+    "db_maint_dsn",
+    "cognito_user_pool_id",
+    "cognito_domain",
+    "resource_url",
+    "web_url",
+    "web_client_id",
+    "web_client_secret",
+    "internal_lambda_secret",
+    "ses_from",
+    "backup_bucket",
+    "backup_gpg_passphrase",
+    "web_session_secret",
+    "link_state_secret"
+  ],
+  "title": "Settings",
+  "type": "object"
+}

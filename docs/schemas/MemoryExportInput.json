@@ -1,0 +1,7 @@
+{
+  "additionalProperties": false,
+  "description": "Input for memory.export tool.",
+  "properties": {},
+  "title": "MemoryExportInput",
+  "type": "object"
+}

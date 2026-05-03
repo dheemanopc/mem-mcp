@@ -1,0 +1,37 @@
+{
+  "properties": {
+    "deleted_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Deleted At"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "is_current": {
+      "title": "Is Current",
+      "type": "boolean"
+    },
+    "request_id": {
+      "title": "Request Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "deleted_at",
+    "is_current",
+    "request_id"
+  ],
+  "title": "MemoryUndeleteOutput",
+  "type": "object"
+}

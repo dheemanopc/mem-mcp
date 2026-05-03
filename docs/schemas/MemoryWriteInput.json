@@ -1,0 +1,59 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "content": {
+      "maxLength": 32768,
+      "minLength": 1,
+      "title": "Content",
+      "type": "string"
+    },
+    "force_new": {
+      "default": false,
+      "title": "Force New",
+      "type": "boolean"
+    },
+    "metadata": {
+      "additionalProperties": true,
+      "title": "Metadata",
+      "type": "object"
+    },
+    "supersedes": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Supersedes"
+    },
+    "tags": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 32,
+      "title": "Tags",
+      "type": "array"
+    },
+    "type": {
+      "default": "note",
+      "enum": [
+        "note",
+        "decision",
+        "fact",
+        "snippet",
+        "question"
+      ],
+      "title": "Type",
+      "type": "string"
+    }
+  },
+  "required": [
+    "content"
+  ],
+  "title": "MemoryWriteInput",
+  "type": "object"
+}

@@ -1,0 +1,121 @@
+{
+  "$defs": {
+    "MemoryRecord": {
+      "properties": {
+        "content": {
+          "title": "Content",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "deleted_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Deleted At"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "is_current": {
+          "title": "Is Current",
+          "type": "boolean"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "title": "Metadata",
+          "type": "object"
+        },
+        "superseded_by": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Superseded By"
+        },
+        "supersedes": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Supersedes"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        },
+        "type": {
+          "title": "Type",
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        },
+        "version": {
+          "title": "Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "content",
+        "type",
+        "tags",
+        "metadata",
+        "version",
+        "is_current",
+        "supersedes",
+        "superseded_by",
+        "created_at",
+        "updated_at",
+        "deleted_at"
+      ],
+      "title": "MemoryRecord",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "history": {
+      "items": {
+        "$ref": "#/$defs/MemoryRecord"
+      },
+      "title": "History",
+      "type": "array"
+    },
+    "memory": {
+      "$ref": "#/$defs/MemoryRecord"
+    }
+  },
+  "required": [
+    "memory",
+    "history"
+  ],
+  "title": "MemoryGetOutput",
+  "type": "object"
+}

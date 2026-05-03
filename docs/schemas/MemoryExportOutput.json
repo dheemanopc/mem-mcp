@@ -1,0 +1,38 @@
+{
+  "description": "Output for memory.export tool.",
+  "properties": {
+    "audit_log": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Audit Log",
+      "type": "array"
+    },
+    "exported_at": {
+      "format": "date-time",
+      "title": "Exported At",
+      "type": "string"
+    },
+    "memories": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Memories",
+      "type": "array"
+    },
+    "request_id": {
+      "title": "Request Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "exported_at",
+    "memories",
+    "audit_log",
+    "request_id"
+  ],
+  "title": "MemoryExportOutput",
+  "type": "object"
+}

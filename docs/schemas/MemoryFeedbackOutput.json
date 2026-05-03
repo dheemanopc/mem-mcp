@@ -1,0 +1,26 @@
+{
+  "description": "Output for memory.feedback tool.",
+  "properties": {
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "received_at": {
+      "format": "date-time",
+      "title": "Received At",
+      "type": "string"
+    },
+    "request_id": {
+      "title": "Request Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "received_at",
+    "request_id"
+  ],
+  "title": "MemoryFeedbackOutput",
+  "type": "object"
+}

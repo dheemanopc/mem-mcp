@@ -1,0 +1,20 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "include_history": {
+      "default": false,
+      "title": "Include History",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "id"
+  ],
+  "title": "MemoryGetInput",
+  "type": "object"
+}

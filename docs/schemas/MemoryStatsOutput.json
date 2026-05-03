@@ -1,0 +1,148 @@
+{
+  "$defs": {
+    "QuotaConfig": {
+      "description": "Tenant's quota tier configuration.",
+      "properties": {
+        "embed_tokens_daily_limit": {
+          "title": "Embed Tokens Daily Limit",
+          "type": "integer"
+        },
+        "memories_limit": {
+          "title": "Memories Limit",
+          "type": "integer"
+        },
+        "reads_per_minute_limit": {
+          "title": "Reads Per Minute Limit",
+          "type": "integer"
+        },
+        "tier": {
+          "title": "Tier",
+          "type": "string"
+        },
+        "writes_per_minute_limit": {
+          "title": "Writes Per Minute Limit",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "tier",
+        "memories_limit",
+        "embed_tokens_daily_limit",
+        "writes_per_minute_limit",
+        "reads_per_minute_limit"
+      ],
+      "title": "QuotaConfig",
+      "type": "object"
+    },
+    "TodayUsage": {
+      "description": "Today's usage metrics.",
+      "properties": {
+        "embed_tokens": {
+          "title": "Embed Tokens",
+          "type": "integer"
+        },
+        "reads": {
+          "title": "Reads",
+          "type": "integer"
+        },
+        "writes": {
+          "title": "Writes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "writes",
+        "reads",
+        "embed_tokens"
+      ],
+      "title": "TodayUsage",
+      "type": "object"
+    },
+    "TopTagItem": {
+      "description": "A single tag with its count.",
+      "properties": {
+        "count": {
+          "title": "Count",
+          "type": "integer"
+        },
+        "tag": {
+          "title": "Tag",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tag",
+        "count"
+      ],
+      "title": "TopTagItem",
+      "type": "object"
+    }
+  },
+  "description": "Output for memory.stats tool.",
+  "properties": {
+    "by_type": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "By Type",
+      "type": "object"
+    },
+    "newest": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Newest"
+    },
+    "oldest": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Oldest"
+    },
+    "quota": {
+      "$ref": "#/$defs/QuotaConfig"
+    },
+    "request_id": {
+      "title": "Request Id",
+      "type": "string"
+    },
+    "today": {
+      "$ref": "#/$defs/TodayUsage"
+    },
+    "top_tags": {
+      "items": {
+        "$ref": "#/$defs/TopTagItem"
+      },
+      "title": "Top Tags",
+      "type": "array"
+    },
+    "total_memories": {
+      "title": "Total Memories",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "total_memories",
+    "by_type",
+    "top_tags",
+    "oldest",
+    "newest",
+    "today",
+    "quota",
+    "request_id"
+  ],
+  "title": "MemoryStatsOutput",
+  "type": "object"
+}

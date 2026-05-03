@@ -1,0 +1,20 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "cascade": {
+      "default": false,
+      "title": "Cascade",
+      "type": "boolean"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id"
+  ],
+  "title": "MemoryDeleteInput",
+  "type": "object"
+}

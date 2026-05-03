@@ -1,0 +1,68 @@
+{
+  "description": "RFC 7591 successful registration response.",
+  "properties": {
+    "client_id": {
+      "title": "Client Id",
+      "type": "string"
+    },
+    "client_id_issued_at": {
+      "title": "Client Id Issued At",
+      "type": "integer"
+    },
+    "client_secret_expires_at": {
+      "default": 0,
+      "title": "Client Secret Expires At",
+      "type": "integer"
+    },
+    "grant_types": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Grant Types",
+      "type": "array"
+    },
+    "redirect_uris": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Redirect Uris",
+      "type": "array"
+    },
+    "registration_access_token": {
+      "title": "Registration Access Token",
+      "type": "string"
+    },
+    "registration_client_uri": {
+      "title": "Registration Client Uri",
+      "type": "string"
+    },
+    "response_types": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Response Types",
+      "type": "array"
+    },
+    "scope": {
+      "title": "Scope",
+      "type": "string"
+    },
+    "token_endpoint_auth_method": {
+      "title": "Token Endpoint Auth Method",
+      "type": "string"
+    }
+  },
+  "required": [
+    "client_id",
+    "client_id_issued_at",
+    "redirect_uris",
+    "grant_types",
+    "response_types",
+    "token_endpoint_auth_method",
+    "scope",
+    "registration_access_token",
+    "registration_client_uri"
+  ],
+  "title": "DcrOutput",
+  "type": "object"
+}
