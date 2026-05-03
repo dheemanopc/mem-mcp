@@ -90,7 +90,22 @@ class TestMemoryUpdate:
     async def test_update_tags_only_no_re_embed(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Only tags changing on a decision → in-place, no embedding call, is_new_version=False."""
         tool = MemoryUpdateTool()
-        ctx = _build_ctx()
+        # Build ctx with an AsyncMock embeddings spy so we can assert embed() is not called.
+        embeddings_spy = AsyncMock(spec=_StubEmbeddings)
+        deps = ToolDeps(
+            embeddings=embeddings_spy,
+            audit=NoopAuditLogger(),
+            quotas=NoopQuotas(),
+        )
+        ctx = ToolContext(
+            request_id=str(uuid4()),
+            tenant_id=uuid4(),
+            identity_id=uuid4(),
+            client_id="client-1",
+            scopes=frozenset(["memory.write"]),
+            db_pool=MagicMock(),
+            deps=deps,
+        )
         target_id = uuid4()
         inp = MemoryUpdateInput(id=target_id, tags=["new-tag"])
 
@@ -105,10 +120,6 @@ class TestMemoryUpdate:
         }
         conn.fetchval.return_value = datetime.now(tz=UTC)
         _patch_tenant_tx(monkeypatch, conn)
-
-        # Spy on embeddings to ensure it's NOT called
-        embeddings_spy = MagicMock(wraps=ctx.deps.embeddings)
-        ctx.deps.embeddings = embeddings_spy
 
         output = await tool(ctx, inp)
         assert isinstance(output, MemoryUpdateOutput)
