@@ -1,0 +1,11 @@
+[Unit]
+Description=Run mem-mcp retention_tokens hourly (at :30)
+Requires=mem-mcp-retention-tokens.service
+
+[Timer]
+OnCalendar=*-*-* *:30:00 UTC
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target

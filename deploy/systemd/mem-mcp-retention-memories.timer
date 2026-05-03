@@ -1,0 +1,11 @@
+[Unit]
+Description=Run mem-mcp retention_memories daily at 03:00 IST (21:30 UTC)
+Requires=mem-mcp-retention-memories.service
+
+[Timer]
+OnCalendar=*-*-* 21:30:00 UTC
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

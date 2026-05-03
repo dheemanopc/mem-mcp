@@ -1,7 +1,11 @@
 """CLI entrypoint for jobs:  `python -m mem_mcp.jobs <job_name> [--dry-run]`.
 
 Currently registers:
-    cleanup_clients   — DCR client cleanup (T-4.9)
+    cleanup_clients       — DCR client cleanup (T-4.9)
+    retention_memories    — soft + hard-delete memories per retention policy (T-7.14)
+    retention_tokens      — purge expired link_state + web_sessions (T-7.14)
+    retention_audit       — anonymize + hard-delete audit log (T-7.15)
+    retention_deletion    — finalize pending tenant deletions (T-7.14)
 
 Future jobs will land here as separate handlers per LLD §4.12.
 """
@@ -15,11 +19,19 @@ from collections.abc import Callable, Coroutine
 from typing import Any
 
 from mem_mcp.jobs.cleanup_clients import main as cleanup_clients_main
+from mem_mcp.jobs.retention_audit import main as retention_audit_main
+from mem_mcp.jobs.retention_deletion import main as retention_deletion_main
+from mem_mcp.jobs.retention_memories import main as retention_memories_main
+from mem_mcp.jobs.retention_tokens import main as retention_tokens_main
 
 _JobMain = Callable[..., Coroutine[Any, Any, int]]
 
 _JOBS: dict[str, _JobMain] = {
     "cleanup_clients": cleanup_clients_main,
+    "retention_audit": retention_audit_main,
+    "retention_deletion": retention_deletion_main,
+    "retention_memories": retention_memories_main,
+    "retention_tokens": retention_tokens_main,
 }
 
 
