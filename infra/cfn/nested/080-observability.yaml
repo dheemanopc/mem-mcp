@@ -218,6 +218,213 @@ Resources:
       TreatMissingData: notBreaching
 
   # ============================================================================
+  # CloudWatch Metric Filters (Log-derived metrics)
+  # ============================================================================
+
+  # Metric Filter 5: App HTTP 5xx rate
+  App5xxMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      FilterPattern: '[timestamp, request_id, ..., status_code = 5*, ...]'
+      LogGroupName: !Ref AppLogGroup
+      MetricTransformations:
+        - MetricName: app.http_5xx_count
+          MetricNamespace: mem-mcp/app
+          MetricValue: '1'
+          DefaultValue: 0
+
+  # Metric Filter 6: Auth failures (401/403)
+  AuthFailMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      FilterPattern: '[timestamp, request_id, ..., status_code = 401, ...] || [timestamp, request_id, ..., status_code = 403, ...]'
+      LogGroupName: !Ref AppLogGroup
+      MetricTransformations:
+        - MetricName: auth.failure_count
+          MetricNamespace: mem-mcp/app
+          MetricValue: '1'
+          DefaultValue: 0
+
+  # Metric Filter 7: DCR attempts
+  DcrAttemptsMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      FilterPattern: '[timestamp, request_id, ..., "action":"oauth.dcr_register", ...]'
+      LogGroupName: !Ref AuditLogGroup
+      MetricTransformations:
+        - MetricName: oauth.dcr_register_count
+          MetricNamespace: mem-mcp/app
+          MetricValue: '1'
+          DefaultValue: 0
+
+  # Metric Filter 8: Token reuse attempts
+  TokenReuseMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      FilterPattern: '[timestamp, request_id, ..., "action":"auth.token_refresh_reuse", ...]'
+      LogGroupName: !Ref AuditLogGroup
+      MetricTransformations:
+        - MetricName: auth.token_refresh_reuse_count
+          MetricNamespace: mem-mcp/app
+          MetricValue: '1'
+          DefaultValue: 0
+
+  # Metric Filter 12: Quota circuit breaker
+  QuotaCircuitBreakerMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      FilterPattern: '[timestamp, request_id, ..., "action":"quota.circuit_breaker_tripped", ...]'
+      LogGroupName: !Ref AppLogGroup
+      MetricTransformations:
+        - MetricName: quota.circuit_breaker_tripped_count
+          MetricNamespace: mem-mcp/app
+          MetricValue: '1'
+          DefaultValue: 0
+
+  # ============================================================================
+  # CloudWatch Alarms — Log-derived and AWS-native metrics (continued)
+  # ============================================================================
+
+  # Alarm 5: App HTTP 5xx rate (>5/min sustained 5min = 25 in 5min window)
+  App5xxAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: mem-mcp-app-5xx-rate
+      AlarmDescription: 'App HTTP 5xx errors >5 per minute sustained 5 minutes'
+      MetricName: app.http_5xx_count
+      Namespace: mem-mcp/app
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 25
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmActions:
+        - !Ref OpsSnsTopic
+      TreatMissingData: notBreaching
+
+  # Alarm 6: Auth failure spike (>50/min sustained 10min = 500 in 10min window)
+  AuthFailSpikAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: mem-mcp-auth-fail-spike
+      AlarmDescription: 'Auth failures (401/403) >50 per minute sustained 10 minutes'
+      MetricName: auth.failure_count
+      Namespace: mem-mcp/app
+      Statistic: Sum
+      Period: 600
+      EvaluationPeriods: 1
+      Threshold: 500
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmActions:
+        - !Ref OpsSnsTopic
+      TreatMissingData: notBreaching
+
+  # Alarm 7: DCR attempts (>20/hour)
+  DcrAttemptsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: mem-mcp-dcr-attempts
+      AlarmDescription: 'OAuth DCR (dynamic client registration) attempts >20 per hour'
+      MetricName: oauth.dcr_register_count
+      Namespace: mem-mcp/app
+      Statistic: Sum
+      Period: 3600
+      EvaluationPeriods: 1
+      Threshold: 20
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmActions:
+        - !Ref OpsSnsTopic
+      TreatMissingData: notBreaching
+
+  # Alarm 8: Token reuse (>0, page-level but routed to email for v1)
+  TokenReuseAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: mem-mcp-token-reuse
+      AlarmDescription: 'Token refresh reuse detected (auth.token_refresh_reuse>0)'
+      MetricName: auth.token_refresh_reuse_count
+      Namespace: mem-mcp/app
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref OpsSnsTopic
+      TreatMissingData: notBreaching
+
+  # Alarm 9: Tenant isolation test failure (custom metric, 0=pass, 1=fail)
+  TenantIsolationTestAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: mem-mcp-tenant-isolation-test-failure
+      AlarmDescription: 'Nightly tenant isolation synthetic test failed'
+      MetricName: tenant_isolation_test
+      Namespace: mem-mcp/security
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref OpsSnsTopic
+      TreatMissingData: notBreaching
+
+  # Alarm 10: Disk usage (>80%)
+  DiskUsageAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: mem-mcp-disk-usage-high
+      AlarmDescription: 'EC2 disk usage >80%'
+      MetricName: disk_used_percent
+      Namespace: AWS/EC2
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 80
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: InstanceId
+          Value: !Ref Ec2InstanceId
+      AlarmActions:
+        - !Ref OpsSnsTopic
+      TreatMissingData: notBreaching
+
+  # Alarm 11: SES bounce rate (>5%)
+  SesBounceRateAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: mem-mcp-ses-bounce-rate
+      AlarmDescription: 'SES bounce rate >5%'
+      MetricName: Reputation.BounceRate
+      Namespace: AWS/SES
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref OpsSnsTopic
+      TreatMissingData: notBreaching
+
+  # Alarm 12: Quota circuit breaker (>0, page-level but routed to email for v1)
+  QuotaCircuitBreakerAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: mem-mcp-quota-circuit-breaker
+      AlarmDescription: 'Global quota circuit breaker tripped'
+      MetricName: quota.circuit_breaker_tripped_count
+      Namespace: mem-mcp/app
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref OpsSnsTopic
+      TreatMissingData: notBreaching
+
+  # ============================================================================
   # AWS Budget (monthly, $50 limit, 80% threshold = $40)
   # ============================================================================
 
@@ -313,7 +520,15 @@ Resources:
                   "${AppDownAlarm}",
                   "${CpuHighAlarm}",
                   "${BackupStaleAlarm}",
-                  "${BedrockThrottleAlarm}"
+                  "${BedrockThrottleAlarm}",
+                  "${App5xxAlarm}",
+                  "${AuthFailSpikAlarm}",
+                  "${DcrAttemptsAlarm}",
+                  "${TokenReuseAlarm}",
+                  "${TenantIsolationTestAlarm}",
+                  "${DiskUsageAlarm}",
+                  "${SesBounceRateAlarm}",
+                  "${QuotaCircuitBreakerAlarm}"
                 ]
               }
             }
