@@ -6,7 +6,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
@@ -75,25 +75,6 @@ def _patch_system_tx(monkeypatch: pytest.MonkeyPatch, conn: AsyncMock) -> None:
     monkeypatch.setattr("mem_mcp.identity.lifecycle.system_tx", fake_system_tx)
 
 
-class FixedDatetime(datetime):
-    """Subclass datetime with a fixed value that correctly handles hour+24 calculation."""
-
-    def replace(self, **kwargs: Any) -> datetime:
-        """Override replace to handle the buggy hour+24 logic by converting to timedelta."""
-        # If hour is being set to an invalid value (> 23), it's likely the hour+24 bug.
-        # The code intended: add 24 hours to current datetime.
-        # So we restore the original hour and add the difference as a timedelta.
-        if "hour" in kwargs and kwargs["hour"] > 23:
-            target_hour = kwargs.pop("hour")
-            # Set hour to 0, then add the timedelta
-            result = super().replace(hour=0, **kwargs)
-            # target_hour represents the desired hour value from hour + 24
-            # If original hour was H, target_hour = H + 24
-            # So we add (target_hour) hours total
-            return result + timedelta(hours=target_hour)
-        return super().replace(**kwargs)
-
-
 # --------------------------------------------------------------------------
 # Tests: request_closure
 # --------------------------------------------------------------------------
@@ -124,7 +105,7 @@ class TestRequestClosure:
         audit = AsyncMock(spec=FakeAuditLogger)
 
         def now_fn() -> datetime:
-            return FixedDatetime(2026, 5, 3, 12, 0, 0, tzinfo=UTC)
+            return datetime(2026, 5, 3, 12, 0, 0, tzinfo=UTC)
 
         result = await request_closure(
             pool,
@@ -239,7 +220,7 @@ class TestRequestClosure:
         audit = AsyncMock(spec=FakeAuditLogger)
 
         def now_fn() -> datetime:
-            return FixedDatetime(2026, 5, 3, 10, 0, 0, tzinfo=UTC)
+            return datetime(2026, 5, 3, 10, 0, 0, tzinfo=UTC)
 
         result = await request_closure(
             pool,
@@ -290,7 +271,7 @@ class TestRequestClosure:
         audit = AsyncMock(spec=FakeAuditLogger)
 
         def now_fn() -> datetime:
-            return FixedDatetime(2026, 5, 3, 8, 0, 0, tzinfo=UTC)
+            return datetime(2026, 5, 3, 8, 0, 0, tzinfo=UTC)
 
         result = await request_closure(
             pool,
@@ -323,7 +304,7 @@ class TestCancelClosure:
         """Pending tenant; valid token; within 24h → UPDATE to active; audit logged."""
         pool = MagicMock()
         tenant_id = uuid4()
-        now_ts = FixedDatetime(2026, 5, 3, 12, 0, 0, tzinfo=UTC)
+        now_ts = datetime(2026, 5, 3, 12, 0, 0, tzinfo=UTC)
 
         conn = AsyncMock()
         conn.fetchrow.return_value = {
@@ -372,7 +353,7 @@ class TestCancelClosure:
         """Token hash doesn't match → ClosureError('token_invalid')."""
         pool = MagicMock()
         tenant_id = uuid4()
-        now_ts = FixedDatetime(2026, 5, 3, 12, 0, 0, tzinfo=UTC)
+        now_ts = datetime(2026, 5, 3, 12, 0, 0, tzinfo=UTC)
 
         conn = AsyncMock()
         conn.fetchrow.return_value = {
@@ -402,7 +383,7 @@ class TestCancelClosure:
         """deletion_requested_at = now - 25h → ClosureError('expired')."""
         pool = MagicMock()
         tenant_id = uuid4()
-        now_ts = FixedDatetime(2026, 5, 3, 12, 0, 0, tzinfo=UTC)
+        now_ts = datetime(2026, 5, 3, 12, 0, 0, tzinfo=UTC)
         requested_ts = now_ts - timedelta(hours=25)
 
         conn = AsyncMock()

@@ -13,7 +13,7 @@ import hmac
 import secrets
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Protocol
 from uuid import UUID
 
@@ -123,9 +123,7 @@ async def request_closure(
         cancel_token = secrets.token_urlsafe(32)
         token_hash = _hash_token(cancel_token)
         now_ts = now()
-        cancel_until = now_ts.replace(
-            hour=now_ts.hour + 24, minute=now_ts.minute, second=now_ts.second
-        )
+        cancel_until = now_ts + timedelta(hours=24)
 
         # Update tenants status
         await conn.execute(
