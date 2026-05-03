@@ -1,0 +1,67 @@
+name: security-nightly
+
+on:
+  schedule:
+    # Daily at 03:30 UTC (~09:00 IST)
+    - cron: "30 3 * * *"
+  workflow_dispatch:  # allow manual trigger
+
+permissions:
+  contents: read
+  id-token: write  # for OIDC AWS auth (CloudWatch metric publish)
+
+jobs:
+  security-suite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install Poetry
+        run: pip install poetry==1.8.4
+
+      - name: Install dependencies
+        run: poetry install
+
+      - name: Configure AWS credentials (OIDC)
+        if: ${{ secrets.AWS_OIDC_ROLE_ARN != '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+          aws-region: ap-south-1
+
+      - name: Run security suite (mockable tests)
+        id: security_mock
+        run: poetry run pytest tests/security -m security -v
+
+      - name: Run security suite (live AWS — opt-in)
+        id: security_live
+        if: ${{ secrets.MEM_MCP_TEST_DSN != '' }}
+        env:
+          MEM_MCP_TEST_DSN: ${{ secrets.MEM_MCP_TEST_DSN }}
+        run: poetry run pytest tests/security --live-aws -v
+
+      - name: Publish failure metric to CloudWatch
+        if: failure()
+        run: |
+          aws cloudwatch put-metric-data \
+            --namespace mem-mcp/security \
+            --metric-name tenant_isolation_test \
+            --value 1 \
+            --unit Count \
+            --region ap-south-1
+
+      - name: Publish success metric to CloudWatch
+        if: success() && secrets.AWS_OIDC_ROLE_ARN != ''
+        run: |
+          aws cloudwatch put-metric-data \
+            --namespace mem-mcp/security \
+            --metric-name tenant_isolation_test \
+            --value 0 \
+            --unit Count \
+            --region ap-south-1
