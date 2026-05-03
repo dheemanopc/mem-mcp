@@ -8,6 +8,9 @@ disposable Postgres (e.g. local docker, ephemeral RDS instance) before
 running the security suite.
 
 Mock fixtures (jwt_factory, mcp_client) work without DB.
+
+Live-AWS tests (@pytest.mark.live_aws) skip unless `pytest --live-aws`
+is passed.
 """
 
 from __future__ import annotations
@@ -19,6 +22,27 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    """Register --live-aws flag to enable live AWS tests."""
+    parser.addoption(
+        "--live-aws",
+        action="store_true",
+        default=False,
+        help="Run tests marked @pytest.mark.live_aws (require AWS resources)",
+    )
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """Skip live_aws-marked tests unless --live-aws is passed."""
+    if config.getoption("--live-aws", default=False):
+        return  # User explicitly requested live tests; don't skip
+
+    skip_live = pytest.mark.skip(reason="requires --live-aws flag to run (uses live AWS resources)")
+    for item in items:
+        if "live_aws" in item.keywords:
+            item.add_marker(skip_live)
 
 
 @dataclass(frozen=True)
