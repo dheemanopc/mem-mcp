@@ -29,6 +29,10 @@ out/
 *.crt
 secrets/
 
+# Google OAuth client credentials (Cloud Console download)
+client_secret_*.json
+client_secret*.googleusercontent.com.json
+
 # Local OS / IDE
 .DS_Store
 .vscode/
