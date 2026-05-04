@@ -13,6 +13,5 @@
   "BootstrapBucketName": "REPLACE_AFTER_BOOTSTRAP_DEPLOY",
   "UsEast1CertArn": "REPLACE_AFTER_CERT_DEPLOY",
   "GoogleClientIdSsmName": "/mem-mcp/cognito/google_client_id",
-  "GoogleClientSecretSsmName": "/mem-mcp/cognito/google_client_secret",
-  "HostedZoneId": "REPLACE_WITH_ROUTE53_ZONE_ID"
+  "ManageDns": "false"
 }
