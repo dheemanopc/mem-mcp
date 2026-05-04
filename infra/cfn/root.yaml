@@ -84,9 +84,16 @@ Parameters:
     Description: SSM parameter name for Google OAuth client secret
 
   # DNS and certificates
+  ManageDns:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: 'true = mem-mcp manages Route 53 records; false = operator manages DNS externally (e.g. GoDaddy)'
+
   HostedZoneId:
-    Type: AWS::Route53::HostedZone::Id
-    Description: Route 53 hosted zone ID for the domain (operator-managed)
+    Type: String
+    Default: ''
+    Description: Route 53 hosted zone ID (required only when ManageDns=true)
 
   UsEast1CertArn:
     Type: String
@@ -225,6 +232,7 @@ Resources:
     Properties:
       TemplateURL: !Sub 'https://${BootstrapBucketName}.s3.${AWS::Region}.amazonaws.com/nested/070-dns.yaml'
       Parameters:
+        ManageDns: !Ref ManageDns
         HostedZoneId: !Ref HostedZoneId
         DomainName: !Ref DomainName
         MemSysSubdomain: !Ref MemSysSubdomain
