@@ -32,10 +32,10 @@ Parameters:
     Default: /mem-mcp/cognito/google_client_id
     Description: SSM parameter name for Google OAuth client ID
 
-  GoogleClientSecretSsmName:
-    Type: AWS::SSM::Parameter::Name
-    Default: /mem-mcp/cognito/google_client_secret
-    Description: SSM parameter name for Google OAuth client secret
+  GoogleClientSecret:
+    Type: String
+    NoEcho: true
+    Description: Google OAuth client secret value sourced from SSM at deploy time (Cognito UserPoolIdentityProvider does not accept secure dynamic refs)
 
 Resources:
   UserPool:
@@ -124,7 +124,7 @@ Resources:
       ProviderType: Google
       ProviderDetails:
         client_id: !Sub '{{resolve:ssm:${GoogleClientIdSsmName}:1}}'
-        client_secret: !Sub '{{resolve:ssm-secure:${GoogleClientSecretSsmName}:1}}'
+        client_secret: !Ref GoogleClientSecret
         authorize_scopes: 'openid email profile'
       AttributeMapping:
         email: email

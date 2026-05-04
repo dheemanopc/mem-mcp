@@ -154,7 +154,13 @@ Verify: `aws s3 ls s3://${BUCKET}/nested/`
 
 ### Step 4: Deploy root stack (every subsequent deployment)
 
+The GoogleClientSecret is fetched from SSM at deploy time because Cognito's `AWS::Cognito::UserPoolIdentityProvider` resource does not accept the `{{resolve:ssm-secure:...}}` dynamic reference (per [AWS docs on dynamic refs](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/dynamic-references.html#dynamic-references-ssm-secure-strings)).
+
 ```bash
+GS_SEC=$(aws ssm get-parameter --region ap-south-1 \
+  --name /mem-mcp/cognito/google_client_secret \
+  --with-decryption --query Parameter.Value --output text)
+
 sam deploy \
   --template-file infra/cfn/root.yaml \
   --stack-name mem-mcp-prod \
@@ -163,7 +169,7 @@ sam deploy \
   --s3-prefix sam-pkg \
   --capabilities CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
   --parameter-overrides $(cat infra/cfn/parameters/prod.json | \
-    jq -r 'to_entries | map("\(.key)=\(.value|tostring)") | join(" ")') \
+    jq -r 'to_entries | map("\(.key)=\(.value|tostring)") | join(" ")') GoogleClientSecret="$GS_SEC" \
   --no-fail-on-empty-changeset
 ```
 
@@ -206,8 +212,7 @@ All parameters are specified in `infra/cfn/parameters/prod.json` (a copy from `p
   "BootstrapBucketName": "mem-mcp-cfn-ACCOUNT-aps1",
   "UsEast1CertArn": "arn:aws:acm:us-east-1:...",
   "GoogleClientIdSsmName": "/mem-mcp/cognito/google_client_id",
-  "GoogleClientSecretSsmName": "/mem-mcp/cognito/google_client_secret",
-  "HostedZoneId": "Z..."
+  "ManageDns": "false"
 }
 ```
 
