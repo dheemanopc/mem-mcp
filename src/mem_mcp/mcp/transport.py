@@ -89,6 +89,24 @@ def make_mcp_router(
                 }
             )
 
+        # MCP protocol handshake — must be handled before tenant context check
+        if method == "initialize":
+            return JSONResponse(
+                content={
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "result": {
+                        "protocolVersion": "2024-11-05",
+                        "capabilities": {"tools": {}},
+                        "serverInfo": {"name": "mem-mcp", "version": "1.0.0"},
+                    },
+                }
+            )
+
+        # MCP notifications are fire-and-forget; no response body expected
+        if method.startswith("notifications/"):
+            return JSONResponse(content=None, status_code=202)
+
         # Build ToolContext from Bearer middleware's request.state.tenant_ctx
         tenant_ctx = getattr(request.state, "tenant_ctx", None)
         if tenant_ctx is None:
