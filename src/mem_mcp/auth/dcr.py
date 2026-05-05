@@ -100,7 +100,7 @@ class DcrInput(BaseModel):
         default=["authorization_code", "refresh_token"],
     )
     response_types: list[str] = Field(default=["code"])
-    token_endpoint_auth_method: Literal["none"] = "none"
+    token_endpoint_auth_method: Literal["none", "client_secret_post"] = "none"
     scope: str = "memory.read memory.write"
     software_id: str | None = Field(default=None, max_length=128)
     software_version: str | None = Field(default=None, max_length=64)
