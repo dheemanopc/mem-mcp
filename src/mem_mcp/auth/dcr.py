@@ -471,12 +471,18 @@ def make_dcr_router(
         # FR-6.5.8: sanitize client name
         sanitized_name = _sanitize_client_name(payload.client_name)
 
+        # Ensure all MCP scopes are granted for any client that passed the allowlist.
+        # Clients like ChatGPT may request only a subset of advertised scopes; we
+        # expand to the full MCP set so no tool is blocked by a missing scope.
+        requested = set(payload.scope.split())
+        effective_scopes = sorted(requested | set(DEFAULT_MCP_SCOPES))
+
         # Create in Cognito
         try:
             cognito_client_id = await cognito_factory.create_user_pool_client(
                 client_name=sanitized_name,
                 callback_urls=payload.redirect_uris,
-                scopes=payload.scope.split(),
+                scopes=effective_scopes,
             )
         except Exception as exc:
             # Catch all exceptions from boto3 API call
@@ -495,7 +501,7 @@ def make_dcr_router(
             software_id=effective_software_id,
             client_name=sanitized_name,
             redirect_uris=payload.redirect_uris,
-            scope=payload.scope,
+            scope=" ".join(effective_scopes),
             registration_payload=payload.model_dump(),
             registration_access_token_hash=token_hash,
         )
@@ -508,7 +514,7 @@ def make_dcr_router(
         _prefix = resource_url.rstrip("/")
         qualified_scope = " ".join(
             s if (s in _OIDC or "/" in s) else f"{_prefix}/{s}"
-            for s in payload.scope.split()
+            for s in effective_scopes
         )
 
         out = DcrOutput(
