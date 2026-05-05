@@ -82,6 +82,21 @@ def make_mcp_router(
                 status_code=400,
             )
 
+        # Reject browser-originated cross-origin requests.
+        # Legitimate MCP clients (Claude.ai, ChatGPT, Claude Code) are not browsers
+        # and typically don't send Origin. A browser sending Origin to /mcp is a
+        # CSRF attempt; reject it unless Origin matches the server's own domain.
+        origin = request.headers.get("origin")
+        if origin is not None:
+            from urllib.parse import urlparse
+            parsed = urlparse(origin)
+            host = request.headers.get("host", "")
+            if parsed.netloc != host:
+                return JSONResponse(
+                    content=to_jsonrpc_error_response(request_id, -32600, "forbidden origin"),
+                    status_code=403,
+                )
+
         # tools/list — registry built-in (not a tool itself)
         if method == "tools/list":
             return JSONResponse(

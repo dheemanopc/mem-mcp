@@ -46,6 +46,13 @@ class MemoryWriteInput(BaseModel):
             raise ValueError("duplicate tags")
         return v
 
+    @field_validator("metadata", mode="after")
+    @classmethod
+    def _validate_metadata(cls, v: dict) -> dict:
+        if len(json.dumps(v)) > 16_384:
+            raise ValueError("metadata exceeds 16 KB serialized limit")
+        return v
+
     @field_validator("supersedes", mode="after")
     @classmethod
     def _validate_supersedes(cls, v: UUID | None, info: Any) -> UUID | None:

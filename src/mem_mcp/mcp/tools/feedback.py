@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Any, ClassVar
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from mem_mcp.db import tenant_tx
 from mem_mcp.mcp.errors import JsonRpcError
@@ -21,6 +21,13 @@ class MemoryFeedbackInput(BaseModel):
 
     text: str = Field(..., min_length=1, max_length=4096)
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("metadata", mode="after")
+    @classmethod
+    def _validate_metadata(cls, v: dict) -> dict:
+        if len(json.dumps(v)) > 16_384:
+            raise ValueError("metadata exceeds 16 KB serialized limit")
+        return v
 
 
 class MemoryFeedbackOutput(BaseModel):

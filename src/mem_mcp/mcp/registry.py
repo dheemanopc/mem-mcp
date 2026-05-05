@@ -87,11 +87,6 @@ class ToolRegistry:
         except JsonRpcError:
             raise
         except Exception as exc:
-            # Don't leak internals; log with full stack via structlog (caller does).
-            raise JsonRpcError(
-                -32603,
-                "internal error",
-                data={"detail": type(exc).__name__},
-            ) from exc
+            raise JsonRpcError(-32603, "internal error") from exc
 
         return output.model_dump(mode="json")

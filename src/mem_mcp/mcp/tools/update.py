@@ -54,6 +54,13 @@ class MemoryUpdateInput(BaseModel):
             raise ValueError("duplicate tags")
         return v
 
+    @field_validator("metadata", mode="after")
+    @classmethod
+    def _validate_metadata(cls, v: dict | None) -> dict | None:
+        if v is not None and len(json.dumps(v)) > 16_384:
+            raise ValueError("metadata exceeds 16 KB serialized limit")
+        return v
+
 
 class MemoryUpdateOutput(BaseModel):
     id: UUID
