@@ -289,6 +289,10 @@ Resources:
       IamInstanceProfile: !Ref InstanceProfile
       DisableApiTermination: true
       Monitoring: false
+      MetadataOptions:
+        HttpTokens: required
+        HttpPutResponseHopLimit: 1
+        HttpEndpoint: enabled
       BlockDeviceMappings:
         - DeviceName: /dev/sda1
           Ebs:
