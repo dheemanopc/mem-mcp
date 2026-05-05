@@ -100,6 +100,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await init_pool()
     log.info("pool_initialized")
 
+    # Wire routers + middleware AFTER pool is initialized but BEFORE yielding
+    # to uvicorn. This is the right place — lifespan completes before uvicorn
+    # starts serving, so app.routes is fully populated when the first request
+    # arrives. (Doing this in @app.on_event('startup') is unreliable in modern
+    # FastAPI versions.)
+    if not getattr(app.state, "routers_wired", False):
+        _wire_routers_and_middleware(app)
+        app.state.routers_wired = True
+        log.info("routers_wired", count=len(app.routes))
+
     # Stash default checker list on app state so test clients can override
     if not hasattr(app.state, "health_checkers"):
         app.state.health_checkers = _build_default_checkers()
@@ -145,12 +155,9 @@ def create_app(checkers: list[HealthChecker] | None = None) -> FastAPI:
         status_code = 200 if overall == "ok" else 503
         return JSONResponse(content=body, status_code=status_code)
 
-    # Wire routers and middleware after pool is ready (in lifespan startup)
-    @app.on_event("startup")
-    async def on_startup() -> None:
-        """Wire routers and middleware on startup after pool is initialized."""
-        _wire_routers_and_middleware(app)
-
+    # NOTE: router wiring happens inside `lifespan()` above, after init_pool
+    # but before uvicorn starts serving. The deprecated @app.on_event hook
+    # was unreliable; lifespan is the canonical place.
     return app
 
 
