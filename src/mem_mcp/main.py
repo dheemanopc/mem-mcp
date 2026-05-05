@@ -332,6 +332,7 @@ def _wire_routers(app: FastAPI) -> None:
     cognito_factory = BotoCognitoClientFactory(
         region=s.region,
         user_pool_id=s.cognito_user_pool_id,
+        resource_server_identifier=s.resource_url,
     )
     client_store = DbOauthClientStore(pool=pool)
     software_lookup = DbAllowedSoftwareLookup(pool=pool)
