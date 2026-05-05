@@ -14,6 +14,7 @@ problem (none of memory.* tools stream). SSE wiring is left as a TODO.
 
 from __future__ import annotations
 
+import json
 import uuid
 from typing import TYPE_CHECKING
 
@@ -177,6 +178,17 @@ def make_mcp_router(
                 status_code=200,  # JSON-RPC errors travel in 200 envelopes
             )
 
+        if method == "tools/call":
+            return JSONResponse(
+                content={
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "result": {
+                        "content": [{"type": "text", "text": json.dumps(result)}],
+                        "isError": False,
+                    },
+                }
+            )
         return JSONResponse(
             content={
                 "jsonrpc": "2.0",
