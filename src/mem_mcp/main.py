@@ -100,13 +100,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await init_pool()
     log.info("pool_initialized")
 
-    # Wire routers + middleware AFTER pool is initialized but BEFORE yielding
-    # to uvicorn. This is the right place — lifespan completes before uvicorn
-    # starts serving, so app.routes is fully populated when the first request
-    # arrives. (Doing this in @app.on_event('startup') is unreliable in modern
-    # FastAPI versions.)
+    # Wire routers AFTER pool is initialized but BEFORE yielding to uvicorn.
+    # (Middleware is added separately in create_app() — Starlette requires
+    # add_middleware() before the app starts serving.)
     if not getattr(app.state, "routers_wired", False):
-        _wire_routers_and_middleware(app)
+        _wire_routers(app)
         app.state.routers_wired = True
         log.info("routers_wired", count=len(app.routes))
 
@@ -155,14 +153,57 @@ def create_app(checkers: list[HealthChecker] | None = None) -> FastAPI:
         status_code = 200 if overall == "ok" else 503
         return JSONResponse(content=body, status_code=status_code)
 
-    # NOTE: router wiring happens inside `lifespan()` above, after init_pool
-    # but before uvicorn starts serving. The deprecated @app.on_event hook
-    # was unreliable; lifespan is the canonical place.
+    # Middleware is added here (must be before app starts).
+    # Routers are wired inside `lifespan()` after init_pool().
+    _wire_middleware(app)
     return app
 
 
-def _wire_routers_and_middleware(app: FastAPI) -> None:
-    """Wire all routers and middleware into the FastAPI app."""
+def _wire_middleware(app: FastAPI) -> None:
+    """Add middleware (CSRF + Bearer). Called from create_app() BEFORE app starts.
+
+    Bearer middleware defers its construction to first request because the DB
+    pool isn't initialized at create_app() time.
+    """
+    from starlette.middleware.base import BaseHTTPMiddleware
+
+    app.add_middleware(CsrfMiddleware)
+
+    class BearerMiddlewareAdapter(BaseHTTPMiddleware):
+        def __init__(self, app):  # type: ignore[no-untyped-def]
+            super().__init__(app)
+            self._fn = None
+
+        async def dispatch(self, request, call_next):  # type: ignore[no-untyped-def]
+            if self._fn is None:
+                self._fn = _build_bearer_dispatch()
+            return await self._fn(request, call_next)
+
+    app.add_middleware(BearerMiddlewareAdapter)
+
+
+def _build_bearer_dispatch():  # type: ignore[no-untyped-def]
+    """Construct the bearer middleware callable. Called lazily on first request."""
+    from mem_mcp.db import get_pool
+
+    s = get_settings()
+    pool = get_pool()
+    jwks_fetcher = HttpxJwksFetcher(region=s.region, user_pool_id=s.cognito_user_pool_id)
+    jwks_cache = JwksCache(jwks_fetcher)
+    issuer = f"https://cognito-idp.{s.region}.amazonaws.com/{s.cognito_user_pool_id}"
+    jwt_validator = JwtValidator(jwks_cache=jwks_cache, issuer=issuer)
+    tenant_resolver = DbTenantResolver(pool=pool)
+    touch = DbTouch(pool=pool)
+    return make_bearer_middleware(
+        validator=jwt_validator,
+        resolver=tenant_resolver,
+        touch=touch,
+        resource_metadata_url=s.resource_url,
+    )
+
+
+def _wire_routers(app: FastAPI) -> None:
+    """Wire all routers into the FastAPI app."""
     from mem_mcp.db import get_pool
 
     s = get_settings()
@@ -226,33 +267,6 @@ def _wire_routers_and_middleware(app: FastAPI) -> None:
     ]
     for tool_cls in tools_list:  # type: ignore[attr-defined]
         registry.register(tool_cls)  # type: ignore[arg-type]
-
-    # Build JWT validator + Bearer middleware
-    jwks_fetcher = HttpxJwksFetcher(region=s.region, user_pool_id=s.cognito_user_pool_id)
-    jwks_cache = JwksCache(jwks_fetcher)
-    issuer = f"https://cognito-idp.{s.region}.amazonaws.com/{s.cognito_user_pool_id}"
-    jwt_validator = JwtValidator(jwks_cache=jwks_cache, issuer=issuer)
-    tenant_resolver = DbTenantResolver(pool=pool)
-    touch = DbTouch(pool=pool)
-    bearer_middleware = make_bearer_middleware(
-        validator=jwt_validator,
-        resolver=tenant_resolver,
-        touch=touch,
-        resource_metadata_url=s.resource_url,
-    )
-
-    # Add CSRF middleware
-    app.add_middleware(CsrfMiddleware)
-
-    # Add Bearer middleware (returns a callable that wraps the ASGI app)
-    # We wrap it using BaseHTTPMiddleware for proper async handling
-    from starlette.middleware.base import BaseHTTPMiddleware
-
-    class BearerMiddlewareAdapter(BaseHTTPMiddleware):
-        async def dispatch(self, request, call_next):  # type: ignore[no-untyped-def]
-            return await bearer_middleware(request, call_next)
-
-    app.add_middleware(BearerMiddlewareAdapter)
 
     # Wire web auth router
     web_router = make_web_router(
