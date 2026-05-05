@@ -45,10 +45,16 @@ def make_well_known_router(
     """
     router = APIRouter(tags=["well-known"])
 
+    _OIDC_SCOPES = frozenset({"openid", "email", "profile", "phone", "address"})
+    qualified_mcp_scopes = [
+        s if (s in _OIDC_SCOPES or "/" in s) else f"{resource_url.rstrip('/')}/{s}"
+        for s in mcp_scopes
+    ]
+
     prm_payload: dict[str, object] = {
         "resource": resource_url,
         "authorization_servers": [resource_url],
-        "scopes_supported": list(mcp_scopes),
+        "scopes_supported": qualified_mcp_scopes,
         "bearer_methods_supported": ["header"],
         "resource_documentation": f"{resource_url}/docs",
     }
@@ -61,7 +67,7 @@ def make_well_known_router(
             f"https://cognito-idp.{region}.amazonaws.com/" f"{user_pool_id}/.well-known/jwks.json"
         ),
         "registration_endpoint": f"{resource_url}/oauth/register",
-        "scopes_supported": list(_STANDARD_OIDC_SCOPES) + list(mcp_scopes),
+        "scopes_supported": list(_STANDARD_OIDC_SCOPES) + qualified_mcp_scopes,
         "response_types_supported": ["code"],
         "grant_types_supported": ["authorization_code", "refresh_token"],
         "token_endpoint_auth_methods_supported": ["none", "client_secret_post"],

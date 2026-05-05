@@ -198,7 +198,7 @@ class TestDcrEndpointSuccess:
         assert body["client_secret_expires_at"] == 0
         assert body["redirect_uris"] == ["http://localhost:8080/callback"]
         assert body["token_endpoint_auth_method"] == "none"
-        assert body["scope"] == "memory.read memory.write"
+        assert body["scope"] == "https://memsys.dheemantech.in/memory.read https://memsys.dheemantech.in/memory.write"
         assert isinstance(body["registration_access_token"], str)
         assert len(body["registration_access_token"]) >= 32
         assert body["registration_client_uri"] == f"{_RESOURCE}/oauth/register/cognito-client-id-1"

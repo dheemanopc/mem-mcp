@@ -510,14 +510,23 @@ def make_dcr_router(
 
         # TODO(T-5.12): audit oauth.dcr_register
 
+        # Qualify custom scopes in the response so Claude builds the correct
+        # authorization URL (Cognito requires <resource_server_id>/<scope>).
+        _OIDC = frozenset({"openid", "email", "profile", "phone", "address"})
+        _prefix = resource_url.rstrip("/")
+        qualified_scope = " ".join(
+            s if (s in _OIDC or "/" in s) else f"{_prefix}/{s}"
+            for s in payload.scope.split()
+        )
+
         out = DcrOutput(
             client_id=cognito_client_id,
             client_id_issued_at=int(time.time()),
             redirect_uris=payload.redirect_uris,
             grant_types=payload.grant_types,
             response_types=payload.response_types,
-            token_endpoint_auth_method=payload.token_endpoint_auth_method,
-            scope=payload.scope,
+            token_endpoint_auth_method="none",
+            scope=qualified_scope,
             registration_access_token=plaintext_token,
             registration_client_uri=f"{resource_url}/oauth/register/{cognito_client_id}",
         )
