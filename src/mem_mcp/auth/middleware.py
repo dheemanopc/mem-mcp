@@ -196,7 +196,7 @@ def make_bearer_middleware(
             tenant_id=resolution.tenant_id,
             identity_id=resolution.identity_id,
             client_id=claims.client_id,
-            scopes=frozenset(claims.scopes),
+            scopes=frozenset(s.rsplit("/", 1)[-1] for s in claims.scopes),
         )
 
         # Fire-and-forget last_seen / last_used update
