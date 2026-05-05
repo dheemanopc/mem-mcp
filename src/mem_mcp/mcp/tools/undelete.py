@@ -37,7 +37,7 @@ class MemoryUndeleteTool(BaseTool):
     avoid two siblings being current simultaneously.
     """
 
-    name: ClassVar[str] = "memory.undelete"
+    name: ClassVar[str] = "memory_undelete"
     required_scope: ClassVar[str] = "memory.write"
     InputModel: ClassVar[type[BaseModel]] = MemoryUndeleteInput
     OutputModel: ClassVar[type[BaseModel]] = MemoryUndeleteOutput

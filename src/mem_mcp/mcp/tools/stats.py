@@ -60,7 +60,7 @@ class MemoryStatsOutput(BaseModel):
 class MemoryStatsTool(BaseTool):
     """Return aggregate statistics and quota info for the tenant."""
 
-    name: ClassVar[str] = "memory.stats"
+    name: ClassVar[str] = "memory_stats"
     required_scope: ClassVar[str] = "memory.read"
     InputModel: ClassVar[type[BaseModel]] = MemoryStatsInput
     OutputModel: ClassVar[type[BaseModel]] = MemoryStatsOutput

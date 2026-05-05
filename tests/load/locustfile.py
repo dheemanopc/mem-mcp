@@ -45,7 +45,7 @@ class MemMcpUser(HttpUser):
             "id": "load-search",
             "method": "tools/call",
             "params": {
-                "name": "memory.search",
+                "name": "memory_search",
                 "arguments": {"query": random.choice(_QUERIES), "limit": 10},
             },
         }
@@ -60,7 +60,7 @@ class MemMcpUser(HttpUser):
             "id": "load-write",
             "method": "tools/call",
             "params": {
-                "name": "memory.write",
+                "name": "memory_write",
                 "arguments": {
                     "content": f"load-test note {random.randint(0, 1_000_000)}",
                     "type": "note",

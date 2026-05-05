@@ -29,7 +29,7 @@ class MemorySupersedeOutput(BaseModel):
 class MemorySupersedeTool(BaseTool):
     """Explicit supersedence: mark old memory as superseded by new (T-7.5)."""
 
-    name: ClassVar[str] = "memory.supersede"
+    name: ClassVar[str] = "memory_supersede"
     required_scope: ClassVar[str] = "memory.write"
     InputModel: ClassVar[type[BaseModel]] = MemorySupersedeInput
     OutputModel: ClassVar[type[BaseModel]] = MemorySupersedeOutput

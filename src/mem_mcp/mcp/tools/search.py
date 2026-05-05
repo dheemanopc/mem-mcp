@@ -57,7 +57,7 @@ class MemorySearchOutput(BaseModel):
 class MemorySearchTool(BaseTool):
     """Hybrid retrieval over memories (semantic U keyword, recency-decayed)."""
 
-    name: ClassVar[str] = "memory.search"
+    name: ClassVar[str] = "memory_search"
     required_scope: ClassVar[str] = "memory.read"
     InputModel: ClassVar[type[BaseModel]] = MemorySearchInput
     OutputModel: ClassVar[type[BaseModel]] = MemorySearchOutput

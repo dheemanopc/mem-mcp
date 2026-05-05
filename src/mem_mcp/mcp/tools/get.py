@@ -43,7 +43,7 @@ class MemoryGetOutput(BaseModel):
 class MemoryGetTool(BaseTool):
     """Fetch one memory by id (current version + history if requested)."""
 
-    name: ClassVar[str] = "memory.get"
+    name: ClassVar[str] = "memory_get"
     required_scope: ClassVar[str] = "memory.read"
     InputModel: ClassVar[type[BaseModel]] = MemoryGetInput
     OutputModel: ClassVar[type[BaseModel]] = MemoryGetOutput

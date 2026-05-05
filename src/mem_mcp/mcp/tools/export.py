@@ -30,7 +30,7 @@ class MemoryExportOutput(BaseModel):
 class MemoryExportTool(BaseTool):
     """Export full JSON dump of all memories + audit_log for tenant (DPDP right to access)."""
 
-    name: ClassVar[str] = "memory.export"
+    name: ClassVar[str] = "memory_export"
     required_scope: ClassVar[str] = "memory.admin"
     InputModel: ClassVar[type[BaseModel]] = MemoryExportInput
     OutputModel: ClassVar[type[BaseModel]] = MemoryExportOutput

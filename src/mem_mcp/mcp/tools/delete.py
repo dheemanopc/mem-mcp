@@ -33,7 +33,7 @@ class MemoryDeleteTool(BaseTool):
     """Soft-delete a memory. For versioned types, promotes the most recent
     prior version to is_current=true unless cascade=true."""
 
-    name: ClassVar[str] = "memory.delete"
+    name: ClassVar[str] = "memory_delete"
     required_scope: ClassVar[str] = "memory.write"
     InputModel: ClassVar[type[BaseModel]] = MemoryDeleteInput
     OutputModel: ClassVar[type[BaseModel]] = MemoryDeleteOutput

@@ -68,7 +68,7 @@ class MemoryWriteOutput(BaseModel):
 class MemoryWriteTool(BaseTool):
     """Store a memory (or merge into existing duplicate)."""
 
-    name: ClassVar[str] = "memory.write"
+    name: ClassVar[str] = "memory_write"
     required_scope: ClassVar[str] = "memory.write"
     InputModel: ClassVar[type[BaseModel]] = MemoryWriteInput
     OutputModel: ClassVar[type[BaseModel]] = MemoryWriteOutput

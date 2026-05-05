@@ -66,7 +66,7 @@ class MemoryUpdateOutput(BaseModel):
 class MemoryUpdateTool(BaseTool):
     """Update a memory in-place or create a new version (T-7.2)."""
 
-    name: ClassVar[str] = "memory.update"
+    name: ClassVar[str] = "memory_update"
     required_scope: ClassVar[str] = "memory.write"
     InputModel: ClassVar[type[BaseModel]] = MemoryUpdateInput
     OutputModel: ClassVar[type[BaseModel]] = MemoryUpdateOutput
