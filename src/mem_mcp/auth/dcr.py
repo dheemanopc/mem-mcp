@@ -47,10 +47,6 @@ GLOBAL_WINDOW_SECONDS = 86400  # 1 day
 _COGNITO_CLIENT_NAME_RE = re.compile(r"[^\w\s+=,.@-]+")
 _LOCALHOST_HOSTS = ("localhost", "127.0.0.1")
 
-# Allowed scopes: MCP-specific ones plus standard OIDC scopes
-_ALLOWED_SCOPES = frozenset(DEFAULT_MCP_SCOPES) | frozenset(
-    {"openid", "email", "profile", "phone", "address"}
-)
 
 # v1 delta: SupportedIdentityProviders is Google-only (LLD §0)
 _SUPPORTED_IDPS = ("Google",)
@@ -144,12 +140,8 @@ class DcrInput(BaseModel):
     @field_validator("scope")
     @classmethod
     def _validate_scope(cls, scope: str) -> str:
-        requested = scope.split()
-        if not requested:
+        if not scope.split():
             raise ValueError("scope must contain at least one entry")
-        for s in requested:
-            if s not in _ALLOWED_SCOPES:
-                raise ValueError(f"unknown scope {s!r}; allowed: {sorted(_ALLOWED_SCOPES)}")
         return scope
 
 

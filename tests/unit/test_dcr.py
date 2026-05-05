@@ -134,9 +134,9 @@ class TestDcrInputValidation:
         with pytest.raises(ValidationError):
             DcrInput.model_validate({**_valid_payload(), "redirect_uris": [uri]})
 
-    def test_scope_unknown_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            DcrInput.model_validate({**_valid_payload(), "scope": "memory.read malicious.scope"})
+    def test_scope_unknown_accepted(self) -> None:
+        m = DcrInput.model_validate({**_valid_payload(), "scope": "memory.read malicious.scope"})
+        assert "malicious.scope" in m.scope.split()
 
     def test_scope_valid(self) -> None:
         m = DcrInput.model_validate(
