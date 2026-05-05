@@ -136,8 +136,31 @@ def make_mcp_router(
                 status_code=400,
             )
 
+        if method == "tools/call":
+            tool_name = params.get("name")
+            if not isinstance(tool_name, str) or not tool_name:
+                return JSONResponse(
+                    content=to_jsonrpc_error_response(
+                        request_id, -32602, "tools/call requires params.name"
+                    ),
+                    status_code=400,
+                )
+            tool_args = params.get("arguments") or {}
+            if not isinstance(tool_args, dict):
+                return JSONResponse(
+                    content=to_jsonrpc_error_response(
+                        request_id, -32602, "tools/call params.arguments must be object"
+                    ),
+                    status_code=400,
+                )
+            dispatch_method = tool_name
+            dispatch_params = tool_args
+        else:
+            dispatch_method = method
+            dispatch_params = params
+
         try:
-            result = await registry.dispatch(ctx, method, params)
+            result = await registry.dispatch(ctx, dispatch_method, dispatch_params)
         except JsonRpcError as err:
             _log.info(
                 "mcp_dispatch_error",
