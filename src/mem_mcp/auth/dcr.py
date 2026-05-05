@@ -86,7 +86,7 @@ def _derive_software_id(client_name: str) -> str:
 class DcrInput(BaseModel):
     """RFC 7591 request body."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     client_name: str = Field(..., max_length=128)
     client_uri: str | None = None

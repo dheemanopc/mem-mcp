@@ -144,9 +144,12 @@ class TestDcrInputValidation:
         )
         assert "memory.admin" in m.scope.split()
 
-    def test_extra_field_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            DcrInput.model_validate({**_valid_payload(), "junk_field": "value"})
+    def test_extra_fields_ignored(self) -> None:
+        payload = {**_valid_payload(), "junk_field": "value", "unknown_prop": "ignored"}
+        m = DcrInput.model_validate(payload)
+        dumped = m.model_dump()
+        assert "junk_field" not in dumped
+        assert "unknown_prop" not in dumped
 
     def test_too_many_redirect_uris(self) -> None:
         with pytest.raises(ValidationError):
