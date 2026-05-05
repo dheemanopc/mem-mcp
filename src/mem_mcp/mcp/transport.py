@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     import asyncpg  # type: ignore[import-untyped]
 
     from mem_mcp.mcp.registry import ToolRegistry
+    from mem_mcp.mcp.tools._deps import ToolDeps
 
 
 _log = get_logger("mem_mcp.mcp.transport")
@@ -37,6 +38,7 @@ def make_mcp_router(
     *,
     registry: ToolRegistry,
     db_pool: asyncpg.Pool,
+    deps: "ToolDeps",
 ) -> APIRouter:
     """Build the POST /mcp router. The Bearer middleware must run before this."""
     router = APIRouter(tags=["mcp"])
@@ -125,6 +127,7 @@ def make_mcp_router(
             client_id=tenant_ctx.client_id,
             scopes=tenant_ctx.scopes,
             db_pool=db_pool,
+            deps=deps,
         )
 
         params = body.get("params") or {}

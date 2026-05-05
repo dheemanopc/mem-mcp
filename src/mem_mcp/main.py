@@ -370,6 +370,7 @@ def _wire_routers(app: FastAPI) -> None:
     mcp_router = make_mcp_router(
         registry=registry,
         db_pool=pool,
+        deps=deps,
     )
     app.include_router(mcp_router)
 
