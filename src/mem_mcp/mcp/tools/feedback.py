@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from mem_mcp.db import tenant_tx
 from mem_mcp.mcp.errors import JsonRpcError
+from mem_mcp.mcp.tool_descriptions import TOOL_DESCRIPTIONS
 from mem_mcp.mcp.tools._base import BaseTool, ToolContext
 
 
@@ -42,6 +43,7 @@ class MemoryFeedbackTool(BaseTool):
     """Store beta feedback; non-blocking (FR-9.3.11.1)."""
 
     name: ClassVar[str] = "memory_feedback"
+    description: ClassVar[str] = TOOL_DESCRIPTIONS["memory_feedback"]
     required_scope: ClassVar[str] = "memory.write"
     InputModel: ClassVar[type[BaseModel]] = MemoryFeedbackInput
     OutputModel: ClassVar[type[BaseModel]] = MemoryFeedbackOutput

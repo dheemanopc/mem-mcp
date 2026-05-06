@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from mem_mcp.db import tenant_tx
 from mem_mcp.embeddings.bedrock import EmbeddingError
 from mem_mcp.mcp.errors import JsonRpcError
+from mem_mcp.mcp.tool_descriptions import TOOL_DESCRIPTIONS
 from mem_mcp.mcp.tools._base import BaseTool, ToolContext
 from mem_mcp.memory.hybrid_query import (
     SEARCH_DEFAULT_W_KW,
@@ -58,6 +59,7 @@ class MemorySearchTool(BaseTool):
     """Hybrid retrieval over memories (semantic U keyword, recency-decayed)."""
 
     name: ClassVar[str] = "memory_search"
+    description: ClassVar[str] = TOOL_DESCRIPTIONS["memory_search"]
     required_scope: ClassVar[str] = "memory.read"
     InputModel: ClassVar[type[BaseModel]] = MemorySearchInput
     OutputModel: ClassVar[type[BaseModel]] = MemorySearchOutput

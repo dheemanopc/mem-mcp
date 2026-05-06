@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from mem_mcp.db import tenant_tx
 from mem_mcp.embeddings.bedrock import EmbeddingError
 from mem_mcp.mcp.errors import JsonRpcError
+from mem_mcp.mcp.tool_descriptions import TOOL_DESCRIPTIONS
 from mem_mcp.mcp.tools._base import BaseTool, ToolContext
 from mem_mcp.memory.dedupe import check_dup
 from mem_mcp.memory.normalize import hash_content
@@ -76,6 +77,7 @@ class MemoryWriteTool(BaseTool):
     """Store a memory (or merge into existing duplicate)."""
 
     name: ClassVar[str] = "memory_write"
+    description: ClassVar[str] = TOOL_DESCRIPTIONS["memory_write"]
     required_scope: ClassVar[str] = "memory.write"
     InputModel: ClassVar[type[BaseModel]] = MemoryWriteInput
     OutputModel: ClassVar[type[BaseModel]] = MemoryWriteOutput

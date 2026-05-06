@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict
 
 from mem_mcp.db import tenant_tx
 from mem_mcp.mcp.errors import JsonRpcError
+from mem_mcp.mcp.tool_descriptions import TOOL_DESCRIPTIONS
 from mem_mcp.mcp.tools._base import BaseTool, ToolContext
 from mem_mcp.memory.versioning import VERSIONED_TYPES
 
@@ -38,6 +39,7 @@ class MemoryUndeleteTool(BaseTool):
     """
 
     name: ClassVar[str] = "memory_undelete"
+    description: ClassVar[str] = TOOL_DESCRIPTIONS["memory_undelete"]
     required_scope: ClassVar[str] = "memory.write"
     InputModel: ClassVar[type[BaseModel]] = MemoryUndeleteInput
     OutputModel: ClassVar[type[BaseModel]] = MemoryUndeleteOutput

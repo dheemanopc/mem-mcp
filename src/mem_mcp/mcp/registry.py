@@ -33,9 +33,7 @@ class ToolRegistry:
             defs.append(
                 {
                     "name": name,
-                    "description": (cls.__doc__ or "").strip().splitlines()[0]
-                    if cls.__doc__
-                    else "",
+                    "description": cls.description,
                     "inputSchema": cls.InputModel.model_json_schema(),
                     "outputSchema": cls.OutputModel.model_json_schema(),
                     "required_scope": cls.required_scope,
