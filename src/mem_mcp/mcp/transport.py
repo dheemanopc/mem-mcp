@@ -19,7 +19,7 @@ import uuid
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 
 from mem_mcp.logging_setup import get_logger
 from mem_mcp.mcp.errors import JsonRpcError, to_jsonrpc_error_response
@@ -210,6 +210,41 @@ def make_mcp_router(
                 "id": request_id,
                 "result": result,
             }
+        )
+
+    @router.get("/mcp")
+    async def mcp_sse_handler(request: Request) -> Response:
+        import asyncio
+        from starlette.responses import StreamingResponse
+
+        # Same origin check as POST handler
+        origin = request.headers.get("origin")
+        if origin is not None:
+            from urllib.parse import urlparse
+            parsed = urlparse(origin)
+            host = request.headers.get("host", "")
+            if parsed.netloc != host:
+                return JSONResponse(
+                    content=to_jsonrpc_error_response(None, -32600, "forbidden origin"),
+                    status_code=403,
+                )
+
+        async def event_stream():
+            yield ": connected\n\n"
+            while True:
+                if await request.is_disconnected():
+                    break
+                yield ": keepalive\n\n"
+                await asyncio.sleep(15)
+
+        return StreamingResponse(
+            event_stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
         )
 
     return router
