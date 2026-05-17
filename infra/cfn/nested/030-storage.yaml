@@ -108,9 +108,44 @@ Resources:
               StringNotEquals:
                 s3:x-amz-server-side-encryption-aws-kms-key-id: !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:${KmsKeyAlias}'
 
-          # TODO(T-1.6): once mem-mcp-instance-role exists, add a Deny on s3:*
-          # where aws:PrincipalArn != arn:aws:iam::${AWS::AccountId}:role/mem-mcp-instance-role
-          # to restrict access to the EC2 host's role only.
+          # Deny any non-EC2-instance-role IAM principal. AWS service principals
+          # (CloudTrail, DLM, etc.) are excluded via aws:PrincipalIsAWSService.
+          - Sid: DenyNonInstanceRoleAccess
+            Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource:
+              - !GetAtt BackupBucket.Arn
+              - !Sub '${BackupBucket.Arn}/*'
+            Condition:
+              ArnNotLike:
+                aws:PrincipalArn:
+                  - !Sub 'arn:aws:iam::${AWS::AccountId}:role/mem-mcp-instance-role'
+                  - !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+              Bool:
+                aws:PrincipalIsAWSService: 'false'
+
+          # Allow CloudTrail to check ACL and write logs
+          - Sid: CloudTrailAclCheck
+            Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: s3:GetBucketAcl
+            Resource: !GetAtt BackupBucket.Arn
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+
+          - Sid: CloudTrailWrite
+            Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub '${BackupBucket.Arn}/AWSLogs/${AWS::AccountId}/*'
+            Condition:
+              StringEquals:
+                s3:x-amz-acl: bucket-owner-full-control
+                aws:SourceAccount: !Ref AWS::AccountId
 
 Outputs:
   BackupBucketName:

@@ -247,7 +247,7 @@ class TestHybridSearch:
         assert all(isinstance(r, SearchResult) for r in results)
 
     @pytest.mark.asyncio
-    async def test_passes_all_11_positional_params(self) -> None:
+    async def test_passes_all_12_positional_params(self) -> None:
         conn = _FakeFetchConn([])
         tenant = uuid4()
         params = SearchParams(
@@ -265,7 +265,7 @@ class TestHybridSearch:
         await hybrid_search(conn, tenant, params)
         assert len(conn.calls) == 1
         _, args = conn.calls[0]
-        assert len(args) == 11
+        assert len(args) == 12
         assert args[0] == [0.1] * 1024
         assert args[1] == tenant
         assert args[2] == "decision"

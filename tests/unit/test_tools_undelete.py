@@ -75,6 +75,7 @@ class TestMemoryUndelete:
                 "superseded_by": None,
                 "is_current": False,
                 "age": timedelta(days=15),
+                "parent_id": None,
             },
             # After undelete update
             {
@@ -109,6 +110,7 @@ class TestMemoryUndelete:
             "superseded_by": None,
             "is_current": False,
             "age": timedelta(days=31),
+            "parent_id": None,
         }
         _patch_tenant_tx(monkeypatch, conn)
 
@@ -135,6 +137,7 @@ class TestMemoryUndelete:
             "superseded_by": None,
             "is_current": True,
             "age": timedelta(0),
+            "parent_id": None,
         }
         _patch_tenant_tx(monkeypatch, conn)
 
@@ -183,6 +186,7 @@ class TestMemoryUndelete:
                 "superseded_by": other_id,
                 "is_current": False,
                 "age": timedelta(days=10),
+                "parent_id": None,
             },
             # After undelete update
             {
@@ -217,6 +221,7 @@ class TestMemoryUndelete:
                 "superseded_by": None,
                 "is_current": False,
                 "age": timedelta(days=10),
+                "parent_id": None,
             },
             # After undelete update
             {
@@ -250,6 +255,7 @@ class TestMemoryUndelete:
                 "superseded_by": None,
                 "is_current": False,
                 "age": timedelta(days=30),
+                "parent_id": None,
             },
             {
                 "deleted_at": None,

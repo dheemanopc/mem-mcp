@@ -36,6 +36,7 @@ class SearchParams:
     recency_lambda: float
     w_sem: float = SEARCH_DEFAULT_W_SEM
     w_kw: float = SEARCH_DEFAULT_W_KW
+    parent_id: UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -64,6 +65,7 @@ WITH semantic AS (
       AND ($4::text[] IS NULL OR tags && $4)
       AND ($5::timestamptz IS NULL OR created_at >= $5)
       AND ($6::timestamptz IS NULL OR created_at <= $6)
+      AND ($12::uuid IS NULL OR parent_id = $12::uuid)
     ORDER BY embedding <=> $1::vector
     LIMIT 50
 ),
@@ -78,6 +80,7 @@ keyword AS (
       AND ($4::text[] IS NULL OR m.tags && $4)
       AND ($5::timestamptz IS NULL OR m.created_at >= $5)
       AND ($6::timestamptz IS NULL OR m.created_at <= $6)
+      AND ($12::uuid IS NULL OR m.parent_id = $12::uuid)
     ORDER BY kw_score DESC
     LIMIT 50
 ),
@@ -126,6 +129,7 @@ async def hybrid_search(
         params.w_sem,  # $9
         params.w_kw,  # $10
         params.limit,  # $11
+        params.parent_id,  # $12
     )
     return [
         SearchResult(

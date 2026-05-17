@@ -27,6 +27,7 @@ class MemoryDeleteOutput(BaseModel):
     deleted_at: datetime
     promoted_version_id: UUID | None  # if a prior version was made current, this is its id
     cascaded_count: int = 0  # number of additional rows soft-deleted via cascade
+    replies_cascaded_count: int = 0  # number of direct replies soft-deleted alongside the root
     request_id: str
 
 
@@ -61,7 +62,7 @@ class MemoryDeleteTool(BaseTool):
             # Look up the target row to find supersedes/type
             target = await conn.fetchrow(
                 """
-                SELECT id, type, supersedes, is_current, deleted_at
+                SELECT id, type, supersedes, is_current, deleted_at, parent_id
                 FROM memories
                 WHERE id = $1 AND tenant_id = $2
                 """,
@@ -83,6 +84,7 @@ class MemoryDeleteTool(BaseTool):
 
             promoted_version_id: UUID | None = None
             cascaded_count = 0
+            replies_cascaded_count = 0
 
             if inp.cascade:
                 # Soft-delete every row in the chain (walk supersedes chain backwards from target)
@@ -145,6 +147,24 @@ class MemoryDeleteTool(BaseTool):
                             ctx.tenant_id,
                         )
 
+            # Reply cascade: if target is a root, soft-delete its replies in the same tx.
+            # Replies share root.deleted_at exactly (now() is per-transaction).
+            if target["parent_id"] is None:
+                cascade_rows = await conn.fetch(
+                    """
+                    UPDATE memories
+                    SET deleted_at = $1, is_current = false
+                    WHERE parent_id = $2
+                      AND tenant_id = $3
+                      AND deleted_at IS NULL
+                    RETURNING id
+                    """,
+                    deleted_at,
+                    inp.id,
+                    ctx.tenant_id,
+                )
+                replies_cascaded_count = len(cascade_rows)
+
             await ctx.deps.audit.audit(
                 conn,
                 action="memory.delete",
@@ -158,6 +178,7 @@ class MemoryDeleteTool(BaseTool):
                 details={
                     "cascade": inp.cascade,
                     "cascaded_count": cascaded_count,
+                    "replies_cascaded_count": replies_cascaded_count,
                     "promoted_version_id": str(promoted_version_id)
                     if promoted_version_id
                     else None,
@@ -169,5 +190,6 @@ class MemoryDeleteTool(BaseTool):
             deleted_at=deleted_at,
             promoted_version_id=promoted_version_id,
             cascaded_count=cascaded_count,
+            replies_cascaded_count=replies_cascaded_count,
             request_id=ctx.request_id,
         )

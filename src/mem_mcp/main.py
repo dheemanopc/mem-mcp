@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import FastAPI, Response
 from fastapi.responses import JSONResponse
@@ -63,9 +64,11 @@ from mem_mcp.mcp.tools.list import MemoryListTool
 from mem_mcp.mcp.tools.search import MemorySearchTool
 from mem_mcp.mcp.tools.stats import MemoryStatsTool
 from mem_mcp.mcp.tools.supersede import MemorySupersedeTool
+from mem_mcp.mcp.tools.thread_get import MemoryThreadGetTool
 from mem_mcp.mcp.tools.undelete import MemoryUndeleteTool
 from mem_mcp.mcp.tools.update import MemoryUpdateTool
 from mem_mcp.mcp.tools.write import MemoryWriteTool
+from mem_mcp.skills.kite.enable_tool import MemsysEnableKiteTool
 from mem_mcp.mcp.transport import make_mcp_router
 from mem_mcp.quotas.enforcer import QuotaEnforcer
 from mem_mcp.web.csrf import CsrfMiddleware
@@ -87,6 +90,67 @@ def _build_default_checkers() -> list[HealthChecker]:
         BedrockHealthChecker(region=s.region),
         CognitoJwksHealthChecker(region=s.region, user_pool_id=s.cognito_user_pool_id),
     ]
+
+
+def _wire_skills(registry: ToolRegistry, log: Any) -> int:
+    """If skill framework is configured, register enabled skills into the registry.
+
+    Returns the number of skill tools registered (0 if framework disabled).
+    """
+    from mem_mcp.skills.loader import SkillLoader, parse_enabled_skills
+    from mem_mcp.skills.vault import SkillVault, SkillVaultDisabled
+
+    s = get_settings()
+    enabled = parse_enabled_skills(s.enabled_skills)
+    if not enabled:
+        log.info("skills_disabled", reason="enabled_skills_empty")
+        return 0
+
+    try:
+        vault = SkillVault.from_settings(s)
+    except SkillVaultDisabled:
+        log.warning("skills_disabled", reason="skill_vault_master_key_unset")
+        return 0
+    except Exception as exc:
+        log.error("skills_vault_init_failed", error=str(exc))
+        return 0
+
+    loader = SkillLoader(vault=vault)
+    total = 0
+    for skill_name in enabled:
+        skill = _instantiate_skill(skill_name, log)
+        if skill is None:
+            continue
+        count = loader.register_skill(registry, skill)
+        log.info(
+            "skill_registered",
+            skill_name=skill_name,
+            tool_count=count,
+        )
+        total += count
+    return total
+
+
+def _instantiate_skill(skill_name: str, log: Any):
+    """Construct a Skill instance by name. Returns None if unknown.
+
+    Phase 1 supports: kite. New skills added by extending this dispatch.
+    """
+    if skill_name == "kite":
+        # Kite skill is Phase 1.B — file not yet present in initial commit.
+        # Defensive import so the loader works even when KiteSkill module is absent.
+        try:
+            from mem_mcp.skills.kite.skill import KiteSkill
+        except ImportError:
+            log.warning(
+                "skill_module_missing",
+                skill_name="kite",
+                reason="mem_mcp.skills.kite.skill not importable",
+            )
+            return None
+        return KiteSkill()
+    log.warning("unknown_skill", skill_name=skill_name)
+    return None
 
 
 @asynccontextmanager
@@ -250,7 +314,7 @@ def _wire_routers(app: FastAPI) -> None:
         quotas=quotas,
     )
 
-    # Build ToolRegistry with all 11 memory tools
+    # Build ToolRegistry with 13 tools (12 memory + 1 onboarding)
     registry = ToolRegistry()
     tools_list: list = [
         MemoryWriteTool,
@@ -261,12 +325,19 @@ def _wire_routers(app: FastAPI) -> None:
         MemoryDeleteTool,
         MemoryUndeleteTool,
         MemorySupersedeTool,
+        MemoryThreadGetTool,
         MemoryExportTool,
         MemoryFeedbackTool,
         MemoryStatsTool,
+        MemsysEnableKiteTool,
     ]
     for tool_cls in tools_list:  # type: ignore[attr-defined]
         registry.register(tool_cls)  # type: ignore[arg-type]
+
+    # Register skill-framework tools (if any skills are enabled)
+    skill_count = _wire_skills(registry, log)
+    if skill_count > 0:
+        log.info("skills_wired", total_skill_tools=skill_count)
 
     # Wire web auth router
     web_router = make_web_router(

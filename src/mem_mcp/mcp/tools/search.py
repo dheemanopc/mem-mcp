@@ -35,6 +35,7 @@ class MemorySearchInput(BaseModel):
     limit: int = Field(default=10, ge=1, le=50)
     include_history: bool = False
     recency_lambda: float | None = Field(default=None, ge=0.0, le=1.0)
+    parent_id: UUID | None = None
 
 
 class SearchResultItem(BaseModel):
@@ -97,6 +98,7 @@ class MemorySearchTool(BaseTool):
             recency_lambda=recency,
             w_sem=SEARCH_DEFAULT_W_SEM,
             w_kw=SEARCH_DEFAULT_W_KW,
+            parent_id=inp.parent_id,
         )
 
         async with tenant_tx(ctx.db_pool, ctx.tenant_id) as conn:
@@ -114,6 +116,7 @@ class MemorySearchTool(BaseTool):
                     "result_count": len(results),
                     "embed_tokens": qembed.input_tokens,
                     "type": inp.type,
+                    "parent_id": str(inp.parent_id) if inp.parent_id is not None else None,
                 },
             )
             await ctx.deps.quotas.increment_read(ctx.tenant_id, qembed.input_tokens)
