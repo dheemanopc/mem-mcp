@@ -69,9 +69,5 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Remove tenant_skill_credentials table."""
-    op.execute(
-        sa.text("DROP INDEX IF EXISTS idx_tenant_skill_credentials_skill")
-    )
-    op.execute(
-        sa.text("DROP TABLE IF EXISTS tenant_skill_credentials")
-    )
+    op.execute(sa.text("DROP INDEX IF EXISTS idx_tenant_skill_credentials_skill"))
+    op.execute(sa.text("DROP TABLE IF EXISTS tenant_skill_credentials"))

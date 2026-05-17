@@ -65,9 +65,7 @@ async def exchange_request_token(
         try:
             body = resp.json()
         except Exception as exc:
-            raise KiteAuthError(
-                f"non-JSON response from Kite (status {resp.status_code})"
-            ) from exc
+            raise KiteAuthError(f"non-JSON response from Kite (status {resp.status_code})") from exc
         if resp.status_code != 200 or body.get("status") != "success":
             raise KiteAuthError(
                 body.get("message", f"auth failed (status {resp.status_code})"),

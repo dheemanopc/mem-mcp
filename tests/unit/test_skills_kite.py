@@ -28,7 +28,9 @@ def _build_skill_ctx(creds: dict[str, str] | None = None):
         identity_id=uuid4(),
         client_id="test-client",
         request_id=str(uuid4()),
-        credentials=creds if creds is not None else {
+        credentials=creds
+        if creds is not None
+        else {
             "api_key": "AKEY",
             "api_secret": "ASEC",
             "access_token": "ATOK",
@@ -45,6 +47,7 @@ def _build_skill_ctx(creds: dict[str, str] | None = None):
 class TestKiteAuth:
     def test_checksum_known_value(self) -> None:
         from mem_mcp.skills.kite.auth import compute_checksum
+
         actual = compute_checksum("AKEY", "RTOK", "ASEC")
         expected = hashlib.sha256(b"AKEYRTOKASEC").hexdigest()
         assert actual == expected
@@ -72,9 +75,7 @@ class TestKiteAuth:
             )
 
         async with _make_mock_client(handler) as client:
-            data = await exchange_request_token(
-                "AKEY", "RTOK", "ASEC", http=client
-            )
+            data = await exchange_request_token("AKEY", "RTOK", "ASEC", http=client)
         assert data["access_token"] == "NEW_ATOK"
         assert data["user_id"] == "U1"
 
@@ -85,7 +86,11 @@ class TestKiteAuth:
         def handler(req: httpx.Request) -> httpx.Response:
             return httpx.Response(
                 400,
-                json={"status": "error", "message": "Invalid request_token", "error_type": "TokenException"},
+                json={
+                    "status": "error",
+                    "message": "Invalid request_token",
+                    "error_type": "TokenException",
+                },
             )
 
         async with _make_mock_client(handler) as client:
@@ -143,7 +148,9 @@ class TestKiteClient:
 
         def handler(req: httpx.Request) -> httpx.Response:
             assert req.url.path == "/portfolio/holdings"
-            return httpx.Response(200, json=_envelope([{"tradingsymbol": "RELIANCE", "quantity": 10}]))
+            return httpx.Response(
+                200, json=_envelope([{"tradingsymbol": "RELIANCE", "quantity": 10}])
+            )
 
         async with _make_mock_client(handler) as http:
             c = KiteClient(http=http)
@@ -220,15 +227,21 @@ class TestKiteClient:
         def handler(req: httpx.Request) -> httpx.Response:
             captured["path"] = req.url.path
             captured["url"] = str(req.url)
-            return httpx.Response(200, json=_envelope({"candles": [["2026-05-17", 100, 110, 95, 108, 1000]]}))
+            return httpx.Response(
+                200, json=_envelope({"candles": [["2026-05-17", 100, 110, 95, 108, 1000]]})
+            )
 
         async with _make_mock_client(handler) as http:
             c = KiteClient(http=http)
             data = await c.get_historical_data(
-                api_key="AKEY", access_token="ATOK",
-                instrument_token=12345, interval="day",
-                from_date="2026-05-01", to_date="2026-05-17",
-                continuous=True, oi=True,
+                api_key="AKEY",
+                access_token="ATOK",
+                instrument_token=12345,
+                interval="day",
+                from_date="2026-05-01",
+                to_date="2026-05-17",
+                continuous=True,
+                oi=True,
             )
         assert "12345" in captured["path"]
         assert "/day" in captured["path"]
@@ -251,8 +264,14 @@ class TestKiteClient:
         async with _make_mock_client(handler) as http:
             c = KiteClient(http=http)
             data = await c.place_order(
-                api_key="AKEY", access_token="ATOK", variety="regular",
-                order_params={"tradingsymbol": "RELIANCE", "quantity": 10, "transaction_type": "BUY"},
+                api_key="AKEY",
+                access_token="ATOK",
+                variety="regular",
+                order_params={
+                    "tradingsymbol": "RELIANCE",
+                    "quantity": 10,
+                    "transaction_type": "BUY",
+                },
             )
         assert captured["method"] == "POST"
         assert captured["path"] == "/orders/regular"
@@ -273,8 +292,10 @@ class TestKiteClient:
         async with _make_mock_client(handler) as http:
             c = KiteClient(http=http)
             data = await c.cancel_order(
-                api_key="AKEY", access_token="ATOK",
-                variety="regular", order_id="ORDER123",
+                api_key="AKEY",
+                access_token="ATOK",
+                variety="regular",
+                order_id="ORDER123",
             )
         assert captured["method"] == "DELETE"
         assert captured["path"] == "/orders/regular/ORDER123"
@@ -285,7 +306,9 @@ class TestKiteClient:
         from mem_mcp.skills.kite.client import KiteApiError, KiteClient
 
         def handler(req: httpx.Request) -> httpx.Response:
-            return httpx.Response(401, json=_error_envelope("Invalid api_key or access_token", "TokenException"))
+            return httpx.Response(
+                401, json=_error_envelope("Invalid api_key or access_token", "TokenException")
+            )
 
         async with _make_mock_client(handler) as http:
             c = KiteClient(http=http)
@@ -307,7 +330,9 @@ class TestKiteClient:
             c = KiteClient(http=http)
             with pytest.raises(KiteApiError) as exc:
                 await c.place_order(
-                    api_key="AKEY", access_token="ATOK", variety="regular",
+                    api_key="AKEY",
+                    access_token="ATOK",
+                    variety="regular",
                     order_params={"x": 1},
                 )
         assert "Invalid quantity" in str(exc.value)
@@ -321,23 +346,32 @@ class TestKiteClient:
 class TestKiteSkill:
     def test_required_credentials_three_fields(self) -> None:
         from mem_mcp.skills.kite.skill import KiteSkill
+
         skill = KiteSkill()
         names = {c.name for c in skill.required_credentials()}
         assert names == {"api_key", "api_secret", "access_token"}
 
     def test_list_tools_count_and_names(self) -> None:
         from mem_mcp.skills.kite.skill import KiteSkill
+
         skill = KiteSkill()
         tools = skill.list_tools()
         assert len(tools) == 8
         names = {t.name for t in tools}
         assert names == {
-            "get_holdings", "get_positions", "get_margins", "get_quote",
-            "get_historical_data", "get_orders", "place_order", "cancel_order",
+            "get_holdings",
+            "get_positions",
+            "get_margins",
+            "get_quote",
+            "get_historical_data",
+            "get_orders",
+            "place_order",
+            "cancel_order",
         }
 
     def test_list_tools_read_only_split(self) -> None:
         from mem_mcp.skills.kite.skill import KiteSkill
+
         skill = KiteSkill()
         tools = {t.name: t for t in skill.list_tools()}
         assert tools["get_holdings"].read_only is True
@@ -355,7 +389,9 @@ class TestKiteSkill:
         )
 
         def handler(req: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json={"status": "success", "data": [{"tradingsymbol": "RELIANCE"}]})
+            return httpx.Response(
+                200, json={"status": "success", "data": [{"tradingsymbol": "RELIANCE"}]}
+            )
 
         async with _make_mock_client(handler) as http:
             client = KiteClient(http=http)
@@ -380,9 +416,14 @@ class TestKiteSkill:
             client = KiteClient(http=http)
             skill = KiteSkill(client=client)
             inp = PlaceOrderInput(
-                variety="regular", tradingsymbol="RELIANCE", exchange="NSE",
-                transaction_type="BUY", quantity=10, product="MIS",
-                order_type="LIMIT", price=2500.0,
+                variety="regular",
+                tradingsymbol="RELIANCE",
+                exchange="NSE",
+                transaction_type="BUY",
+                quantity=10,
+                product="MIS",
+                order_type="LIMIT",
+                price=2500.0,
             )
             out = await skill.call_tool("place_order", inp, _build_skill_ctx())
         assert isinstance(out, PlaceOrderOutput)
@@ -415,7 +456,14 @@ class TestKiteSkill:
         from mem_mcp.skills.kite.skill import KiteSkill, _EmptyInput
 
         def handler(req: httpx.Request) -> httpx.Response:
-            return httpx.Response(401, json={"status": "error", "message": "Invalid token", "error_type": "TokenException"})
+            return httpx.Response(
+                401,
+                json={
+                    "status": "error",
+                    "message": "Invalid token",
+                    "error_type": "TokenException",
+                },
+            )
 
         async with _make_mock_client(handler) as http:
             client = KiteClient(http=http)

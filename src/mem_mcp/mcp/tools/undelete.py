@@ -159,7 +159,10 @@ class MemoryUndeleteTool(BaseTool):
                 target_id=inp.id,
                 target_kind="memory",
                 request_id=ctx.request_id,
-                details={"is_current_after": new_is_current, "replies_restored_count": replies_restored_count},
+                details={
+                    "is_current_after": new_is_current,
+                    "replies_restored_count": replies_restored_count,
+                },
             )
 
         return MemoryUndeleteOutput(

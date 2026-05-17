@@ -45,9 +45,7 @@ class SkillVault:
 
     def __init__(self, master_key: bytes) -> None:
         if len(master_key) != 32:
-            raise SkillVaultError(
-                f"master_key must be exactly 32 bytes, got {len(master_key)}"
-            )
+            raise SkillVaultError(f"master_key must be exactly 32 bytes, got {len(master_key)}")
         self._aesgcm = AESGCM(master_key)
 
     @classmethod
@@ -59,9 +57,7 @@ class SkillVault:
         try:
             key = base64.b64decode(settings.skill_vault_master_key, validate=True)
         except Exception as exc:
-            raise SkillVaultError(
-                "skill_vault_master_key is not valid base64"
-            ) from exc
+            raise SkillVaultError("skill_vault_master_key is not valid base64") from exc
         return cls(key)
 
     def _aad(self, tenant_id: UUID, skill_name: str) -> bytes:
@@ -74,9 +70,7 @@ class SkillVault:
 
     def decrypt(self, blob: bytes, aad: bytes) -> bytes:
         if len(blob) < MIN_BLOB_LEN:
-            raise SkillVaultError(
-                f"ciphertext blob too short: got {len(blob)}, min {MIN_BLOB_LEN}"
-            )
+            raise SkillVaultError(f"ciphertext blob too short: got {len(blob)}, min {MIN_BLOB_LEN}")
         nonce = blob[:NONCE_LEN]
         ciphertext_with_tag = blob[NONCE_LEN:]
         try:
@@ -84,15 +78,11 @@ class SkillVault:
         except Exception as exc:
             raise SkillVaultError("credentials decryption failed (tag mismatch)") from exc
 
-    def encrypt_creds(
-        self, tenant_id: UUID, skill_name: str, creds: dict[str, Any]
-    ) -> bytes:
+    def encrypt_creds(self, tenant_id: UUID, skill_name: str, creds: dict[str, Any]) -> bytes:
         plaintext = json.dumps(creds, separators=(",", ":"), sort_keys=True).encode()
         return self.encrypt(plaintext, self._aad(tenant_id, skill_name))
 
-    def decrypt_creds(
-        self, tenant_id: UUID, skill_name: str, blob: bytes
-    ) -> dict[str, Any]:
+    def decrypt_creds(self, tenant_id: UUID, skill_name: str, blob: bytes) -> dict[str, Any]:
         plaintext = self.decrypt(blob, self._aad(tenant_id, skill_name))
         return json.loads(plaintext.decode())
 

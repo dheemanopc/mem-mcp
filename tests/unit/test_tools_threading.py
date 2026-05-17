@@ -89,9 +89,7 @@ class TestMemoryWriteInputThreading:
 
 class TestMemoryWriteToolReply:
     @pytest.mark.asyncio
-    async def test_reply_write_inherits_parent_tags(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_reply_write_inherits_parent_tags(self, monkeypatch: pytest.MonkeyPatch) -> None:
         parent_id = uuid4()
         reply_id = uuid4()
         conn = AsyncMock()
@@ -118,13 +116,13 @@ class TestMemoryWriteToolReply:
         assert out.deduped is False
         # The INSERT bound effective_tags as the 7th positional arg of the call.
         insert_call = conn.fetchrow.call_args_list[1]
-        bound_tags = insert_call.args[7]  # effective_tags positional in INSERT (8th value after sql arg = index 7)
+        bound_tags = insert_call.args[
+            7
+        ]  # effective_tags positional in INSERT (8th value after sql arg = index 7)
         assert sorted(bound_tags) == ["alpha", "beta", "gamma"]
 
     @pytest.mark.asyncio
-    async def test_reply_to_missing_parent_raises(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_reply_to_missing_parent_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
         conn = AsyncMock()
         conn.fetchrow.side_effect = [None]  # parent SELECT returns nothing
         _patch_tx(monkeypatch, conn)
@@ -137,9 +135,7 @@ class TestMemoryWriteToolReply:
         assert "parent_id not found" in exc.value.message
 
     @pytest.mark.asyncio
-    async def test_reply_to_deleted_parent_raises(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_reply_to_deleted_parent_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
         conn = AsyncMock()
         conn.fetchrow.side_effect = [
             {
@@ -181,9 +177,7 @@ class TestMemoryWriteToolReply:
         assert "flat hierarchy" in exc.value.message
 
     @pytest.mark.asyncio
-    async def test_reply_tag_overflow_rejected(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_reply_tag_overflow_rejected(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # parent has 30 tags, reply adds 5 → 35 total > 32 cap
         conn = AsyncMock()
         parent_tags = [f"tag-{i}" for i in range(30)]
@@ -221,9 +215,7 @@ class TestMemorySearchInputThreading:
 
 class TestMemoryThreadGetTool:
     @pytest.mark.asyncio
-    async def test_returns_root_and_replies_sorted(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_returns_root_and_replies_sorted(self, monkeypatch: pytest.MonkeyPatch) -> None:
         root_id = uuid4()
         r1, r2 = uuid4(), uuid4()
         now = datetime.now(tz=UTC)
@@ -330,9 +322,7 @@ class TestMemoryThreadGetTool:
         assert "soft-deleted" in exc.value.message
 
     @pytest.mark.asyncio
-    async def test_root_id_is_a_reply_raises(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_root_id_is_a_reply_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
         conn = AsyncMock()
         conn.fetchrow.side_effect = [
             {
@@ -394,9 +384,7 @@ class TestMemoryThreadGetTool:
 
 class TestDeleteReplyCascade:
     @pytest.mark.asyncio
-    async def test_delete_root_cascades_to_replies(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_delete_root_cascades_to_replies(self, monkeypatch: pytest.MonkeyPatch) -> None:
         root_id = uuid4()
         del_at = datetime.now(tz=UTC)
         conn = AsyncMock()
@@ -423,9 +411,7 @@ class TestDeleteReplyCascade:
         assert out.replies_cascaded_count == 2
 
     @pytest.mark.asyncio
-    async def test_delete_reply_does_not_cascade(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_delete_reply_does_not_cascade(self, monkeypatch: pytest.MonkeyPatch) -> None:
         reply_id = uuid4()
         parent_id = uuid4()
         del_at = datetime.now(tz=UTC)
@@ -453,9 +439,7 @@ class TestDeleteReplyCascade:
 
 class TestUndeleteReplyCascadeReversal:
     @pytest.mark.asyncio
-    async def test_undelete_root_restores_replies(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_undelete_root_restores_replies(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from datetime import timedelta
 
         root_id = uuid4()

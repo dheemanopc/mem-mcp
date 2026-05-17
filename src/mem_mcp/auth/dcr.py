@@ -513,8 +513,7 @@ def make_dcr_router(
         _OIDC = frozenset({"openid", "email", "profile", "phone", "address"})  # noqa: N806
         _prefix = resource_url.rstrip("/")
         qualified_scope = " ".join(
-            s if (s in _OIDC or "/" in s) else f"{_prefix}/{s}"
-            for s in effective_scopes
+            s if (s in _OIDC or "/" in s) else f"{_prefix}/{s}" for s in effective_scopes
         )
 
         out = DcrOutput(

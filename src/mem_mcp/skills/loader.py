@@ -71,9 +71,7 @@ class SkillLoader:
             InputModel: ClassVar[type[BaseModel]] = tool_def.InputModel
             OutputModel: ClassVar[type[BaseModel]] = tool_def.OutputModel
 
-            async def __call__(
-                self, ctx: ToolContext, inp: BaseModel
-            ) -> BaseModel:
+            async def __call__(self, ctx: ToolContext, inp: BaseModel) -> BaseModel:
                 tool_call_id = uuid4()
                 args_dict = inp.model_dump(mode="json")
                 started = time.monotonic()
@@ -81,9 +79,7 @@ class SkillLoader:
                 # Step 1: load credentials in its own short tx
                 async with tenant_tx(ctx.db_pool, ctx.tenant_id) as creds_conn:
                     try:
-                        creds = await vault.load(
-                            creds_conn, ctx.tenant_id, skill.name
-                        )
+                        creds = await vault.load(creds_conn, ctx.tenant_id, skill.name)
                     except SkillCredentialsMissingError as exc:
                         raise JsonRpcError(
                             -32000,
@@ -111,18 +107,14 @@ class SkillLoader:
                 to_reraise: BaseException | None = None
 
                 try:
-                    output = await skill.call_tool(
-                        tool_def.name, inp, skill_ctx
-                    )
+                    output = await skill.call_tool(tool_def.name, inp, skill_ctx)
                 except JsonRpcError as exc:
                     result_status = "error"
                     code_from_data: Any = None
                     if isinstance(exc.data, dict):
                         code_from_data = exc.data.get("code")
                     error_code = (
-                        str(code_from_data)
-                        if code_from_data is not None
-                        else "jsonrpc_error"
+                        str(code_from_data) if code_from_data is not None else "jsonrpc_error"
                     )
                     error_message = exc.message
                     to_reraise = exc
@@ -148,18 +140,14 @@ class SkillLoader:
                     result_status = "error"
                     error_code = "internal_error"
                     error_message = str(exc)[:200]
-                    to_reraise = JsonRpcError(
-                        -32603, "internal error"
-                    )
+                    to_reraise = JsonRpcError(-32603, "internal error")
 
                 elapsed_ms = int((time.monotonic() - started) * 1000)
 
                 # Step 3: write audit memory in its own tx (best-effort)
                 if should_audit(audit_policy, tool_def.name):
                     try:
-                        async with tenant_tx(
-                            ctx.db_pool, ctx.tenant_id
-                        ) as audit_conn:
+                        async with tenant_tx(ctx.db_pool, ctx.tenant_id) as audit_conn:
                             await write_skill_audit_memory(
                                 conn=audit_conn,
                                 ctx=skill_ctx,

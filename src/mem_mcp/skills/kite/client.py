@@ -116,15 +116,11 @@ class KiteClient:
         self, *, api_key: str, access_token: str, segment: str | None = None
     ) -> dict:
         path = "/user/margins" if segment is None else f"/user/margins/{segment}"
-        return await self._request(
-            "GET", path, api_key=api_key, access_token=access_token
-        )
+        return await self._request("GET", path, api_key=api_key, access_token=access_token)
 
     # ---------- market data ----------
 
-    async def get_quote(
-        self, *, api_key: str, access_token: str, instruments: list[str]
-    ) -> dict:
+    async def get_quote(self, *, api_key: str, access_token: str, instruments: list[str]) -> dict:
         params: list[tuple[str, str]] = [("i", inst) for inst in instruments]
         return await self._request(
             "GET", "/quote", api_key=api_key, access_token=access_token, params=params
@@ -155,9 +151,7 @@ class KiteClient:
     # ---------- orders ----------
 
     async def get_orders(self, *, api_key: str, access_token: str) -> list[dict]:
-        return await self._request(
-            "GET", "/orders", api_key=api_key, access_token=access_token
-        )
+        return await self._request("GET", "/orders", api_key=api_key, access_token=access_token)
 
     async def place_order(
         self,
@@ -191,6 +185,4 @@ class KiteClient:
         order_id: str,
     ) -> dict:
         path = f"/orders/{variety}/{order_id}"
-        return await self._request(
-            "DELETE", path, api_key=api_key, access_token=access_token
-        )
+        return await self._request("DELETE", path, api_key=api_key, access_token=access_token)

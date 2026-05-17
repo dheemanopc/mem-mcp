@@ -218,29 +218,21 @@ class KiteSkill(NativeSkill):
             ),
         ]
 
-    async def call_tool(
-        self, tool_name: str, args: BaseModel, ctx: SkillCallContext
-    ) -> BaseModel:
+    async def call_tool(self, tool_name: str, args: BaseModel, ctx: SkillCallContext) -> BaseModel:
         creds = ctx.credentials
         try:
             api_key = creds["api_key"]
             access_token = creds["access_token"]
         except KeyError as exc:
-            raise SkillError(
-                f"missing required Kite credential field: {exc}"
-            ) from exc
+            raise SkillError(f"missing required Kite credential field: {exc}") from exc
 
         try:
             if tool_name == "get_holdings":
-                data = await self._client.get_holdings(
-                    api_key=api_key, access_token=access_token
-                )
+                data = await self._client.get_holdings(api_key=api_key, access_token=access_token)
                 return GetHoldingsOutput(holdings=list(data or []))
 
             if tool_name == "get_positions":
-                data = await self._client.get_positions(
-                    api_key=api_key, access_token=access_token
-                )
+                data = await self._client.get_positions(api_key=api_key, access_token=access_token)
                 return GetPositionsOutput(
                     net=list((data or {}).get("net") or []),
                     day=list((data or {}).get("day") or []),
@@ -276,14 +268,10 @@ class KiteSkill(NativeSkill):
                     continuous=args.continuous,
                     oi=args.oi,
                 )
-                return GetHistoricalDataOutput(
-                    candles=list((data or {}).get("candles") or [])
-                )
+                return GetHistoricalDataOutput(candles=list((data or {}).get("candles") or []))
 
             if tool_name == "get_orders":
-                data = await self._client.get_orders(
-                    api_key=api_key, access_token=access_token
-                )
+                data = await self._client.get_orders(api_key=api_key, access_token=access_token)
                 return GetOrdersOutput(orders=list(data or []))
 
             if tool_name == "place_order":

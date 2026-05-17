@@ -40,9 +40,7 @@ class MemsysEnableKiteInput(BaseModel):
         rt = self.request_token
         at = self.access_token
         if (rt is None) == (at is None):
-            raise ValueError(
-                "exactly one of request_token or access_token must be provided"
-            )
+            raise ValueError("exactly one of request_token or access_token must be provided")
         return self
 
 

@@ -21,6 +21,7 @@ async def _init_connection(conn: asyncpg.Connection) -> None:
         format="text",
     )
 
+
 _pool: asyncpg.Pool | None = None
 
 

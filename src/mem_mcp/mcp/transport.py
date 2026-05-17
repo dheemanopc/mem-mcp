@@ -89,6 +89,7 @@ def make_mcp_router(
         origin = request.headers.get("origin")
         if origin is not None:
             from urllib.parse import urlparse
+
             parsed = urlparse(origin)
             host = request.headers.get("host", "")
             if parsed.netloc != host:
@@ -222,6 +223,7 @@ def make_mcp_router(
         origin = request.headers.get("origin")
         if origin is not None:
             from urllib.parse import urlparse
+
             parsed = urlparse(origin)
             host = request.headers.get("host", "")
             if parsed.netloc != host:

@@ -71,18 +71,15 @@ class NativeSkill(ABC):
     name: ClassVar[str]
 
     @abstractmethod
-    def list_tools(self) -> list[ToolDef]:
-        ...
+    def list_tools(self) -> list[ToolDef]: ...
 
     @abstractmethod
     async def call_tool(
         self, tool_name: str, args: BaseModel, ctx: SkillCallContext
-    ) -> BaseModel:
-        ...
+    ) -> BaseModel: ...
 
     @abstractmethod
-    def required_credentials(self) -> list[CredentialSpec]:
-        ...
+    def required_credentials(self) -> list[CredentialSpec]: ...
 
     async def health_check(self) -> bool:
         return True

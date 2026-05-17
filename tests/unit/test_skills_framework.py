@@ -129,15 +129,18 @@ class TestSkillVaultFromSettings:
 class TestAuditMemoryHelpers:
     def test_hash_args_stable_across_dict_order(self) -> None:
         from mem_mcp.skills.audit_memory import hash_args
+
         assert hash_args({"a": 1, "b": 2}) == hash_args({"b": 2, "a": 1})
 
     def test_hash_args_handles_nested(self) -> None:
         from mem_mcp.skills.audit_memory import hash_args
+
         assert hash_args({"a": [1, 2, 3]}) == hash_args({"a": [1, 2, 3]})
         assert hash_args({"a": [1, 2]}) != hash_args({"a": [2, 1]})
 
     def test_build_audit_tags_default(self) -> None:
         from mem_mcp.skills.audit_memory import build_audit_tags
+
         tags = build_audit_tags("kite", "get_holdings", "success")
         assert tags == [
             "ai-trader-event",
@@ -148,8 +151,11 @@ class TestAuditMemoryHelpers:
 
     def test_build_audit_tags_dedupes_extra(self) -> None:
         from mem_mcp.skills.audit_memory import build_audit_tags
+
         tags = build_audit_tags(
-            "kite", "get_holdings", "success",
+            "kite",
+            "get_holdings",
+            "success",
             extra_tags=["symbol-RECLTD", "skill-kite"],  # dup of auto-tag
         )
         assert tags.count("skill-kite") == 1
@@ -159,9 +165,16 @@ class TestAuditMemoryHelpers:
         from uuid import uuid4
 
         from mem_mcp.skills.audit_memory import build_audit_metadata
+
         m = build_audit_metadata(
-            "kite", "place_order", {"x": 1}, "error", 100, uuid4(),
-            error_code="kite_rejected", error_message="insufficient funds " * 100,
+            "kite",
+            "place_order",
+            {"x": 1},
+            "error",
+            100,
+            uuid4(),
+            error_code="kite_rejected",
+            error_message="insufficient funds " * 100,
         )
         assert m["error_code"] == "kite_rejected"
         assert len(m["error_message"]) == 500  # truncated
@@ -170,16 +183,19 @@ class TestAuditMemoryHelpers:
         from uuid import uuid4
 
         from mem_mcp.skills.audit_memory import build_audit_metadata
+
         m = build_audit_metadata("kite", "get_quote", {}, "success", 10, uuid4())
         assert "error_code" not in m
         assert "error_message" not in m
 
     def test_should_audit_default_true(self) -> None:
         from mem_mcp.skills.audit_memory import should_audit
+
         assert should_audit(None, "anything") is True
 
     def test_should_audit_respects_policy(self) -> None:
         from mem_mcp.skills.audit_memory import should_audit
+
         policy = {"get_quote": False, "place_order": True}
         assert should_audit(policy, "get_quote") is False
         assert should_audit(policy, "place_order") is True
@@ -187,6 +203,7 @@ class TestAuditMemoryHelpers:
 
     def test_parse_enabled_skills_variants(self) -> None:
         from mem_mcp.skills.loader import parse_enabled_skills
+
         assert parse_enabled_skills("") == []
         assert parse_enabled_skills(" ") == []
         assert parse_enabled_skills("kite") == ["kite"]
@@ -267,9 +284,7 @@ class TestSkillLoaderRegistration:
         from mem_mcp.skills.vault import SkillVault
 
         reg = ToolRegistry()
-        SkillLoader(vault=SkillVault(os.urandom(32))).register_skill(
-            reg, self._fake_skill()
-        )
+        SkillLoader(vault=SkillVault(os.urandom(32))).register_skill(reg, self._fake_skill())
         defs = reg.list_definitions()
         by_name = {d["name"]: d for d in defs}
         assert by_name["stub_echo"]["required_scope"] == "memory.read"
@@ -283,9 +298,7 @@ class TestSkillLoaderRegistration:
         from mem_mcp.skills.vault import SkillVault
 
         reg = ToolRegistry()
-        SkillLoader(vault=SkillVault(os.urandom(32))).register_skill(
-            reg, self._fake_skill()
-        )
+        SkillLoader(vault=SkillVault(os.urandom(32))).register_skill(reg, self._fake_skill())
         defs = reg.list_definitions()
         echo = next(d for d in defs if d["name"] == "stub_echo")
         assert echo["inputSchema"]["properties"]["x"]["type"] == "integer"
