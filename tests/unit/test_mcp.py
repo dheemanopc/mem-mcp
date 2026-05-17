@@ -36,9 +36,17 @@ def _ctx(scopes: tuple[str, ...] = ("memory.read", "memory.write")) -> ToolConte
 
 def _build_app(registry: ToolRegistry, scopes: tuple[str, ...] = ("memory.read",)) -> TestClient:
     """Build a FastAPI app with /mcp wired + a fake middleware that injects tenant_ctx."""
+    from mem_mcp.audit.logger import NoopAuditLogger
+    from mem_mcp.mcp.tools._deps import ToolDeps, NoopQuotas
+
     app = FastAPI()
     fake_db = MagicMock()
-    app.include_router(make_mcp_router(registry=registry, db_pool=fake_db))
+    deps = ToolDeps(
+        embeddings=MagicMock(),
+        audit=NoopAuditLogger(),
+        quotas=NoopQuotas(),
+    )
+    app.include_router(make_mcp_router(registry=registry, db_pool=fake_db, deps=deps))
 
     @app.middleware("http")
     async def _inject_ctx(request, call_next):  # type: ignore[no-untyped-def]

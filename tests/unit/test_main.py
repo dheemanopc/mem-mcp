@@ -11,6 +11,47 @@ from mem_mcp.health import CheckResult
 from mem_mcp.main import create_app
 
 # ---------------------------------------------------------------------------
+# Settings stub fixture
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _stub_settings(monkeypatch):
+    """Stub get_settings + bearer middleware build so no AWS calls happen in unit tests."""
+    from mem_mcp.config import Settings
+
+    fake = Settings.model_construct(
+        region="ap-south-1",
+        db_dsn="postgres://stub",
+        db_maint_dsn="postgres://stub",
+        cognito_user_pool_id="stub_pool",
+        cognito_domain="stub.example.com",
+        resource_url="https://stub.example/mcp",
+        web_url="https://stub.example",
+        web_client_id="stub_client",
+        web_client_secret="stub_secret",
+        internal_lambda_secret="stub_lambda",
+        ses_from="noreply@stub.example",
+        backup_bucket="stub-bucket",
+        backup_gpg_passphrase="stub_gpg",
+        web_session_secret="stub_session",
+        link_state_secret="stub_link",
+        bedrock_model_id="amazon.titan-embed-text-v2:0",
+        log_level="INFO",
+        skill_vault_master_key=None,
+        enabled_skills="",
+    )
+    monkeypatch.setattr("mem_mcp.config.get_settings", lambda: fake)
+    monkeypatch.setattr("mem_mcp.main.get_settings", lambda: fake)
+
+    # Also stub bearer middleware build so it doesn't try to construct Cognito clients.
+    async def _passthrough(request, call_next):
+        return await call_next(request)
+
+    monkeypatch.setattr("mem_mcp.main._build_bearer_dispatch", lambda: _passthrough)
+
+
+# ---------------------------------------------------------------------------
 # Fake HealthChecker
 # ---------------------------------------------------------------------------
 

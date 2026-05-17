@@ -23,6 +23,7 @@ class EchoTool(BaseTool):
     """Echo back the input message + request_id (test-only tool)."""
 
     name: ClassVar[str] = "_test.echo"
+    description: ClassVar[str] = "Echo tool — test fixture, never registered in production."
     required_scope: ClassVar[str] = "memory.read"
     InputModel: ClassVar[type[BaseModel]] = EchoInput
     OutputModel: ClassVar[type[BaseModel]] = EchoOutput
