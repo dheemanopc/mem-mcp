@@ -26,8 +26,11 @@ log() {
 #=============================================================================
 # Step 1: Wait for cloud-init base packages to settle
 #=============================================================================
-log "Step 1: Waiting for cloud-init"
-cloud-init status --wait || true
+log "Step 1: Waiting for cloud-init (skipped — see comment)"
+# cloud-init status --wait was hanging indefinitely on the production AMI even
+# with `|| true`. Skipping the wait entirely; subsequent steps validate their
+# own prereqs (apt/yum lock contention is handled by individual install steps).
+true
 
 #=============================================================================
 # Step 2: Pull SSM parameters into /etc/mem-mcp/env
@@ -113,7 +116,7 @@ SQL
 #=============================================================================
 log "Step 4: Python deps + Alembic upgrade"
 chown -R memmcp:memmcp "$REPO_DIR"
-su - memmcp -c "cd $REPO_DIR && \$HOME/.local/bin/poetry install --no-dev"
+su - memmcp -c "cd $REPO_DIR && \$HOME/.local/bin/poetry install --without dev"
 su - memmcp -c "cd $REPO_DIR && \
   set -a && source $ENV_FILE && set +a && \
   \$HOME/.local/bin/poetry run alembic upgrade head"

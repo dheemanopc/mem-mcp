@@ -112,6 +112,14 @@ Parameters:
     MaxValue: 1000
     Description: Monthly AWS cost budget (80% threshold triggers SNS alert)
 
+  DeployerPrincipalArn:
+    Type: String
+    AllowedPattern: '^arn:aws:iam::[0-9]{12}:(user|role)/.+$'
+    Description: |
+      IAM principal ARN (user or role) that runs CloudFormation deploys.
+      Passed to StorageStack so the backup-bucket DenyNonInstanceRoleAccess
+      statement does not lock CFN out during stack updates.
+
 Resources:
   # ============================================================================
   # 010-network: VPC, subnet, IGW, security group
@@ -155,6 +163,7 @@ Resources:
       Parameters:
         KmsKeyAlias: !Ref KmsKeyAlias
         BackupRetentionDays: !Ref BackupRetentionDays
+        DeployerPrincipalArn: !Ref DeployerPrincipalArn
       Tags:
         - Key: Name
           Value: !Sub '${AWS::StackName}-storage'

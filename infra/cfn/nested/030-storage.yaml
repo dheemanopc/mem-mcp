@@ -29,6 +29,15 @@ Parameters:
     MaxValue: 3650
     Description: Days to retain noncurrent (overwritten) versions before expiry.
 
+  DeployerPrincipalArn:
+    Type: String
+    AllowedPattern: '^arn:aws:iam::[0-9]{12}:(user|role)/.+$'
+    Description: |
+      IAM principal ARN (user or role) that runs CloudFormation deploys.
+      Included in the DenyNonInstanceRoleAccess allowlist alongside
+      mem-mcp-instance-role and the root account so CFN updates do not
+      lock themselves out via the bucket-policy Deny statement.
+
 Resources:
   BackupBucket:
     Type: AWS::S3::Bucket
@@ -122,6 +131,7 @@ Resources:
                 aws:PrincipalArn:
                   - !Sub 'arn:aws:iam::${AWS::AccountId}:role/mem-mcp-instance-role'
                   - !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+                  - !Ref DeployerPrincipalArn
               Bool:
                 aws:PrincipalIsAWSService: 'false'
 
