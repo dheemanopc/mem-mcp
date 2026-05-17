@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, field_validator
 
 from mem_mcp.db import tenant_tx
 from mem_mcp.mcp.errors import JsonRpcError
+from mem_mcp.mcp.tool_descriptions import TOOL_DESCRIPTIONS
 from mem_mcp.mcp.tools._base import BaseTool, ToolContext
 from mem_mcp.memory.normalize import hash_content
 from mem_mcp.memory.versioning import VERSIONED_TYPES
@@ -54,6 +55,13 @@ class MemoryUpdateInput(BaseModel):
             raise ValueError("duplicate tags")
         return v
 
+    @field_validator("metadata", mode="after")
+    @classmethod
+    def _validate_metadata(cls, v: dict[str, Any] | None) -> dict[str, Any] | None:
+        if v is not None and len(json.dumps(v)) > 16_384:
+            raise ValueError("metadata exceeds 16 KB serialized limit")
+        return v
+
 
 class MemoryUpdateOutput(BaseModel):
     id: UUID
@@ -66,7 +74,8 @@ class MemoryUpdateOutput(BaseModel):
 class MemoryUpdateTool(BaseTool):
     """Update a memory in-place or create a new version (T-7.2)."""
 
-    name: ClassVar[str] = "memory.update"
+    name: ClassVar[str] = "memory_update"
+    description: ClassVar[str] = TOOL_DESCRIPTIONS["memory_update"]
     required_scope: ClassVar[str] = "memory.write"
     InputModel: ClassVar[type[BaseModel]] = MemoryUpdateInput
     OutputModel: ClassVar[type[BaseModel]] = MemoryUpdateOutput

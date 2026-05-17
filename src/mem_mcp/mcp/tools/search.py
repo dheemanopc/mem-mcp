@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from mem_mcp.db import tenant_tx
 from mem_mcp.embeddings.bedrock import EmbeddingError
 from mem_mcp.mcp.errors import JsonRpcError
+from mem_mcp.mcp.tool_descriptions import TOOL_DESCRIPTIONS
 from mem_mcp.mcp.tools._base import BaseTool, ToolContext
 from mem_mcp.memory.hybrid_query import (
     SEARCH_DEFAULT_W_KW,
@@ -34,6 +35,7 @@ class MemorySearchInput(BaseModel):
     limit: int = Field(default=10, ge=1, le=50)
     include_history: bool = False
     recency_lambda: float | None = Field(default=None, ge=0.0, le=1.0)
+    parent_id: UUID | None = None
 
 
 class SearchResultItem(BaseModel):
@@ -57,7 +59,8 @@ class MemorySearchOutput(BaseModel):
 class MemorySearchTool(BaseTool):
     """Hybrid retrieval over memories (semantic U keyword, recency-decayed)."""
 
-    name: ClassVar[str] = "memory.search"
+    name: ClassVar[str] = "memory_search"
+    description: ClassVar[str] = TOOL_DESCRIPTIONS["memory_search"]
     required_scope: ClassVar[str] = "memory.read"
     InputModel: ClassVar[type[BaseModel]] = MemorySearchInput
     OutputModel: ClassVar[type[BaseModel]] = MemorySearchOutput
@@ -95,6 +98,7 @@ class MemorySearchTool(BaseTool):
             recency_lambda=recency,
             w_sem=SEARCH_DEFAULT_W_SEM,
             w_kw=SEARCH_DEFAULT_W_KW,
+            parent_id=inp.parent_id,
         )
 
         async with tenant_tx(ctx.db_pool, ctx.tenant_id) as conn:
@@ -112,6 +116,7 @@ class MemorySearchTool(BaseTool):
                     "result_count": len(results),
                     "embed_tokens": qembed.input_tokens,
                     "type": inp.type,
+                    "parent_id": str(inp.parent_id) if inp.parent_id is not None else None,
                 },
             )
             await ctx.deps.quotas.increment_read(ctx.tenant_id, qembed.input_tokens)

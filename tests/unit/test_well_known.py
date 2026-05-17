@@ -48,7 +48,8 @@ class TestProtectedResourceMetadata:
 
     def test_scopes_supported_default(self) -> None:
         body = _build_client().get("/.well-known/oauth-protected-resource").json()
-        assert body["scopes_supported"] == list(DEFAULT_MCP_SCOPES)
+        expected = [f"{_RESOURCE}/{s}" for s in DEFAULT_MCP_SCOPES]
+        assert body["scopes_supported"] == expected
 
     def test_bearer_methods(self) -> None:
         body = _build_client().get("/.well-known/oauth-protected-resource").json()
@@ -99,7 +100,8 @@ class TestAuthorizationServerMetadata:
         for s in ("openid", "email", "profile"):
             assert s in scopes
         for s in DEFAULT_MCP_SCOPES:
-            assert s in scopes
+            qualified = f"{_RESOURCE}/{s}"
+            assert qualified in scopes
 
     def test_response_and_grant_types(self) -> None:
         body = _build_client().get("/.well-known/oauth-authorization-server").json()
@@ -130,9 +132,10 @@ class TestCustomScopes:
     def test_custom_mcp_scopes_propagate(self) -> None:
         client = _build_client(mcp_scopes=("custom.scope1", "custom.scope2"))
         prm = client.get("/.well-known/oauth-protected-resource").json()
-        assert prm["scopes_supported"] == ["custom.scope1", "custom.scope2"]
+        expected_prm = [f"{_RESOURCE}/custom.scope1", f"{_RESOURCE}/custom.scope2"]
+        assert prm["scopes_supported"] == expected_prm
         asm = client.get("/.well-known/oauth-authorization-server").json()
-        assert "custom.scope1" in asm["scopes_supported"]
-        assert "custom.scope2" in asm["scopes_supported"]
+        assert f"{_RESOURCE}/custom.scope1" in asm["scopes_supported"]
+        assert f"{_RESOURCE}/custom.scope2" in asm["scopes_supported"]
         # OIDC standard scopes still present
         assert "openid" in asm["scopes_supported"]

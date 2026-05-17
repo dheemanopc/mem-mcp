@@ -128,6 +128,62 @@ Resources:
         - Key: Component
           Value: network
 
+  FlowLogRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: mem-mcp-flow-logs-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: vpc-flow-logs.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CloudWatchLogsPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:DescribeLogGroups
+                  - logs:DescribeLogStreams
+                Resource: arn:aws:logs:*:*:*
+
+  VpcFlowLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/mem-mcp/vpc-flow-logs/${AWS::StackName}'
+      RetentionInDays: 90
+      Tags:
+        - Key: Name
+          Value: mem-mcp-vpc-flow-logs
+        - Key: Project
+          Value: mem-mcp
+        - Key: Component
+          Value: network
+
+  VpcFlowLog:
+    Type: AWS::EC2::FlowLog
+    Properties:
+      ResourceId: !Ref Vpc
+      ResourceType: VPC
+      TrafficType: ALL
+      LogDestinationType: cloud-watch-logs
+      LogGroupName: !Ref VpcFlowLogGroup
+      DeliverLogsPermissionArn: !GetAtt FlowLogRole.Arn
+      LogFormat: '${version} ${account-id} ${interface-id} ${srcaddr} ${dstaddr} ${srcport} ${dstport} ${protocol} ${packets} ${bytes} ${start} ${end} ${action} ${log-status}'
+      Tags:
+        - Key: Name
+          Value: mem-mcp-vpc-flow-log
+        - Key: Project
+          Value: mem-mcp
+        - Key: Component
+          Value: network
+
 Outputs:
   VpcId:
     Description: VPC ID

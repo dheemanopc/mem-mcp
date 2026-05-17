@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict
 
 from mem_mcp.db import tenant_tx
 from mem_mcp.mcp.errors import JsonRpcError
+from mem_mcp.mcp.tool_descriptions import TOOL_DESCRIPTIONS
 from mem_mcp.mcp.tools._base import BaseTool, ToolContext
 
 
@@ -30,7 +31,8 @@ class MemoryExportOutput(BaseModel):
 class MemoryExportTool(BaseTool):
     """Export full JSON dump of all memories + audit_log for tenant (DPDP right to access)."""
 
-    name: ClassVar[str] = "memory.export"
+    name: ClassVar[str] = "memory_export"
+    description: ClassVar[str] = TOOL_DESCRIPTIONS["memory_export"]
     required_scope: ClassVar[str] = "memory.admin"
     InputModel: ClassVar[type[BaseModel]] = MemoryExportInput
     OutputModel: ClassVar[type[BaseModel]] = MemoryExportOutput

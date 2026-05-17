@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from mem_mcp.db import tenant_tx
 from mem_mcp.mcp.errors import JsonRpcError
+from mem_mcp.mcp.tool_descriptions import TOOL_DESCRIPTIONS
 from mem_mcp.mcp.tools._base import BaseTool, ToolContext
 
 MemoryType = Literal["note", "decision", "fact", "snippet", "question"]
@@ -76,7 +77,8 @@ def _decode_cursor(cursor: str) -> tuple[str, str]:
 class MemoryListTool(BaseTool):
     """List memories with pagination, filtering, and sorting."""
 
-    name: ClassVar[str] = "memory.list"
+    name: ClassVar[str] = "memory_list"
+    description: ClassVar[str] = TOOL_DESCRIPTIONS["memory_list"]
     required_scope: ClassVar[str] = "memory.read"
     InputModel: ClassVar[type[BaseModel]] = MemoryListInput
     OutputModel: ClassVar[type[BaseModel]] = MemoryListOutput

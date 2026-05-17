@@ -1,5 +1,4 @@
 {
-  "additionalProperties": false,
   "description": "RFC 7591 request body.",
   "properties": {
     "client_name": {
@@ -55,10 +54,17 @@
       "type": "string"
     },
     "software_id": {
-      "maxLength": 128,
-      "minLength": 1,
-      "title": "Software Id",
-      "type": "string"
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Software Id"
     },
     "software_version": {
       "anyOf": [
@@ -74,16 +80,18 @@
       "title": "Software Version"
     },
     "token_endpoint_auth_method": {
-      "const": "none",
       "default": "none",
+      "enum": [
+        "none",
+        "client_secret_post"
+      ],
       "title": "Token Endpoint Auth Method",
       "type": "string"
     }
   },
   "required": [
     "client_name",
-    "redirect_uris",
-    "software_id"
+    "redirect_uris"
   ],
   "title": "DcrInput",
   "type": "object"

@@ -46,6 +46,7 @@ class BaseTool(Protocol):
     """
 
     name: ClassVar[str]
+    description: ClassVar[str]
     required_scope: ClassVar[str]
     InputModel: ClassVar[type[BaseModel]]
     OutputModel: ClassVar[type[BaseModel]]

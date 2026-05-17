@@ -56,7 +56,7 @@ Resources:
               Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/mem-mcp/internal/lambda/secret'
             - Effect: Allow
               Action: kms:Decrypt
-              Resource: !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/*'
+              Resource: !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:${KmsKeyAlias}'
               Condition:
                 StringEquals:
                   kms:EncryptionContext:PARAMETER_ARN: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/mem-mcp/internal/lambda/secret'

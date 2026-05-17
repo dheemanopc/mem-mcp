@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict
 
 from mem_mcp.db import tenant_tx
 from mem_mcp.mcp.errors import JsonRpcError
+from mem_mcp.mcp.tool_descriptions import TOOL_DESCRIPTIONS
 from mem_mcp.mcp.tools._base import BaseTool, ToolContext
 from mem_mcp.quotas.tiers import resolve_tier
 
@@ -60,7 +61,8 @@ class MemoryStatsOutput(BaseModel):
 class MemoryStatsTool(BaseTool):
     """Return aggregate statistics and quota info for the tenant."""
 
-    name: ClassVar[str] = "memory.stats"
+    name: ClassVar[str] = "memory_stats"
+    description: ClassVar[str] = TOOL_DESCRIPTIONS["memory_stats"]
     required_scope: ClassVar[str] = "memory.read"
     InputModel: ClassVar[type[BaseModel]] = MemoryStatsInput
     OutputModel: ClassVar[type[BaseModel]] = MemoryStatsOutput

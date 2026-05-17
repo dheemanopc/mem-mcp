@@ -65,6 +65,7 @@ AUDIT_ACTIONS: tuple[str, ...] = (
     "memory.supersede",
     "memory.export",
     "memory.feedback",
+    "memory.thread_get",
     "memory.dedupe_merged",
     # quotas / abuse
     "quota.exceeded",
@@ -99,6 +100,7 @@ AuditAction = Literal[
     "memory.supersede",
     "memory.export",
     "memory.feedback",
+    "memory.thread_get",
     "memory.dedupe_merged",
     "quota.exceeded",
     "ratelimit.exceeded",

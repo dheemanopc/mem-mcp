@@ -11,6 +11,17 @@ import asyncpg  # type: ignore[import-untyped]
 
 from mem_mcp.config import get_settings
 
+
+async def _init_connection(conn: asyncpg.Connection) -> None:
+    await conn.set_type_codec(
+        "vector",
+        encoder=lambda v: "[" + ",".join(map(str, v)) + "]",
+        decoder=lambda s: [float(x) for x in s[1:-1].split(",")],
+        schema="public",
+        format="text",
+    )
+
+
 _pool: asyncpg.Pool | None = None
 
 
@@ -29,6 +40,7 @@ async def init_pool(dsn: str | None = None) -> asyncpg.Pool:
         max_size=10,
         command_timeout=30,
         server_settings={"application_name": "mem-mcp"},
+        init=_init_connection,
     )
     return _pool
 

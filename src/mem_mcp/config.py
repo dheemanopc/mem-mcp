@@ -47,6 +47,12 @@ class Settings(BaseSettings):
     backup_gpg_passphrase: str
     web_session_secret: str
     link_state_secret: str
+    # Skill framework — base64-encoded 32-byte AES-256 master key for the
+    # tenant_skill_credentials vault. None disables the skill framework at boot.
+    skill_vault_master_key: str | None = None
+    # Skill framework — comma-separated allowlist of enabled skill names
+    # (e.g., "kite,github"). Empty string disables all skills.
+    enabled_skills: str = ""
     bedrock_model_id: str = "amazon.titan-embed-text-v2:0"
     log_level: str = "INFO"
 

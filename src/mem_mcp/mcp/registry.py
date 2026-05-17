@@ -33,9 +33,7 @@ class ToolRegistry:
             defs.append(
                 {
                     "name": name,
-                    "description": (cls.__doc__ or "").strip().splitlines()[0]
-                    if cls.__doc__
-                    else "",
+                    "description": cls.description,
                     "inputSchema": cls.InputModel.model_json_schema(),
                     "outputSchema": cls.OutputModel.model_json_schema(),
                     "required_scope": cls.required_scope,
@@ -87,11 +85,6 @@ class ToolRegistry:
         except JsonRpcError:
             raise
         except Exception as exc:
-            # Don't leak internals; log with full stack via structlog (caller does).
-            raise JsonRpcError(
-                -32603,
-                "internal error",
-                data={"detail": type(exc).__name__},
-            ) from exc
+            raise JsonRpcError(-32603, "internal error") from exc
 
         return output.model_dump(mode="json")

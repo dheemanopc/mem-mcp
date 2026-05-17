@@ -47,10 +47,36 @@ GLOBAL_WINDOW_SECONDS = 86400  # 1 day
 _COGNITO_CLIENT_NAME_RE = re.compile(r"[^\w\s+=,.@-]+")
 _LOCALHOST_HOSTS = ("localhost", "127.0.0.1")
 
+
 # v1 delta: SupportedIdentityProviders is Google-only (LLD §0)
 _SUPPORTED_IDPS = ("Google",)
 
 AllowedSoftwareStatus = Literal["allowed", "blocked", "pending_review", "revoked", "unknown"]
+
+# Map of client_name (lowercased, trimmed) → canonical software_id, used when
+# the DCR request omits `software_id` (Claude.ai and many other MCP clients
+# don't send it, even though we still want to gate via allowed_software).
+_CLIENT_NAME_TO_SOFTWARE_ID = {
+    "claude": "claude-ai",
+    "claude.ai": "claude-ai",
+    "claude code": "claude-code",
+    "chatgpt": "chatgpt",
+    "cursor": "cursor",
+    "perplexity": "perplexity",
+}
+
+
+def _derive_software_id(client_name: str) -> str:
+    """Best-effort derivation of software_id from client_name.
+
+    Tries the explicit alias map first; falls back to a slugified client_name
+    so the allowed_software lookup still produces a deterministic result
+    (which will then be allowed/blocked by the operator-curated allowlist).
+    """
+    key = client_name.strip().lower()
+    if key in _CLIENT_NAME_TO_SOFTWARE_ID:
+        return _CLIENT_NAME_TO_SOFTWARE_ID[key]
+    return key.replace(" ", "-").replace(".", "-")
 
 
 # --------------------------------------------------------------------------
@@ -61,7 +87,7 @@ AllowedSoftwareStatus = Literal["allowed", "blocked", "pending_review", "revoked
 class DcrInput(BaseModel):
     """RFC 7591 request body."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     client_name: str = Field(..., max_length=128)
     client_uri: str | None = None
@@ -70,9 +96,9 @@ class DcrInput(BaseModel):
         default=["authorization_code", "refresh_token"],
     )
     response_types: list[str] = Field(default=["code"])
-    token_endpoint_auth_method: Literal["none"] = "none"
+    token_endpoint_auth_method: Literal["none", "client_secret_post"] = "none"
     scope: str = "memory.read memory.write"
-    software_id: str = Field(..., min_length=1, max_length=128)
+    software_id: str | None = Field(default=None, max_length=128)
     software_version: str | None = Field(default=None, max_length=64)
 
     @field_validator("redirect_uris")
@@ -114,11 +140,7 @@ class DcrInput(BaseModel):
     @field_validator("scope")
     @classmethod
     def _validate_scope(cls, scope: str) -> str:
-        requested = scope.split()
-        for s in requested:
-            if s not in DEFAULT_MCP_SCOPES:
-                raise ValueError(f"unknown scope {s!r}; allowed: {sorted(DEFAULT_MCP_SCOPES)}")
-        if not requested:
+        if not scope.split():
             raise ValueError("scope must contain at least one entry")
         return scope
 
@@ -185,12 +207,40 @@ class RateLimiter(Protocol):
 class BotoCognitoClientFactory:
     """Production CognitoClientFactory using boto3 cognito-idp."""
 
+    # Standard OIDC scopes that are NOT prefixed with the resource server identifier
+    _OIDC_SCOPES = frozenset({"openid", "email", "profile", "phone", "address"})
+
     def __init__(
-        self, user_pool_id: str, region: str, supported_idps: tuple[str, ...] = _SUPPORTED_IDPS
+        self,
+        user_pool_id: str,
+        region: str,
+        resource_server_identifier: str | None = None,
+        supported_idps: tuple[str, ...] = _SUPPORTED_IDPS,
     ) -> None:
         self.user_pool_id = user_pool_id
         self.region = region
+        self.resource_server_identifier = resource_server_identifier
         self.supported_idps = supported_idps
+
+    def _qualify_scopes(self, scopes: list[str]) -> list[str]:
+        """Prefix custom scopes with the resource server identifier.
+
+        Cognito requires custom scopes to be referenced as
+        `<resource_server_identifier>/<scope_name>` (e.g.,
+        `https://memsys.dheemantech.in/memory.read`). Standard OIDC scopes
+        are passed through unchanged. If no identifier is configured, scopes
+        are passed through unchanged (preserves test fakes).
+        """
+        if not self.resource_server_identifier:
+            return list(scopes)
+        prefix = self.resource_server_identifier.rstrip("/")
+        out: list[str] = []
+        for s in scopes:
+            if s in self._OIDC_SCOPES or "/" in s:
+                out.append(s)
+            else:
+                out.append(f"{prefix}/{s}")
+        return out
 
     async def create_user_pool_client(
         self, *, client_name: str, callback_urls: list[str], scopes: list[str]
@@ -200,6 +250,8 @@ class BotoCognitoClientFactory:
 
         import boto3  # type: ignore[import-untyped]
 
+        qualified = self._qualify_scopes(scopes)
+
         def _call() -> str:
             client = boto3.client("cognito-idp", region_name=self.region)
             response = client.create_user_pool_client(
@@ -207,7 +259,7 @@ class BotoCognitoClientFactory:
                 ClientName=client_name,
                 AllowedOAuthFlows=["code"],
                 AllowedOAuthFlowsUserPoolClient=True,
-                AllowedOAuthScopes=scopes,
+                AllowedOAuthScopes=qualified,
                 CallbackURLs=callback_urls,
                 SupportedIdentityProviders=list(self.supported_idps),
                 GenerateSecret=False,
@@ -395,13 +447,16 @@ def make_dcr_router(
                 headers={"Retry-After": str(GLOBAL_WINDOW_SECONDS)},
             )
 
-        # FR-6.5.7: allowlist check
-        soft_status = await software_lookup.status(payload.software_id)
+        # FR-6.5.7: allowlist check.
+        # Many MCP clients (Claude.ai included) omit software_id in DCR; derive
+        # a canonical id from client_name so the allowlist still gates access.
+        effective_software_id = payload.software_id or _derive_software_id(payload.client_name)
+        soft_status = await software_lookup.status(effective_software_id)
         if soft_status != "allowed":
             # TODO(T-5.12): audit oauth.dcr_rejected
             _log.warning(
                 "dcr_rejected",
-                software_id=payload.software_id,
+                software_id=effective_software_id,
                 status=soft_status,
                 ip=ip,
             )
@@ -409,19 +464,25 @@ def make_dcr_router(
                 status_code=403,
                 detail={
                     "error": "unauthorized_client",
-                    "error_description": f"software_id {payload.software_id!r} status={soft_status}",
+                    "error_description": f"software_id {effective_software_id!r} status={soft_status}",
                 },
             )
 
         # FR-6.5.8: sanitize client name
         sanitized_name = _sanitize_client_name(payload.client_name)
 
+        # Ensure all MCP scopes are granted for any client that passed the allowlist.
+        # Clients like ChatGPT may request only a subset of advertised scopes; we
+        # expand to the full MCP set so no tool is blocked by a missing scope.
+        requested = set(payload.scope.split())
+        effective_scopes = sorted(requested | set(DEFAULT_MCP_SCOPES))
+
         # Create in Cognito
         try:
             cognito_client_id = await cognito_factory.create_user_pool_client(
                 client_name=sanitized_name,
                 callback_urls=payload.redirect_uris,
-                scopes=payload.scope.split(),
+                scopes=effective_scopes,
             )
         except Exception as exc:
             # Catch all exceptions from boto3 API call
@@ -437,15 +498,23 @@ def make_dcr_router(
         # Persist
         await client_store.insert(
             client_id=cognito_client_id,
-            software_id=payload.software_id,
+            software_id=effective_software_id,
             client_name=sanitized_name,
             redirect_uris=payload.redirect_uris,
-            scope=payload.scope,
+            scope=" ".join(effective_scopes),
             registration_payload=payload.model_dump(),
             registration_access_token_hash=token_hash,
         )
 
         # TODO(T-5.12): audit oauth.dcr_register
+
+        # Qualify custom scopes in the response so Claude builds the correct
+        # authorization URL (Cognito requires <resource_server_id>/<scope>).
+        _OIDC = frozenset({"openid", "email", "profile", "phone", "address"})  # noqa: N806
+        _prefix = resource_url.rstrip("/")
+        qualified_scope = " ".join(
+            s if (s in _OIDC or "/" in s) else f"{_prefix}/{s}" for s in effective_scopes
+        )
 
         out = DcrOutput(
             client_id=cognito_client_id,
@@ -453,8 +522,8 @@ def make_dcr_router(
             redirect_uris=payload.redirect_uris,
             grant_types=payload.grant_types,
             response_types=payload.response_types,
-            token_endpoint_auth_method=payload.token_endpoint_auth_method,
-            scope=payload.scope,
+            token_endpoint_auth_method="none",
+            scope=qualified_scope,
             registration_access_token=plaintext_token,
             registration_client_uri=f"{resource_url}/oauth/register/{cognito_client_id}",
         )

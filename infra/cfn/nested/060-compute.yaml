@@ -153,7 +153,9 @@ Resources:
             Action:
               - ses:SendEmail
               - ses:SendRawEmail
-            Resource: '*'
+            Resource:
+              - !Sub 'arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/noreply@${DomainName}'
+              - !Sub 'arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/support@${DomainName}'
             Condition:
               StringLike:
                 ses:FromAddress:
@@ -288,7 +290,11 @@ Resources:
         - !Ref SecurityGroupId
       IamInstanceProfile: !Ref InstanceProfile
       DisableApiTermination: true
-      Monitoring: false
+      Monitoring: true
+      MetadataOptions:
+        HttpTokens: required
+        HttpPutResponseHopLimit: 1
+        HttpEndpoint: enabled
       BlockDeviceMappings:
         - DeviceName: /dev/sda1
           Ebs:

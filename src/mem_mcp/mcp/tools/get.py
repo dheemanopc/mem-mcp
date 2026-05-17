@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict
 
 from mem_mcp.db import tenant_tx
 from mem_mcp.mcp.errors import JsonRpcError
+from mem_mcp.mcp.tool_descriptions import TOOL_DESCRIPTIONS
 from mem_mcp.mcp.tools._base import BaseTool, ToolContext
 
 
@@ -43,7 +44,8 @@ class MemoryGetOutput(BaseModel):
 class MemoryGetTool(BaseTool):
     """Fetch one memory by id (current version + history if requested)."""
 
-    name: ClassVar[str] = "memory.get"
+    name: ClassVar[str] = "memory_get"
+    description: ClassVar[str] = TOOL_DESCRIPTIONS["memory_get"]
     required_scope: ClassVar[str] = "memory.read"
     InputModel: ClassVar[type[BaseModel]] = MemoryGetInput
     OutputModel: ClassVar[type[BaseModel]] = MemoryGetOutput

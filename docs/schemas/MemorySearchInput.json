@@ -13,6 +13,19 @@
       "title": "Limit",
       "type": "integer"
     },
+    "parent_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Parent Id"
+    },
     "query": {
       "maxLength": 2048,
       "minLength": 1,

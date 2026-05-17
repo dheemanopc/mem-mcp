@@ -73,6 +73,7 @@ class TestMemoryDelete:
             "supersedes": None,
             "is_current": True,
             "deleted_at": None,
+            "parent_id": None,
         }
         conn.fetchval.return_value = now
         _patch_tenant_tx(monkeypatch, conn)
@@ -98,6 +99,7 @@ class TestMemoryDelete:
             "supersedes": None,
             "is_current": False,
             "deleted_at": datetime.now(tz=UTC),
+            "parent_id": None,
         }
         _patch_tenant_tx(monkeypatch, conn)
 
@@ -153,6 +155,7 @@ class TestMemoryDelete:
             "supersedes": None,
             "is_current": True,
             "deleted_at": None,
+            "parent_id": None,
         }
         conn.fetch.return_value = [
             {"id": target_id},
@@ -183,6 +186,7 @@ class TestMemoryDelete:
                 "supersedes": prior_id,
                 "is_current": True,
                 "deleted_at": None,
+                "parent_id": None,
             },
             # Lookup prior version (should exist and be live)
             {"id": prior_id},
@@ -209,6 +213,7 @@ class TestMemoryDelete:
             "supersedes": uuid4(),
             "is_current": False,
             "deleted_at": None,
+            "parent_id": None,
         }
         now = datetime.now(tz=UTC)
         conn.fetchval.return_value = now
@@ -232,6 +237,7 @@ class TestMemoryDelete:
             "supersedes": None,  # no prior
             "is_current": True,
             "deleted_at": None,
+            "parent_id": None,
         }
         now = datetime.now(tz=UTC)
         conn.fetchval.return_value = now

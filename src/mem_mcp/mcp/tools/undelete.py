@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict
 
 from mem_mcp.db import tenant_tx
 from mem_mcp.mcp.errors import JsonRpcError
+from mem_mcp.mcp.tool_descriptions import TOOL_DESCRIPTIONS
 from mem_mcp.mcp.tools._base import BaseTool, ToolContext
 from mem_mcp.memory.versioning import VERSIONED_TYPES
 
@@ -26,6 +27,7 @@ class MemoryUndeleteOutput(BaseModel):
     id: UUID
     deleted_at: datetime | None  # null after undelete
     is_current: bool
+    replies_restored_count: int = 0
     request_id: str
 
 
@@ -37,7 +39,8 @@ class MemoryUndeleteTool(BaseTool):
     avoid two siblings being current simultaneously.
     """
 
-    name: ClassVar[str] = "memory.undelete"
+    name: ClassVar[str] = "memory_undelete"
+    description: ClassVar[str] = TOOL_DESCRIPTIONS["memory_undelete"]
     required_scope: ClassVar[str] = "memory.write"
     InputModel: ClassVar[type[BaseModel]] = MemoryUndeleteInput
     OutputModel: ClassVar[type[BaseModel]] = MemoryUndeleteOutput
@@ -50,7 +53,7 @@ class MemoryUndeleteTool(BaseTool):
         async with tenant_tx(ctx.db_pool, ctx.tenant_id) as conn:
             target = await conn.fetchrow(
                 """
-                SELECT id, type, deleted_at, supersedes, superseded_by, is_current,
+                SELECT id, type, deleted_at, supersedes, superseded_by, is_current, parent_id,
                        (now() - deleted_at) AS age
                 FROM memories
                 WHERE id = $1 AND tenant_id = $2
@@ -85,6 +88,8 @@ class MemoryUndeleteTool(BaseTool):
                         "grace_days": UNDELETE_GRACE_DAYS,
                     },
                 )
+
+            root_deleted_at = target["deleted_at"]  # used for reply-cascade reversal below
 
             # FR-9.3.7.2: for versioned chains, ensure no current sibling
             should_be_current = True
@@ -125,6 +130,25 @@ class MemoryUndeleteTool(BaseTool):
                 new_is_current,
             )
 
+            # Reply cascade reversal: only when undeleting a root, restore replies that
+            # were soft-deleted in the same transaction as the root (matched by deleted_at).
+            replies_restored_count = 0
+            if target["parent_id"] is None:
+                restored = await conn.fetch(
+                    """
+                    UPDATE memories
+                    SET deleted_at = NULL, is_current = true
+                    WHERE parent_id = $1
+                      AND tenant_id = $2
+                      AND deleted_at = $3
+                    RETURNING id
+                    """,
+                    inp.id,
+                    ctx.tenant_id,
+                    root_deleted_at,
+                )
+                replies_restored_count = len(restored)
+
             await ctx.deps.audit.audit(
                 conn,
                 action="memory.undelete",
@@ -135,12 +159,16 @@ class MemoryUndeleteTool(BaseTool):
                 target_id=inp.id,
                 target_kind="memory",
                 request_id=ctx.request_id,
-                details={"is_current_after": new_is_current},
+                details={
+                    "is_current_after": new_is_current,
+                    "replies_restored_count": replies_restored_count,
+                },
             )
 
         return MemoryUndeleteOutput(
             id=inp.id,
             deleted_at=row["deleted_at"],
             is_current=row["is_current"],
+            replies_restored_count=replies_restored_count,
             request_id=ctx.request_id,
         )

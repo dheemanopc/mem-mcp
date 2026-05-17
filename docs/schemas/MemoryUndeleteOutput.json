@@ -21,6 +21,11 @@
       "title": "Is Current",
       "type": "boolean"
     },
+    "replies_restored_count": {
+      "default": 0,
+      "title": "Replies Restored Count",
+      "type": "integer"
+    },
     "request_id": {
       "title": "Request Id",
       "type": "string"

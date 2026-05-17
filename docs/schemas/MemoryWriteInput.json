@@ -17,6 +17,19 @@
       "title": "Metadata",
       "type": "object"
     },
+    "parent_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Parent Id"
+    },
     "supersedes": {
       "anyOf": [
         {

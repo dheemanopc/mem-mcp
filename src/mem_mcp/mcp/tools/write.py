@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from mem_mcp.db import tenant_tx
 from mem_mcp.embeddings.bedrock import EmbeddingError
 from mem_mcp.mcp.errors import JsonRpcError
+from mem_mcp.mcp.tool_descriptions import TOOL_DESCRIPTIONS
 from mem_mcp.mcp.tools._base import BaseTool, ToolContext
 from mem_mcp.memory.dedupe import check_dup
 from mem_mcp.memory.normalize import hash_content
@@ -30,6 +31,7 @@ class MemoryWriteInput(BaseModel):
     tags: list[str] = Field(default_factory=list, max_length=32)
     metadata: dict[str, Any] = Field(default_factory=dict)
     supersedes: UUID | None = None
+    parent_id: UUID | None = None
     force_new: bool = False
 
     @field_validator("tags", mode="after")
@@ -46,6 +48,13 @@ class MemoryWriteInput(BaseModel):
             raise ValueError("duplicate tags")
         return v
 
+    @field_validator("metadata", mode="after")
+    @classmethod
+    def _validate_metadata(cls, v: dict[str, Any]) -> dict[str, Any]:
+        if len(json.dumps(v)) > 16_384:
+            raise ValueError("metadata exceeds 16 KB serialized limit")
+        return v
+
     @field_validator("supersedes", mode="after")
     @classmethod
     def _validate_supersedes(cls, v: UUID | None, info: Any) -> UUID | None:
@@ -53,6 +62,13 @@ class MemoryWriteInput(BaseModel):
             type_ = info.data.get("type", "note")
             if type_ not in VERSIONED_TYPES:
                 raise ValueError(f"supersedes only valid for {VERSIONED_TYPES}, got {type_!r}")
+        return v
+
+    @field_validator("parent_id", mode="after")
+    @classmethod
+    def _validate_parent_id(cls, v: UUID | None, info: Any) -> UUID | None:
+        if v is not None and info.data.get("supersedes") is not None:
+            raise ValueError("parent_id and supersedes cannot be combined in the same call")
         return v
 
 
@@ -68,7 +84,8 @@ class MemoryWriteOutput(BaseModel):
 class MemoryWriteTool(BaseTool):
     """Store a memory (or merge into existing duplicate)."""
 
-    name: ClassVar[str] = "memory.write"
+    name: ClassVar[str] = "memory_write"
+    description: ClassVar[str] = TOOL_DESCRIPTIONS["memory_write"]
     required_scope: ClassVar[str] = "memory.write"
     InputModel: ClassVar[type[BaseModel]] = MemoryWriteInput
     OutputModel: ClassVar[type[BaseModel]] = MemoryWriteOutput
@@ -97,9 +114,9 @@ class MemoryWriteTool(BaseTool):
             ) from exc
 
         async with tenant_tx(ctx.db_pool, ctx.tenant_id) as conn:
-            # Dedupe (unless caller forced new)
+            # Dedupe (unless caller forced new or parent_id set)
             existing = None
-            if not inp.force_new:
+            if not inp.force_new and inp.parent_id is None:
                 existing = await check_dup(
                     conn,
                     ctx.tenant_id,
@@ -145,6 +162,116 @@ class MemoryWriteTool(BaseTool):
                     deduped=True,
                     merged_into=existing.existing_id,
                     created_at=row["created_at"],
+                    request_id=ctx.request_id,
+                )
+
+            # parent_id branch: write a reply
+            if inp.parent_id is not None:
+                parent = await conn.fetchrow(
+                    "SELECT id, tags, parent_id, deleted_at FROM memories WHERE id = $1 AND tenant_id = $2",
+                    inp.parent_id,
+                    ctx.tenant_id,
+                )
+                if parent is None:
+                    raise JsonRpcError(
+                        -32602,
+                        "parent_id not found",
+                        data={
+                            "errors": [
+                                {
+                                    "path": "parent_id",
+                                    "message": "parent memory not found in tenant scope",
+                                }
+                            ]
+                        },
+                    )
+                if parent["deleted_at"] is not None:
+                    raise JsonRpcError(
+                        -32602,
+                        "parent_id is soft-deleted",
+                        data={
+                            "errors": [
+                                {
+                                    "path": "parent_id",
+                                    "message": "cannot reply to a deleted memory",
+                                }
+                            ]
+                        },
+                    )
+                if parent["parent_id"] is not None:
+                    raise JsonRpcError(
+                        -32602,
+                        "parent_id refers to a reply (flat hierarchy)",
+                        data={
+                            "errors": [
+                                {
+                                    "path": "parent_id",
+                                    "message": "replies cannot have their own replies",
+                                }
+                            ]
+                        },
+                    )
+                parent_tags = list(parent["tags"] or [])
+                effective_tags = sorted(set(parent_tags) | set(inp.tags))
+                if len(effective_tags) > 32:
+                    raise JsonRpcError(
+                        -32602,
+                        "tag count exceeds 32 after parent inheritance",
+                        data={
+                            "errors": [
+                                {
+                                    "path": "tags",
+                                    "message": f"effective tags = {len(effective_tags)} > 32",
+                                }
+                            ]
+                        },
+                    )
+                reply_row = await conn.fetchrow(
+                    """
+                    INSERT INTO memories (
+                        tenant_id, content, content_hash, embedding,
+                        source_client_id, source_kind,
+                        type, tags, metadata, version, is_current, parent_id
+                    ) VALUES ($1, $2, $3, $4::vector, $5, 'api', $6, $7, $8::jsonb, 1, true, $9)
+                    RETURNING id, version, created_at
+                    """,
+                    ctx.tenant_id,
+                    inp.content,
+                    content_hash,
+                    embed.vector,
+                    ctx.client_id,
+                    inp.type,
+                    effective_tags,
+                    json.dumps(inp.metadata),
+                    inp.parent_id,
+                )
+                await ctx.deps.audit.audit(
+                    conn,
+                    action="memory.write",
+                    result="success",
+                    tenant_id=ctx.tenant_id,
+                    identity_id=ctx.identity_id,
+                    client_id=ctx.client_id,
+                    target_id=reply_row["id"],
+                    target_kind="memory",
+                    request_id=ctx.request_id,
+                    details={
+                        "parent_id": str(inp.parent_id),
+                        "tags": effective_tags,
+                        "inherited_tag_count": len(set(parent_tags) - set(inp.tags)),
+                        "embed_tokens": embed.input_tokens,
+                        "content_length": len(inp.content),
+                        "type": inp.type,
+                        "deduped": False,
+                    },
+                )
+                await ctx.deps.quotas.increment_write(ctx.tenant_id, embed.input_tokens)
+                return MemoryWriteOutput(
+                    id=reply_row["id"],
+                    version=int(reply_row["version"]),
+                    deduped=False,
+                    merged_into=None,
+                    created_at=reply_row["created_at"],
                     request_id=ctx.request_id,
                 )
 

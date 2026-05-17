@@ -134,9 +134,9 @@ class TestDcrInputValidation:
         with pytest.raises(ValidationError):
             DcrInput.model_validate({**_valid_payload(), "redirect_uris": [uri]})
 
-    def test_scope_unknown_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            DcrInput.model_validate({**_valid_payload(), "scope": "memory.read malicious.scope"})
+    def test_scope_unknown_accepted(self) -> None:
+        m = DcrInput.model_validate({**_valid_payload(), "scope": "memory.read malicious.scope"})
+        assert "malicious.scope" in m.scope.split()
 
     def test_scope_valid(self) -> None:
         m = DcrInput.model_validate(
@@ -144,9 +144,12 @@ class TestDcrInputValidation:
         )
         assert "memory.admin" in m.scope.split()
 
-    def test_extra_field_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            DcrInput.model_validate({**_valid_payload(), "junk_field": "value"})
+    def test_extra_fields_ignored(self) -> None:
+        payload = {**_valid_payload(), "junk_field": "value", "unknown_prop": "ignored"}
+        m = DcrInput.model_validate(payload)
+        dumped = m.model_dump()
+        assert "junk_field" not in dumped
+        assert "unknown_prop" not in dumped
 
     def test_too_many_redirect_uris(self) -> None:
         with pytest.raises(ValidationError):
@@ -195,7 +198,10 @@ class TestDcrEndpointSuccess:
         assert body["client_secret_expires_at"] == 0
         assert body["redirect_uris"] == ["http://localhost:8080/callback"]
         assert body["token_endpoint_auth_method"] == "none"
-        assert body["scope"] == "memory.read memory.write"
+        assert (
+            body["scope"]
+            == "https://memsys.dheemantech.in/account.manage https://memsys.dheemantech.in/memory.admin https://memsys.dheemantech.in/memory.read https://memsys.dheemantech.in/memory.write"
+        )
         assert isinstance(body["registration_access_token"], str)
         assert len(body["registration_access_token"]) >= 32
         assert body["registration_client_uri"] == f"{_RESOURCE}/oauth/register/cognito-client-id-1"

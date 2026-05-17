@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict
 
 from mem_mcp.db import tenant_tx
 from mem_mcp.mcp.errors import JsonRpcError
+from mem_mcp.mcp.tool_descriptions import TOOL_DESCRIPTIONS
 from mem_mcp.mcp.tools._base import BaseTool, ToolContext
 from mem_mcp.memory.versioning import VERSIONED_TYPES
 
@@ -29,7 +30,8 @@ class MemorySupersedeOutput(BaseModel):
 class MemorySupersedeTool(BaseTool):
     """Explicit supersedence: mark old memory as superseded by new (T-7.5)."""
 
-    name: ClassVar[str] = "memory.supersede"
+    name: ClassVar[str] = "memory_supersede"
+    description: ClassVar[str] = TOOL_DESCRIPTIONS["memory_supersede"]
     required_scope: ClassVar[str] = "memory.write"
     InputModel: ClassVar[type[BaseModel]] = MemorySupersedeInput
     OutputModel: ClassVar[type[BaseModel]] = MemorySupersedeOutput

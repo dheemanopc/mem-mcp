@@ -14,11 +14,14 @@ problem (none of memory.* tools stream). SSE wiring is left as a TODO.
 
 from __future__ import annotations
 
+import asyncio
+import json
 import uuid
+from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 
 from mem_mcp.logging_setup import get_logger
 from mem_mcp.mcp.errors import JsonRpcError, to_jsonrpc_error_response
@@ -28,6 +31,7 @@ if TYPE_CHECKING:
     import asyncpg  # type: ignore[import-untyped]
 
     from mem_mcp.mcp.registry import ToolRegistry
+    from mem_mcp.mcp.tools._deps import ToolDeps
 
 
 _log = get_logger("mem_mcp.mcp.transport")
@@ -37,6 +41,7 @@ def make_mcp_router(
     *,
     registry: ToolRegistry,
     db_pool: asyncpg.Pool,
+    deps: ToolDeps,
 ) -> APIRouter:
     """Build the POST /mcp router. The Bearer middleware must run before this."""
     router = APIRouter(tags=["mcp"])
@@ -79,6 +84,22 @@ def make_mcp_router(
                 status_code=400,
             )
 
+        # Reject browser-originated cross-origin requests.
+        # Legitimate MCP clients (Claude.ai, ChatGPT, Claude Code) are not browsers
+        # and typically don't send Origin. A browser sending Origin to /mcp is a
+        # CSRF attempt; reject it unless Origin matches the server's own domain.
+        origin = request.headers.get("origin")
+        if origin is not None:
+            from urllib.parse import urlparse
+
+            parsed = urlparse(origin)
+            host = request.headers.get("host", "")
+            if parsed.netloc != host:
+                return JSONResponse(
+                    content=to_jsonrpc_error_response(request_id, -32600, "forbidden origin"),
+                    status_code=403,
+                )
+
         # tools/list — registry built-in (not a tool itself)
         if method == "tools/list":
             return JSONResponse(
@@ -88,6 +109,24 @@ def make_mcp_router(
                     "result": {"tools": registry.list_definitions()},
                 }
             )
+
+        # MCP protocol handshake — must be handled before tenant context check
+        if method == "initialize":
+            return JSONResponse(
+                content={
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "result": {
+                        "protocolVersion": "2024-11-05",
+                        "capabilities": {"tools": {}},
+                        "serverInfo": {"name": "mem-mcp", "version": "1.0.0"},
+                    },
+                }
+            )
+
+        # MCP notifications are fire-and-forget; no response body expected
+        if method.startswith("notifications/"):
+            return JSONResponse(content=None, status_code=202)
 
         # Build ToolContext from Bearer middleware's request.state.tenant_ctx
         tenant_ctx = getattr(request.state, "tenant_ctx", None)
@@ -107,6 +146,7 @@ def make_mcp_router(
             client_id=tenant_ctx.client_id,
             scopes=tenant_ctx.scopes,
             db_pool=db_pool,
+            deps=deps,
         )
 
         params = body.get("params") or {}
@@ -118,8 +158,31 @@ def make_mcp_router(
                 status_code=400,
             )
 
+        if method == "tools/call":
+            tool_name = params.get("name")
+            if not isinstance(tool_name, str) or not tool_name:
+                return JSONResponse(
+                    content=to_jsonrpc_error_response(
+                        request_id, -32602, "tools/call requires params.name"
+                    ),
+                    status_code=400,
+                )
+            tool_args = params.get("arguments") or {}
+            if not isinstance(tool_args, dict):
+                return JSONResponse(
+                    content=to_jsonrpc_error_response(
+                        request_id, -32602, "tools/call params.arguments must be object"
+                    ),
+                    status_code=400,
+                )
+            dispatch_method = tool_name
+            dispatch_params = tool_args
+        else:
+            dispatch_method = method
+            dispatch_params = params
+
         try:
-            result = await registry.dispatch(ctx, method, params)
+            result = await registry.dispatch(ctx, dispatch_method, dispatch_params)
         except JsonRpcError as err:
             _log.info(
                 "mcp_dispatch_error",
@@ -133,12 +196,58 @@ def make_mcp_router(
                 status_code=200,  # JSON-RPC errors travel in 200 envelopes
             )
 
+        if method == "tools/call":
+            return JSONResponse(
+                content={
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "result": {
+                        "content": [{"type": "text", "text": json.dumps(result)}],
+                        "isError": False,
+                    },
+                }
+            )
         return JSONResponse(
             content={
                 "jsonrpc": "2.0",
                 "id": request_id,
                 "result": result,
             }
+        )
+
+    @router.get("/mcp")
+    async def mcp_sse_handler(request: Request) -> Response:
+        from starlette.responses import StreamingResponse
+
+        # Same origin check as POST handler
+        origin = request.headers.get("origin")
+        if origin is not None:
+            from urllib.parse import urlparse
+
+            parsed = urlparse(origin)
+            host = request.headers.get("host", "")
+            if parsed.netloc != host:
+                return JSONResponse(
+                    content=to_jsonrpc_error_response(None, -32600, "forbidden origin"),
+                    status_code=403,
+                )
+
+        async def event_stream() -> AsyncIterator[str]:
+            yield ": connected\n\n"
+            while True:
+                if await request.is_disconnected():
+                    break
+                yield ": keepalive\n\n"
+                await asyncio.sleep(15)
+
+        return StreamingResponse(
+            event_stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
         )
 
     return router
