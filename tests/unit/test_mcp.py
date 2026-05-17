@@ -178,7 +178,7 @@ class TestToolRegistry:
                 raise RuntimeError("oops")
 
         r = ToolRegistry()
-        r.register(_CrashTool)
+        r.register(_CrashTool)  # type: ignore[type-abstract]
         with pytest.raises(JsonRpcError) as exc_info:
             await r.dispatch(_ctx(), "_test.crash", {})
         assert exc_info.value.code == -32603

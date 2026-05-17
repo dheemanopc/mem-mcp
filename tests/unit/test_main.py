@@ -16,7 +16,7 @@ from mem_mcp.main import create_app
 
 
 @pytest.fixture(autouse=True)
-def _stub_settings(monkeypatch):
+def _stub_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     """Stub get_settings + bearer middleware build so no AWS calls happen in unit tests."""
     from mem_mcp.config import Settings
 
@@ -45,7 +45,7 @@ def _stub_settings(monkeypatch):
     monkeypatch.setattr("mem_mcp.main.get_settings", lambda: fake)
 
     # Also stub bearer middleware build so it doesn't try to construct Cognito clients.
-    async def _passthrough(request, call_next):
+    async def _passthrough(request: Any, call_next: Any) -> Any:
         return await call_next(request)
 
     monkeypatch.setattr("mem_mcp.main._build_bearer_dispatch", lambda: _passthrough)
@@ -77,15 +77,17 @@ class FakeChecker:
 
 def _build_app(checkers: list[Any]) -> TestClient:
     """Build a test client with explicit checkers — no lifespan / DB init."""
+    from collections.abc import AsyncIterator
+    from contextlib import asynccontextmanager
+
     app = create_app(checkers=checkers)
     # Use TestClient WITHOUT triggering lifespan (would require real config + pool).
     # FastAPI's TestClient runs lifespan by default; we bypass by constructing
     # without entering the with-block context. Workaround: pass raise_server_exceptions=False
     # and patch app.router.lifespan_context to a no-op.
-    from contextlib import asynccontextmanager
 
     @asynccontextmanager
-    async def noop_lifespan(_app):  # type: ignore[no-untyped-def]
+    async def noop_lifespan(_app: Any) -> AsyncIterator[None]:
         yield
 
     app.router.lifespan_context = noop_lifespan

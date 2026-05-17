@@ -18,7 +18,7 @@ from __future__ import annotations
 import base64
 import json
 import os
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 import asyncpg  # type: ignore[import-untyped]
@@ -84,7 +84,7 @@ class SkillVault:
 
     def decrypt_creds(self, tenant_id: UUID, skill_name: str, blob: bytes) -> dict[str, Any]:
         plaintext = self.decrypt(blob, self._aad(tenant_id, skill_name))
-        return json.loads(plaintext.decode())
+        return cast(dict[str, Any], json.loads(plaintext.decode()))
 
     async def store(
         self,
@@ -148,4 +148,4 @@ class SkillVault:
             tenant_id,
             skill_name,
         )
-        return result.endswith(" 1")
+        return cast(bool, result.endswith(" 1"))

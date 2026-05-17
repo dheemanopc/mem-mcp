@@ -172,7 +172,7 @@ class SkillLoader:
             f"{skill.name.title().replace('_', '')}"
             f"{tool_def.name.title().replace('_', '')}Wrapper"
         )
-        return _SkillToolWrapper  # type: ignore[return-value]
+        return _SkillToolWrapper
 
 
 def parse_enabled_skills(setting_value: str) -> list[str]:

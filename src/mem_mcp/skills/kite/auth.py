@@ -13,6 +13,7 @@ access_token via the onboarding flow each day until automation is added.
 from __future__ import annotations
 
 import hashlib
+from typing import Any, cast
 
 import httpx
 
@@ -40,7 +41,7 @@ async def exchange_request_token(
     *,
     http: httpx.AsyncClient | None = None,
     timeout: float = 20.0,
-) -> dict:
+) -> dict[str, Any]:
     """POST /session/token to convert a request_token into an access_token.
 
     Returns the parsed ``data`` block: includes ``access_token``,
@@ -60,7 +61,7 @@ async def exchange_request_token(
     headers = {"X-Kite-Version": "3"}
     url = f"{KITE_API_BASE_URL}/session/token"
 
-    async def _do(client: httpx.AsyncClient) -> dict:
+    async def _do(client: httpx.AsyncClient) -> dict[str, Any]:
         resp = await client.post(url, headers=headers, data=payload, timeout=timeout)
         try:
             body = resp.json()
@@ -71,7 +72,7 @@ async def exchange_request_token(
                 body.get("message", f"auth failed (status {resp.status_code})"),
                 error_type=body.get("error_type"),
             )
-        return body.get("data", {})
+        return cast(dict[str, Any], body.get("data", {}))
 
     if http is not None:
         return await _do(http)

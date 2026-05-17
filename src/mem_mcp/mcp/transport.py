@@ -14,8 +14,10 @@ problem (none of memory.* tools stream). SSE wiring is left as a TODO.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import uuid
+from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Request
@@ -215,8 +217,6 @@ def make_mcp_router(
 
     @router.get("/mcp")
     async def mcp_sse_handler(request: Request) -> Response:
-        import asyncio
-
         from starlette.responses import StreamingResponse
 
         # Same origin check as POST handler
@@ -232,7 +232,7 @@ def make_mcp_router(
                     status_code=403,
                 )
 
-        async def event_stream():
+        async def event_stream() -> AsyncIterator[str]:
             yield ": connected\n\n"
             while True:
                 if await request.is_disconnected():

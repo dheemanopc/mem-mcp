@@ -9,8 +9,8 @@ so the same client instance is safe to use across tenants.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
-from typing import Any
+from collections.abc import Mapping
+from typing import Any, cast
 
 import httpx
 
@@ -63,7 +63,7 @@ class KiteClient:
         *,
         api_key: str,
         access_token: str,
-        params: Mapping[str, str] | Sequence[tuple[str, str]] | None = None,
+        params: list[tuple[str, str]] | Mapping[str, str] | None = None,
         data: Mapping[str, Any] | None = None,
     ) -> Any:
         url = f"{self._base_url}{path}"
@@ -74,7 +74,7 @@ class KiteClient:
                 method,
                 url,
                 headers=headers,
-                params=params,
+                params=params,  # type: ignore[arg-type]
                 data=data,
                 timeout=self._timeout,
             )
@@ -100,30 +100,44 @@ class KiteClient:
 
     # ---------- portfolio ----------
 
-    async def get_holdings(self, *, api_key: str, access_token: str) -> list[dict]:
-        return await self._request(
-            "GET", "/portfolio/holdings", api_key=api_key, access_token=access_token
+    async def get_holdings(self, *, api_key: str, access_token: str) -> list[dict[str, Any]]:
+        return cast(
+            list[dict[str, Any]],
+            await self._request(
+                "GET", "/portfolio/holdings", api_key=api_key, access_token=access_token
+            ),
         )
 
-    async def get_positions(self, *, api_key: str, access_token: str) -> dict:
-        return await self._request(
-            "GET", "/portfolio/positions", api_key=api_key, access_token=access_token
+    async def get_positions(self, *, api_key: str, access_token: str) -> dict[str, Any]:
+        return cast(
+            dict[str, Any],
+            await self._request(
+                "GET", "/portfolio/positions", api_key=api_key, access_token=access_token
+            ),
         )
 
     # ---------- user / margins ----------
 
     async def get_margins(
         self, *, api_key: str, access_token: str, segment: str | None = None
-    ) -> dict:
+    ) -> dict[str, Any]:
         path = "/user/margins" if segment is None else f"/user/margins/{segment}"
-        return await self._request("GET", path, api_key=api_key, access_token=access_token)
+        return cast(
+            dict[str, Any],
+            await self._request("GET", path, api_key=api_key, access_token=access_token),
+        )
 
     # ---------- market data ----------
 
-    async def get_quote(self, *, api_key: str, access_token: str, instruments: list[str]) -> dict:
+    async def get_quote(
+        self, *, api_key: str, access_token: str, instruments: list[str]
+    ) -> dict[str, Any]:
         params: list[tuple[str, str]] = [("i", inst) for inst in instruments]
-        return await self._request(
-            "GET", "/quote", api_key=api_key, access_token=access_token, params=params
+        return cast(
+            dict[str, Any],
+            await self._request(
+                "GET", "/quote", api_key=api_key, access_token=access_token, params=params
+            ),
         )
 
     async def get_historical_data(
@@ -137,21 +151,27 @@ class KiteClient:
         to_date: str,
         continuous: bool = False,
         oi: bool = False,
-    ) -> dict:
+    ) -> dict[str, Any]:
         path = f"/instruments/historical/{instrument_token}/{interval}"
         params: dict[str, str] = {"from": from_date, "to": to_date}
         if continuous:
             params["continuous"] = "1"
         if oi:
             params["oi"] = "1"
-        return await self._request(
-            "GET", path, api_key=api_key, access_token=access_token, params=params
+        return cast(
+            dict[str, Any],
+            await self._request(
+                "GET", path, api_key=api_key, access_token=access_token, params=params
+            ),
         )
 
     # ---------- orders ----------
 
-    async def get_orders(self, *, api_key: str, access_token: str) -> list[dict]:
-        return await self._request("GET", "/orders", api_key=api_key, access_token=access_token)
+    async def get_orders(self, *, api_key: str, access_token: str) -> list[dict[str, Any]]:
+        return cast(
+            list[dict[str, Any]],
+            await self._request("GET", "/orders", api_key=api_key, access_token=access_token),
+        )
 
     async def place_order(
         self,
@@ -160,7 +180,7 @@ class KiteClient:
         access_token: str,
         variety: str,
         order_params: dict[str, Any],
-    ) -> dict:
+    ) -> dict[str, Any]:
         """variety is one of: regular, amo, co, iceberg, auction.
 
         order_params is a flat dict with Kite's form fields:
@@ -168,12 +188,15 @@ class KiteClient:
         order_type, price, validity, trigger_price, etc.
         """
         path = f"/orders/{variety}"
-        return await self._request(
-            "POST",
-            path,
-            api_key=api_key,
-            access_token=access_token,
-            data=order_params,
+        return cast(
+            dict[str, Any],
+            await self._request(
+                "POST",
+                path,
+                api_key=api_key,
+                access_token=access_token,
+                data=order_params,
+            ),
         )
 
     async def cancel_order(
@@ -183,6 +206,9 @@ class KiteClient:
         access_token: str,
         variety: str,
         order_id: str,
-    ) -> dict:
+    ) -> dict[str, Any]:
         path = f"/orders/{variety}/{order_id}"
-        return await self._request("DELETE", path, api_key=api_key, access_token=access_token)
+        return cast(
+            dict[str, Any],
+            await self._request("DELETE", path, api_key=api_key, access_token=access_token),
+        )

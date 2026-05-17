@@ -15,15 +15,15 @@ from mem_mcp.embeddings.bedrock import EmbedResult
 from mem_mcp.mcp.errors import JsonRpcError
 from mem_mcp.mcp.tools._base import ToolContext
 from mem_mcp.mcp.tools._deps import NoopQuotas, ToolDeps
-from mem_mcp.mcp.tools.delete import MemoryDeleteInput, MemoryDeleteTool
+from mem_mcp.mcp.tools.delete import MemoryDeleteInput, MemoryDeleteOutput, MemoryDeleteTool
 from mem_mcp.mcp.tools.search import MemorySearchInput
 from mem_mcp.mcp.tools.thread_get import (
     MemoryThreadGetInput,
     MemoryThreadGetOutput,
     MemoryThreadGetTool,
 )
-from mem_mcp.mcp.tools.undelete import MemoryUndeleteInput, MemoryUndeleteTool
-from mem_mcp.mcp.tools.write import MemoryWriteInput, MemoryWriteTool
+from mem_mcp.mcp.tools.undelete import MemoryUndeleteInput, MemoryUndeleteOutput, MemoryUndeleteTool
+from mem_mcp.mcp.tools.write import MemoryWriteInput, MemoryWriteOutput, MemoryWriteTool
 
 
 class _FakeEmbeddings:
@@ -113,6 +113,7 @@ class TestMemoryWriteToolReply:
             MemoryWriteInput(content="this is a reply", tags=["gamma"], parent_id=parent_id),
         )
 
+        assert isinstance(out, MemoryWriteOutput)
         assert out.deduped is False
         # The INSERT bound effective_tags as the 7th positional arg of the call.
         insert_call = conn.fetchrow.call_args_list[1]
@@ -379,6 +380,7 @@ class TestMemoryThreadGetTool:
         tool = MemoryThreadGetTool()
         ctx = _build_ctx()
         out = await tool(ctx, MemoryThreadGetInput(root_id=uuid4()))
+        assert isinstance(out, MemoryThreadGetOutput)
         assert out.replies == []
 
 
@@ -408,6 +410,7 @@ class TestDeleteReplyCascade:
         tool = MemoryDeleteTool()
         ctx = _build_ctx()
         out = await tool(ctx, MemoryDeleteInput(id=root_id, cascade=False))
+        assert isinstance(out, MemoryDeleteOutput)
         assert out.replies_cascaded_count == 2
 
     @pytest.mark.asyncio
@@ -432,6 +435,7 @@ class TestDeleteReplyCascade:
         tool = MemoryDeleteTool()
         ctx = _build_ctx()
         out = await tool(ctx, MemoryDeleteInput(id=reply_id, cascade=False))
+        assert isinstance(out, MemoryDeleteOutput)
         assert out.replies_cascaded_count == 0
         # conn.fetch was NOT called (no cascade UPDATE)
         conn.fetch.assert_not_called()
@@ -467,6 +471,7 @@ class TestUndeleteReplyCascadeReversal:
         tool = MemoryUndeleteTool()
         ctx = _build_ctx()
         out = await tool(ctx, MemoryUndeleteInput(id=root_id))
+        assert isinstance(out, MemoryUndeleteOutput)
         assert out.replies_restored_count == 2
 
     @pytest.mark.asyncio
@@ -497,5 +502,6 @@ class TestUndeleteReplyCascadeReversal:
         tool = MemoryUndeleteTool()
         ctx = _build_ctx()
         out = await tool(ctx, MemoryUndeleteInput(id=reply_id))
+        assert isinstance(out, MemoryUndeleteOutput)
         assert out.replies_restored_count == 0
         conn.fetch.assert_not_called()

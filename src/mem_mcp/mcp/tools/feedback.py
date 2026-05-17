@@ -25,7 +25,7 @@ class MemoryFeedbackInput(BaseModel):
 
     @field_validator("metadata", mode="after")
     @classmethod
-    def _validate_metadata(cls, v: dict) -> dict:
+    def _validate_metadata(cls, v: dict[str, Any]) -> dict[str, Any]:
         if len(json.dumps(v)) > 16_384:
             raise ValueError("metadata exceeds 16 KB serialized limit")
         return v

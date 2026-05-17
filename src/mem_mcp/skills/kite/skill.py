@@ -228,37 +228,41 @@ class KiteSkill(NativeSkill):
 
         try:
             if tool_name == "get_holdings":
-                data = await self._client.get_holdings(api_key=api_key, access_token=access_token)
-                return GetHoldingsOutput(holdings=list(data or []))
+                holdings_data: Any = await self._client.get_holdings(
+                    api_key=api_key, access_token=access_token
+                )
+                return GetHoldingsOutput(holdings=list(holdings_data or []))
 
             if tool_name == "get_positions":
-                data = await self._client.get_positions(api_key=api_key, access_token=access_token)
+                pos_data: Any = await self._client.get_positions(
+                    api_key=api_key, access_token=access_token
+                )
                 return GetPositionsOutput(
-                    net=list((data or {}).get("net") or []),
-                    day=list((data or {}).get("day") or []),
+                    net=list((pos_data or {}).get("net") or []),
+                    day=list((pos_data or {}).get("day") or []),
                 )
 
             if tool_name == "get_margins":
                 assert isinstance(args, GetMarginsInput)
-                data = await self._client.get_margins(
+                margins_data: Any = await self._client.get_margins(
                     api_key=api_key,
                     access_token=access_token,
                     segment=args.segment,
                 )
-                return GetMarginsOutput(margins=dict(data or {}))
+                return GetMarginsOutput(margins=dict(margins_data or {}))
 
             if tool_name == "get_quote":
                 assert isinstance(args, GetQuoteInput)
-                data = await self._client.get_quote(
+                quote_data: Any = await self._client.get_quote(
                     api_key=api_key,
                     access_token=access_token,
                     instruments=args.instruments,
                 )
-                return GetQuoteOutput(quotes=dict(data or {}))
+                return GetQuoteOutput(quotes=dict(quote_data or {}))
 
             if tool_name == "get_historical_data":
                 assert isinstance(args, GetHistoricalDataInput)
-                data = await self._client.get_historical_data(
+                hist_data: Any = await self._client.get_historical_data(
                     api_key=api_key,
                     access_token=access_token,
                     instrument_token=args.instrument_token,
@@ -268,11 +272,13 @@ class KiteSkill(NativeSkill):
                     continuous=args.continuous,
                     oi=args.oi,
                 )
-                return GetHistoricalDataOutput(candles=list((data or {}).get("candles") or []))
+                return GetHistoricalDataOutput(candles=list((hist_data or {}).get("candles") or []))
 
             if tool_name == "get_orders":
-                data = await self._client.get_orders(api_key=api_key, access_token=access_token)
-                return GetOrdersOutput(orders=list(data or []))
+                orders_data: Any = await self._client.get_orders(
+                    api_key=api_key, access_token=access_token
+                )
+                return GetOrdersOutput(orders=list(orders_data or []))
 
             if tool_name == "place_order":
                 assert isinstance(args, PlaceOrderInput)
@@ -293,23 +299,25 @@ class KiteSkill(NativeSkill):
                     order_params["disclosed_quantity"] = args.disclosed_quantity
                 if args.tag is not None:
                     order_params["tag"] = args.tag
-                data = await self._client.place_order(
+                placed_order_data: Any = await self._client.place_order(
                     api_key=api_key,
                     access_token=access_token,
                     variety=args.variety,
                     order_params=order_params,
                 )
-                return PlaceOrderOutput(order_id=str((data or {}).get("order_id", "")))
+                return PlaceOrderOutput(order_id=str((placed_order_data or {}).get("order_id", "")))
 
             if tool_name == "cancel_order":
                 assert isinstance(args, CancelOrderInput)
-                data = await self._client.cancel_order(
+                cancel_order_data: Any = await self._client.cancel_order(
                     api_key=api_key,
                     access_token=access_token,
                     variety=args.variety,
                     order_id=args.order_id,
                 )
-                return CancelOrderOutput(order_id=str((data or {}).get("order_id", args.order_id)))
+                return CancelOrderOutput(
+                    order_id=str((cancel_order_data or {}).get("order_id", args.order_id))
+                )
 
             raise SkillToolNotFoundError(f"kite skill has no tool named {tool_name!r}")
 

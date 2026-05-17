@@ -131,7 +131,7 @@ def _wire_skills(registry: ToolRegistry, log: Any) -> int:
     return total
 
 
-def _instantiate_skill(skill_name: str, log: Any):
+def _instantiate_skill(skill_name: str, log: Any) -> Any:
     """Construct a Skill instance by name. Returns None if unknown.
 
     Phase 1 supports: kite. New skills added by extending this dispatch.
@@ -246,7 +246,7 @@ def _wire_middleware(app: FastAPI) -> None:
     app.add_middleware(BearerMiddlewareAdapter)
 
 
-def _build_bearer_dispatch():  # type: ignore[no-untyped-def]
+def _build_bearer_dispatch() -> Any:
     """Construct the bearer middleware callable. Called lazily on first request."""
     from mem_mcp.db import get_pool
 

@@ -14,13 +14,13 @@ import pytest
 # ==========================================================================
 
 
-def _make_mock_client(handler) -> httpx.AsyncClient:
+def _make_mock_client(handler: Any) -> httpx.AsyncClient:
     """Build an httpx.AsyncClient backed by a MockTransport."""
     transport = httpx.MockTransport(handler)
     return httpx.AsyncClient(transport=transport)
 
 
-def _build_skill_ctx(creds: dict[str, str] | None = None):
+def _build_skill_ctx(creds: dict[str, str] | None = None) -> Any:
     from mem_mcp.skills.base import SkillCallContext
 
     return SkillCallContext(
