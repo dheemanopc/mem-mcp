@@ -510,7 +510,7 @@ def make_dcr_router(
 
         # Qualify custom scopes in the response so Claude builds the correct
         # authorization URL (Cognito requires <resource_server_id>/<scope>).
-        _OIDC = frozenset({"openid", "email", "profile", "phone", "address"})
+        _OIDC = frozenset({"openid", "email", "profile", "phone", "address"})  # noqa: N806
         _prefix = resource_url.rstrip("/")
         qualified_scope = " ".join(
             s if (s in _OIDC or "/" in s) else f"{_prefix}/{s}"

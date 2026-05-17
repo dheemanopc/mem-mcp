@@ -39,7 +39,7 @@ def make_mcp_router(
     *,
     registry: ToolRegistry,
     db_pool: asyncpg.Pool,
-    deps: "ToolDeps",
+    deps: ToolDeps,
 ) -> APIRouter:
     """Build the POST /mcp router. The Bearer middleware must run before this."""
     router = APIRouter(tags=["mcp"])
@@ -215,6 +215,7 @@ def make_mcp_router(
     @router.get("/mcp")
     async def mcp_sse_handler(request: Request) -> Response:
         import asyncio
+
         from starlette.responses import StreamingResponse
 
         # Same origin check as POST handler

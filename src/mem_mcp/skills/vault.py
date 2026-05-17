@@ -25,7 +25,7 @@ import asyncpg  # type: ignore[import-untyped]
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from mem_mcp.config import Settings
-from mem_mcp.skills.base import SkillCredentialsMissing
+from mem_mcp.skills.base import SkillCredentialsMissingError
 
 NONCE_LEN = 12
 TAG_LEN = 16
@@ -36,7 +36,7 @@ class SkillVaultError(Exception):
     """Vault-layer error (decryption failure, missing key, malformed ciphertext)."""
 
 
-class SkillVaultDisabled(SkillVaultError):
+class SkillVaultDisabledError(SkillVaultError):
     """Raised when SkillVault is constructed without a master key."""
 
 
@@ -53,7 +53,7 @@ class SkillVault:
     @classmethod
     def from_settings(cls, settings: Settings) -> SkillVault:
         if not settings.skill_vault_master_key:
-            raise SkillVaultDisabled(
+            raise SkillVaultDisabledError(
                 "skill_vault_master_key is unset; skill framework cannot start"
             )
         try:
@@ -138,7 +138,7 @@ class SkillVault:
             skill_name,
         )
         if row is None:
-            raise SkillCredentialsMissing(
+            raise SkillCredentialsMissingError(
                 f"no credentials stored for tenant {tenant_id} skill {skill_name!r}"
             )
         return self.decrypt_creds(tenant_id, skill_name, bytes(row["credentials_ciphertext"]))

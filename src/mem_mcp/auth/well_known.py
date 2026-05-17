@@ -45,7 +45,7 @@ def make_well_known_router(
     """
     router = APIRouter(tags=["well-known"])
 
-    _OIDC_SCOPES = frozenset({"openid", "email", "profile", "phone", "address"})
+    _OIDC_SCOPES = frozenset({"openid", "email", "profile", "phone", "address"})  # noqa: N806
     qualified_mcp_scopes = [
         s if (s in _OIDC_SCOPES or "/" in s) else f"{resource_url.rstrip('/')}/{s}"
         for s in mcp_scopes

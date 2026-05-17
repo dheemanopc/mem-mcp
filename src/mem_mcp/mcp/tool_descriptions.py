@@ -1,7 +1,7 @@
-"""MCP tool descriptions — versioned artifact per CR-001.
+"""MCP tool descriptions - versioned artifact per CR-001.
 
-Authoring rules (NFR-9.2.1–9.2.5):
-- 80–250 words per description
+Authoring rules (NFR-9.2.1-9.2.5):
+- 80-250 words per description
 - Three-part structure: positive triggers | anti-triggers | examples
 - Never inline descriptions in tool classes or route handlers
 - Treat this file as diff-able, lintable, testable artifact

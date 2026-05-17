@@ -29,6 +29,11 @@
       "title": "Db Maint Dsn",
       "type": "string"
     },
+    "enabled_skills": {
+      "default": "",
+      "title": "Enabled Skills",
+      "type": "string"
+    },
     "internal_lambda_secret": {
       "title": "Internal Lambda Secret",
       "type": "string"
@@ -54,6 +59,18 @@
     "ses_from": {
       "title": "Ses From",
       "type": "string"
+    },
+    "skill_vault_master_key": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Skill Vault Master Key"
     },
     "web_client_id": {
       "title": "Web Client Id",

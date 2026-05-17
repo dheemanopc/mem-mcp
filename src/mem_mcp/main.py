@@ -68,9 +68,9 @@ from mem_mcp.mcp.tools.thread_get import MemoryThreadGetTool
 from mem_mcp.mcp.tools.undelete import MemoryUndeleteTool
 from mem_mcp.mcp.tools.update import MemoryUpdateTool
 from mem_mcp.mcp.tools.write import MemoryWriteTool
-from mem_mcp.skills.kite.enable_tool import MemsysEnableKiteTool
 from mem_mcp.mcp.transport import make_mcp_router
 from mem_mcp.quotas.enforcer import QuotaEnforcer
+from mem_mcp.skills.kite.enable_tool import MemsysEnableKiteTool
 from mem_mcp.web.csrf import CsrfMiddleware
 from mem_mcp.web.handlers.clients import make_clients_router
 from mem_mcp.web.handlers.export import make_export_router
@@ -98,7 +98,7 @@ def _wire_skills(registry: ToolRegistry, log: Any) -> int:
     Returns the number of skill tools registered (0 if framework disabled).
     """
     from mem_mcp.skills.loader import SkillLoader, parse_enabled_skills
-    from mem_mcp.skills.vault import SkillVault, SkillVaultDisabled
+    from mem_mcp.skills.vault import SkillVault, SkillVaultDisabledError
 
     s = get_settings()
     enabled = parse_enabled_skills(s.enabled_skills)
@@ -108,7 +108,7 @@ def _wire_skills(registry: ToolRegistry, log: Any) -> int:
 
     try:
         vault = SkillVault.from_settings(s)
-    except SkillVaultDisabled:
+    except SkillVaultDisabledError:
         log.warning("skills_disabled", reason="skill_vault_master_key_unset")
         return 0
     except Exception as exc:

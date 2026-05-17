@@ -9,9 +9,10 @@ import pytest
 
 class TestSkillVaultEncryption:
     def test_round_trip_returns_same_dict(self) -> None:
-        from mem_mcp.skills.vault import SkillVault
         import os
         from uuid import uuid4
+
+        from mem_mcp.skills.vault import SkillVault
 
         v = SkillVault(os.urandom(32))
         t = uuid4()
@@ -20,9 +21,10 @@ class TestSkillVaultEncryption:
         assert v.decrypt_creds(t, "kite", blob) == creds
 
     def test_blob_format_nonce_plus_ciphertext(self) -> None:
-        from mem_mcp.skills.vault import SkillVault, NONCE_LEN, TAG_LEN
         import os
         from uuid import uuid4
+
+        from mem_mcp.skills.vault import NONCE_LEN, TAG_LEN, SkillVault
 
         v = SkillVault(os.urandom(32))
         blob = v.encrypt_creds(uuid4(), "kite", {"a": 1})
@@ -30,9 +32,10 @@ class TestSkillVaultEncryption:
         assert len(blob) >= NONCE_LEN + TAG_LEN
 
     def test_wrong_aad_fails(self) -> None:
-        from mem_mcp.skills.vault import SkillVault, SkillVaultError
-        import os, pytest
+        import os
         from uuid import uuid4
+
+        from mem_mcp.skills.vault import SkillVault, SkillVaultError
 
         v = SkillVault(os.urandom(32))
         t1, t2 = uuid4(), uuid4()
@@ -41,9 +44,10 @@ class TestSkillVaultEncryption:
             v.decrypt_creds(t2, "kite", blob)  # tenant differs → tag mismatch
 
     def test_wrong_skill_name_fails(self) -> None:
-        from mem_mcp.skills.vault import SkillVault, SkillVaultError
-        import os, pytest
+        import os
         from uuid import uuid4
+
+        from mem_mcp.skills.vault import SkillVault, SkillVaultError
 
         v = SkillVault(os.urandom(32))
         t = uuid4()
@@ -52,9 +56,10 @@ class TestSkillVaultEncryption:
             v.decrypt_creds(t, "github", blob)  # skill name differs → tag mismatch
 
     def test_wrong_key_fails(self) -> None:
-        from mem_mcp.skills.vault import SkillVault, SkillVaultError
-        import os, pytest
+        import os
         from uuid import uuid4
+
+        from mem_mcp.skills.vault import SkillVault, SkillVaultError
 
         v1 = SkillVault(os.urandom(32))
         v2 = SkillVault(os.urandom(32))
@@ -64,9 +69,10 @@ class TestSkillVaultEncryption:
             v2.decrypt_creds(t, "kite", blob)
 
     def test_short_blob_rejected(self) -> None:
-        from mem_mcp.skills.vault import SkillVault, SkillVaultError
-        import os, pytest
+        import os
         from uuid import uuid4
+
+        from mem_mcp.skills.vault import SkillVault, SkillVaultError
 
         v = SkillVault(os.urandom(32))
         with pytest.raises(SkillVaultError):
@@ -74,7 +80,6 @@ class TestSkillVaultEncryption:
 
     def test_invalid_master_key_size_rejected(self) -> None:
         from mem_mcp.skills.vault import SkillVault, SkillVaultError
-        import pytest
 
         with pytest.raises(SkillVaultError):
             SkillVault(b"too-short")
@@ -82,36 +87,38 @@ class TestSkillVaultEncryption:
 
 class TestSkillVaultFromSettings:
     def test_from_settings_unset_raises_disabled(self) -> None:
-        from mem_mcp.skills.vault import SkillVault, SkillVaultDisabled
         from unittest.mock import MagicMock
-        import pytest
+
+        from mem_mcp.skills.vault import SkillVault, SkillVaultDisabledError
 
         fake_settings = MagicMock(skill_vault_master_key=None)
-        with pytest.raises(SkillVaultDisabled):
+        with pytest.raises(SkillVaultDisabledError):
             SkillVault.from_settings(fake_settings)
 
     def test_from_settings_empty_raises_disabled(self) -> None:
-        from mem_mcp.skills.vault import SkillVault, SkillVaultDisabled
         from unittest.mock import MagicMock
-        import pytest
+
+        from mem_mcp.skills.vault import SkillVault, SkillVaultDisabledError
 
         fake_settings = MagicMock(skill_vault_master_key="")
-        with pytest.raises(SkillVaultDisabled):
+        with pytest.raises(SkillVaultDisabledError):
             SkillVault.from_settings(fake_settings)
 
     def test_from_settings_bad_base64_raises_error(self) -> None:
-        from mem_mcp.skills.vault import SkillVault, SkillVaultError
         from unittest.mock import MagicMock
-        import pytest
+
+        from mem_mcp.skills.vault import SkillVault, SkillVaultError
 
         fake_settings = MagicMock(skill_vault_master_key="!!!not-base64!!!")
         with pytest.raises(SkillVaultError):
             SkillVault.from_settings(fake_settings)
 
     def test_from_settings_valid_base64_works(self) -> None:
-        from mem_mcp.skills.vault import SkillVault
+        import base64
+        import os
         from unittest.mock import MagicMock
-        import os, base64
+
+        from mem_mcp.skills.vault import SkillVault
 
         key_b64 = base64.b64encode(os.urandom(32)).decode()
         fake_settings = MagicMock(skill_vault_master_key=key_b64)
@@ -149,8 +156,9 @@ class TestAuditMemoryHelpers:
         assert "symbol-RECLTD" in tags
 
     def test_build_audit_metadata_includes_error_on_error(self) -> None:
-        from mem_mcp.skills.audit_memory import build_audit_metadata
         from uuid import uuid4
+
+        from mem_mcp.skills.audit_memory import build_audit_metadata
         m = build_audit_metadata(
             "kite", "place_order", {"x": 1}, "error", 100, uuid4(),
             error_code="kite_rejected", error_message="insufficient funds " * 100,
@@ -159,8 +167,9 @@ class TestAuditMemoryHelpers:
         assert len(m["error_message"]) == 500  # truncated
 
     def test_build_audit_metadata_no_error_on_success(self) -> None:
-        from mem_mcp.skills.audit_memory import build_audit_metadata
         from uuid import uuid4
+
+        from mem_mcp.skills.audit_memory import build_audit_metadata
         m = build_audit_metadata("kite", "get_quote", {}, "success", 10, uuid4())
         assert "error_code" not in m
         assert "error_message" not in m
@@ -187,8 +196,9 @@ class TestAuditMemoryHelpers:
 
 class TestSkillLoaderRegistration:
     def _fake_skill(self) -> Any:
-        from mem_mcp.skills.base import NativeSkill, ToolDef, CredentialSpec, SkillCallContext
         from pydantic import BaseModel
+
+        from mem_mcp.skills.base import CredentialSpec, NativeSkill, SkillCallContext, ToolDef
 
         class StubInput(BaseModel):
             x: int
@@ -235,10 +245,11 @@ class TestSkillLoaderRegistration:
         return _StubSkill()
 
     def test_registers_namespaced_names(self) -> None:
+        import os
+
         from mem_mcp.mcp.registry import ToolRegistry
         from mem_mcp.skills.loader import SkillLoader
         from mem_mcp.skills.vault import SkillVault
-        import os
 
         reg = ToolRegistry()
         loader = SkillLoader(vault=SkillVault(os.urandom(32)))
@@ -249,10 +260,11 @@ class TestSkillLoaderRegistration:
         assert "stub_bang" in names
 
     def test_wrapper_inherits_read_only_scope(self) -> None:
+        import os
+
         from mem_mcp.mcp.registry import ToolRegistry
         from mem_mcp.skills.loader import SkillLoader
         from mem_mcp.skills.vault import SkillVault
-        import os
 
         reg = ToolRegistry()
         SkillLoader(vault=SkillVault(os.urandom(32))).register_skill(
@@ -264,10 +276,11 @@ class TestSkillLoaderRegistration:
         assert by_name["stub_bang"]["required_scope"] == "memory.write"
 
     def test_wrapper_input_output_schemas_propagated(self) -> None:
+        import os
+
         from mem_mcp.mcp.registry import ToolRegistry
         from mem_mcp.skills.loader import SkillLoader
         from mem_mcp.skills.vault import SkillVault
-        import os
 
         reg = ToolRegistry()
         SkillLoader(vault=SkillVault(os.urandom(32))).register_skill(

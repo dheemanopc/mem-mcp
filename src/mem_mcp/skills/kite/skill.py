@@ -17,11 +17,10 @@ from mem_mcp.skills.base import (
     NativeSkill,
     SkillCallContext,
     SkillError,
-    SkillToolNotFound,
+    SkillToolNotFoundError,
     ToolDef,
 )
 from mem_mcp.skills.kite.client import KiteApiError, KiteClient
-
 
 # --------------------------------------------------------------------------
 # Pydantic models — input/output shapes per tool
@@ -324,7 +323,7 @@ class KiteSkill(NativeSkill):
                 )
                 return CancelOrderOutput(order_id=str((data or {}).get("order_id", args.order_id)))
 
-            raise SkillToolNotFound(f"kite skill has no tool named {tool_name!r}")
+            raise SkillToolNotFoundError(f"kite skill has no tool named {tool_name!r}")
 
         except KiteApiError as exc:
             # Wrap Kite errors as SkillError so the loader can convert to JsonRpcError

@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import hashlib
-import json
 from typing import Any
 from uuid import uuid4
 
 import httpx
 import pytest
-
 
 # ==========================================================================
 # Helpers
@@ -403,11 +401,11 @@ class TestKiteSkill:
 
     @pytest.mark.asyncio
     async def test_call_tool_unknown_tool_raises(self) -> None:
-        from mem_mcp.skills.base import SkillToolNotFound
+        from mem_mcp.skills.base import SkillToolNotFoundError
         from mem_mcp.skills.kite.skill import KiteSkill, _EmptyInput
 
         skill = KiteSkill()
-        with pytest.raises(SkillToolNotFound):
+        with pytest.raises(SkillToolNotFoundError):
             await skill.call_tool("not_a_real_tool", _EmptyInput(), _build_skill_ctx())
 
     @pytest.mark.asyncio

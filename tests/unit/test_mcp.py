@@ -37,7 +37,7 @@ def _ctx(scopes: tuple[str, ...] = ("memory.read", "memory.write")) -> ToolConte
 def _build_app(registry: ToolRegistry, scopes: tuple[str, ...] = ("memory.read",)) -> TestClient:
     """Build a FastAPI app with /mcp wired + a fake middleware that injects tenant_ctx."""
     from mem_mcp.audit.logger import NoopAuditLogger
-    from mem_mcp.mcp.tools._deps import ToolDeps, NoopQuotas
+    from mem_mcp.mcp.tools._deps import NoopQuotas, ToolDeps
 
     app = FastAPI()
     fake_db = MagicMock()

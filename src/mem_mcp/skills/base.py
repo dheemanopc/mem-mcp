@@ -92,9 +92,9 @@ class SkillError(Exception):
     """Base for skill-layer errors. The loader wraps these as JsonRpcError."""
 
 
-class SkillCredentialsMissing(SkillError):
+class SkillCredentialsMissingError(SkillError):
     """Raised when a skill tool is called but the tenant has no credentials stored."""
 
 
-class SkillToolNotFound(SkillError):
+class SkillToolNotFoundError(SkillError):
     """Raised when call_tool is invoked with a tool_name the skill does not export."""

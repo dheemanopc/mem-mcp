@@ -25,9 +25,9 @@ from mem_mcp.skills.audit_memory import should_audit, write_skill_audit_memory
 from mem_mcp.skills.base import (
     Skill,
     SkillCallContext,
-    SkillCredentialsMissing,
+    SkillCredentialsMissingError,
     SkillError,
-    SkillToolNotFound,
+    SkillToolNotFoundError,
     ToolDef,
 )
 from mem_mcp.skills.vault import SkillVault
@@ -84,7 +84,7 @@ class SkillLoader:
                         creds = await vault.load(
                             creds_conn, ctx.tenant_id, skill.name
                         )
-                    except SkillCredentialsMissing as exc:
+                    except SkillCredentialsMissingError as exc:
                         raise JsonRpcError(
                             -32000,
                             f"skill {skill.name!r} not enabled for this tenant",
@@ -126,7 +126,7 @@ class SkillLoader:
                     )
                     error_message = exc.message
                     to_reraise = exc
-                except SkillToolNotFound as exc:
+                except SkillToolNotFoundError as exc:
                     result_status = "error"
                     error_code = "skill_tool_not_found"
                     error_message = str(exc)

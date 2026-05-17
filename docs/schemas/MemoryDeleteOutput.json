@@ -27,6 +27,11 @@
       ],
       "title": "Promoted Version Id"
     },
+    "replies_cascaded_count": {
+      "default": 0,
+      "title": "Replies Cascaded Count",
+      "type": "integer"
+    },
     "request_id": {
       "title": "Request Id",
       "type": "string"

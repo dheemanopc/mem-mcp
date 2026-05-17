@@ -24,7 +24,7 @@ from mem_mcp.mcp.tool_descriptions import TOOL_DESCRIPTIONS
 from mem_mcp.mcp.tools._base import BaseTool, ToolContext
 from mem_mcp.skills.kite.auth import KiteAuthError, exchange_request_token
 from mem_mcp.skills.kite.client import KiteApiError, KiteClient
-from mem_mcp.skills.vault import SkillVault, SkillVaultDisabled, SkillVaultError
+from mem_mcp.skills.vault import SkillVault, SkillVaultDisabledError, SkillVaultError
 
 
 class MemsysEnableKiteInput(BaseModel):
@@ -68,7 +68,7 @@ class MemsysEnableKiteTool(BaseTool):
         # Load vault from settings (master key cached at boot)
         try:
             vault = SkillVault.from_settings(get_settings())
-        except SkillVaultDisabled as exc:
+        except SkillVaultDisabledError as exc:
             raise JsonRpcError(
                 -32000,
                 "skill framework not enabled — vault master key unset",
