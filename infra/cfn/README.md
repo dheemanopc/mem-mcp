@@ -154,26 +154,38 @@ Verify: `aws s3 ls s3://${BUCKET}/nested/`
 
 ### Step 4: Deploy root stack (every subsequent deployment)
 
-The GoogleClientSecret is fetched from SSM at deploy time because Cognito's `AWS::Cognito::UserPoolIdentityProvider` resource does not accept the `{{resolve:ssm-secure:...}}` dynamic reference (per [AWS docs on dynamic refs](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/dynamic-references.html#dynamic-references-ssm-secure-strings)).
+**Use the wrapper script** `deploy/scripts/cfn_deploy.sh` rather than calling `sam deploy` directly. It handles the SAM-transform-on-nested-template problem (see "Why a wrapper script" below).
 
 ```bash
-GS_SEC=$(aws ssm get-parameter --region ap-south-1 \
-  --name /mem-mcp/cognito/google_client_secret \
-  --with-decryption --query Parameter.Value --output text)
+# Full deploy
+bash deploy/scripts/cfn_deploy.sh
 
-sam deploy \
-  --template-file infra/cfn/root.yaml \
-  --stack-name mem-mcp-prod \
-  --region ap-south-1 \
-  --s3-bucket ${BUCKET} \
-  --s3-prefix sam-pkg \
-  --capabilities CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
-  --parameter-overrides $(cat infra/cfn/parameters/prod.json | \
-    jq -r 'to_entries | map("\(.key)=\(.value|tostring)") | join(" ")') GoogleClientSecret="$GS_SEC" \
-  --no-fail-on-empty-changeset
+# Or preview change set without executing
+bash deploy/scripts/cfn_deploy.sh --preview
 ```
 
+The script:
+1. Runs `sam package` on `050-lambda-presignup.yaml` (which has its own `Transform: AWS::Serverless-2016-10-31`) so its local-path CodeUri is rewritten to an `s3://` URI.
+2. Syncs the rest of `nested/*.yaml` raw, then uploads the packaged 050 separately (so the raw sync doesn't overwrite the packaged version).
+3. Fetches `GoogleClientSecret` from SSM (Cognito's UserPoolIdentityProvider doesn't accept `{{resolve:ssm-secure:...}}` dynamic refs).
+4. Runs `sam deploy` with all parameters from `prod.json` plus the resolved secret.
+
+**Why a wrapper script:**
+- `sam deploy` only processes transforms in the root template, not nested ones with their own `Transform:` directive.
+- A naive `aws s3 sync nested/` then `sam deploy` leaves 050 in S3 with `CodeUri: ../../../lambdas/presignup/`, which CFN can't resolve to an `s3://` URI → stack update fails mid-deploy with `'CodeUri' is not a valid S3 Uri`.
+- This stack lockout pattern (combined with the backup-bucket DenyNonInstanceRoleAccess) caused a difficult-to-recover production incident — see memsys memory `34497bec…` for the full post-mortem.
+
 **Cognito custom domain prerequisite:** the us-east-1 cert (T-1.9 / `us-east-1/cert.yaml`) MUST be deployed and validated BEFORE deploying 040-identity.yaml in the root stack. Pass the cert ARN via the `UsEast1CertArn` parameter. The Cognito custom domain creation can take 10-15 minutes (CloudFront propagation).
+
+### DeployerPrincipalArn — what to put in prod.json
+
+The `030-storage.yaml` bucket policy includes a `DenyNonInstanceRoleAccess` statement that excludes everything *except* `mem-mcp-instance-role`, the AWS root account, and the principal named in `DeployerPrincipalArn`. The CFN-deploying user/role MUST be the third allowlist entry, otherwise stack updates lock themselves out of the bucket policy mid-update.
+
+For single-operator setups: set `DeployerPrincipalArn` to your IAM user ARN (e.g., `arn:aws:iam::172485061306:user/Local`).
+
+For CI-driven deploys: set it to the CI role ARN (e.g., `arn:aws:iam::ACCOUNT:role/mem-mcp-ci-deployer`).
+
+The principal is referenced ONLY in the bucket policy allowlist; no other resources reference it.
 
 ## Nested Stack Reference
 

@@ -18,7 +18,7 @@ sudo -u memmcp git checkout "$REF"
 sudo -u memmcp git pull --ff-only origin "$REF"
 
 log "Installing Python deps"
-sudo -u memmcp ~memmcp/.local/bin/poetry install --no-dev
+sudo -u memmcp ~memmcp/.local/bin/poetry install --without dev
 
 log "Running migrations"
 sudo -u memmcp bash -c "set -a && source $ENV_FILE && set +a && \
