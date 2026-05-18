@@ -26,7 +26,7 @@ sudo -u memmcp bash -c "set -a && source $ENV_FILE && set +a && \
 
 if [[ -d "$REPO_DIR/web" ]]; then
   log "Building Next.js"
-  sudo -u memmcp bash -c "cd web && pnpm install --frozen-lockfile && pnpm build"
+  sudo -u memmcp bash -c "cd web && npm ci && npm run build"
 fi
 
 log "Restarting services"
