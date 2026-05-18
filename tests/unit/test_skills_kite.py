@@ -619,13 +619,17 @@ class TestKiteAutoLogin:
                 )
             raise AssertionError(f"unexpected call #{call_count['n']}")
 
-        # Mock the GET call (step 4) separately
+        # Mock the GET call (step 4) — returns a 302 with Location header
+        # carrying request_token. We don't follow the redirect server-side.
+        mock_resp = AsyncMock()
+        mock_resp.status_code = 302
+        mock_resp.headers = {
+            "location": "https://tradeapi.dheemantech.in/kite-callback?request_token=RTOK123&action=login&status=success"
+        }
         with patch(
             "mem_mcp.skills.kite.auth.httpx.AsyncClient.get",
             new_callable=AsyncMock,
         ) as mock_get_call:
-            mock_resp = AsyncMock()
-            mock_resp.url = "https://example.com?request_token=RTOK123"
             mock_get_call.return_value = mock_resp
             async with _make_mock_client(handler) as http:
                 result = await login_with_credentials(
@@ -636,6 +640,9 @@ class TestKiteAutoLogin:
                     totp_secret="JBSWY3DPEBLW64TMMQ======",
                     http=http,
                 )
+            # Critical: verify we did NOT follow the redirect (the original
+            # bug — algotrade memory 9441787e). The kwarg should be False.
+            assert mock_get_call.call_args.kwargs["follow_redirects"] is False
         assert result["access_token"] == "ATOK123"
         assert result["kite_user_id"] == "U1"
         assert result["public_token"] == "PTOK"
@@ -726,9 +733,10 @@ class TestKiteAutoLogin:
 
     @pytest.mark.asyncio
     async def test_login_step4_connect_login_transport_error(self) -> None:
-        """If httpx raises RequestError following /connect/login redirects (e.g.
-        callback URL unreachable), surface as KiteCredentialsError with
-        step='connect_login'. This is the suspected algotrade 17:31 failure shape."""
+        """If httpx raises RequestError on /connect/login itself (rare — only
+        if kite.zerodha.com is unreachable), surface as KiteCredentialsError
+        with step='connect_login'. We no longer follow the redirect (per memsys
+        9441787e), so transport errors are only possible on the direct request."""
         from unittest.mock import AsyncMock, patch
 
         from mem_mcp.skills.kite.auth import KiteCredentialsError, login_with_credentials
@@ -759,6 +767,81 @@ class TestKiteAutoLogin:
                     )
         assert exc.value.step == "connect_login"
         assert "ConnectError" in str(exc.value)
+
+    @pytest.mark.asyncio
+    async def test_login_step4_non_302_response(self) -> None:
+        """If /connect/login returns anything other than 302 (e.g., 200 with
+        an error page), surface as KiteCredentialsError with step='connect_login'
+        and upstream_status=<actual code>."""
+        from unittest.mock import AsyncMock, patch
+
+        from mem_mcp.skills.kite.auth import KiteCredentialsError, login_with_credentials
+
+        def handler(req: httpx.Request) -> httpx.Response:
+            if req.url.path == "/api/login":
+                return httpx.Response(
+                    200, json={"status": "success", "data": {"request_id": "REQ123"}}
+                )
+            if req.url.path == "/api/twofa":
+                return httpx.Response(200, json={"status": "success", "data": {}})
+            raise AssertionError(f"unexpected request to {req.url.path}")
+
+        mock_resp = AsyncMock()
+        mock_resp.status_code = 500
+        mock_resp.headers = {}
+
+        async with _make_mock_client(handler) as http:
+            with patch.object(http, "get", new=AsyncMock(return_value=mock_resp)):
+                with pytest.raises(KiteCredentialsError) as exc:
+                    await login_with_credentials(
+                        api_key="AKEY",
+                        api_secret="ASEC",
+                        user_id="U1",
+                        password="pwd123",
+                        totp_secret="JBSWY3DPEBLW64TMMQ======",
+                        http=http,
+                    )
+        assert exc.value.step == "connect_login"
+        assert exc.value.upstream_status == 500
+        assert "expected 302" in str(exc.value)
+
+    @pytest.mark.asyncio
+    async def test_login_step4_302_without_request_token(self) -> None:
+        """If /connect/login returns 302 but the Location header has no
+        request_token param (auth flow incomplete on Zerodha's end), surface as
+        KiteCredentialsError carrying the offending Location URL."""
+        from unittest.mock import AsyncMock, patch
+
+        from mem_mcp.skills.kite.auth import KiteCredentialsError, login_with_credentials
+
+        def handler(req: httpx.Request) -> httpx.Response:
+            if req.url.path == "/api/login":
+                return httpx.Response(
+                    200, json={"status": "success", "data": {"request_id": "REQ123"}}
+                )
+            if req.url.path == "/api/twofa":
+                return httpx.Response(200, json={"status": "success", "data": {}})
+            raise AssertionError(f"unexpected request to {req.url.path}")
+
+        mock_resp = AsyncMock()
+        mock_resp.status_code = 302
+        mock_resp.headers = {
+            "location": "https://kite.zerodha.com/connect/login?api_key=X&status=error"
+        }
+
+        async with _make_mock_client(handler) as http:
+            with patch.object(http, "get", new=AsyncMock(return_value=mock_resp)):
+                with pytest.raises(KiteCredentialsError) as exc:
+                    await login_with_credentials(
+                        api_key="AKEY",
+                        api_secret="ASEC",
+                        user_id="U1",
+                        password="pwd123",
+                        totp_secret="JBSWY3DPEBLW64TMMQ======",
+                        http=http,
+                    )
+        assert exc.value.step == "connect_login"
+        assert "missing request_token" in str(exc.value)
 
     @pytest.mark.asyncio
     async def test_call_tool_token_expired_triggers_relogin(self) -> None:
