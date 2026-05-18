@@ -389,6 +389,15 @@ def _wire_routers(app: FastAPI) -> None:
     export_router = make_export_router(pool=pool, deps=deps)
     app.include_router(export_router)
 
+    # Wire signup request routers
+    from mem_mcp.web.signup_requests.admin_routes import make_admin_signup_router
+    from mem_mcp.web.signup_requests.public_routes import make_public_signup_router
+
+    public_signup_router = make_public_signup_router(pool=pool, audit=audit)
+    app.include_router(public_signup_router)
+    admin_signup_router = make_admin_signup_router(pool=pool, audit=audit)
+    app.include_router(admin_signup_router)
+
     # Wire .well-known router
     well_known_router = make_well_known_router(
         resource_url=s.resource_url,

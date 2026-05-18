@@ -23,10 +23,10 @@ export default function Home() {
         </div>
         <p className="text-sm text-gray-500 mt-6">
           Don&apos;t have access yet?{" "}
-          <a href="mailto:anand@dheemantech.com?subject=memsys%20access%20request" className="text-blue-600 hover:underline">
-            Email anand@dheemantech.com
-          </a>{" "}
-          to request an invite.
+          <a href="/request-access" className="text-blue-600 hover:underline">
+            Request access
+          </a>
+          .
         </p>
       </div>
     </main>
