@@ -102,17 +102,22 @@ Call when: user says "how many memories do I have", "show me my usage", "what's 
 Do not call unless the user is explicitly asking about statistics or usage. Do not call as a substitute for memory_list or memory_search when the user wants to see content. Do not call repeatedly in the same turn.
 
 Examples: "How many memories do I have?" → stats. "What's my memory usage?" → stats. "Am I close to my limit?" → stats.""",
-    "memsys_enable_kite": """Onboard or refresh the calling tenant's Kite Connect credentials — call this exactly once for first-time setup, and again any day the user's daily access_token has expired.
+    "memsys_enable_kite": """Enable or refresh Kite Connect (Zerodha) for the calling tenant. Three onboarding modes — choose exactly one.
 
-Call when: user says "set up Kite", "connect my Zerodha account", "enable Kite skill", "onboard Kite", "I got a new request_token from Kite", "my Kite access_token expired"; cockpit setup workflow; daily access_token refresh (the tool overwrites prior credentials).
+Call when: user wants to connect their Zerodha account for the first time; user pasted a fresh request_token after Kite's daily-redirect flow; user's prior access_token has expired and they want to refresh; user wants to enable trade-placement tools (orders_enabled=true).
 
-Do not call without explicit user instruction supplying their Kite credentials. Do not call to test connectivity — use kite_get_holdings if credentials are already stored. Credentials are AES-256-GCM encrypted at rest in the per-tenant skill vault before this call returns.
+Do not call without explicit user instruction; this stores live broker credentials encrypted in the per-tenant vault. Do not call to test connectivity — use kite_get_holdings if credentials are already stored.
 
-Inputs: api_key (string), api_secret (string), and EXACTLY ONE of: request_token (the one-time token from Kite's redirect URL — the tool exchanges it for an access_token via Kite session/token), OR access_token (a fresh access_token if the user already completed the exchange externally).
+Inputs: api_key + api_secret + exactly one of:
+- access_token (manual: paste a fresh access_token each day)
+- request_token (one-time: exchange the request_token from Kite's redirect)
+- user_id + password + totp_secret (full auto-login: mem-mcp handles every daily refresh from now on; TOTP secret is the base32 string from Kite's 'Can't scan? Copy key' under 2FA setup)
 
-Output: status (one of "enabled", "stored_but_smoke_failed"), user_id (Zerodha user_id from auth response, null if access_token path was used), smoke_test_result (short description of the kite_get_holdings probe). status="enabled" means credentials are stored AND the smoke call succeeded; status="stored_but_smoke_failed" means credentials are stored but the verification call failed (often a stale access_token — retry with a fresh one).
+Optional: orders_enabled=true to allow kite_place_order and kite_cancel_order (default false; read-only Kite tools always work).
 
-Examples: First-time onboarding via Kite redirect: api_key=AKEY, api_secret=ASEC, request_token=RTOK. Daily refresh: api_key=AKEY, api_secret=ASEC, access_token=NEW_ATOK.""",
+Output: status (enabled / stored_but_smoke_failed), mode (manual / request_token_exchange / auto_login), user_id (Zerodha user_id if known), smoke_test_result.
+
+Examples: 'Set up Kite with auto-login for trader@example.com (totp ABCDEF, pwd xxx)' → mode auto_login. 'Refresh my Kite access_token: NEW_ATOK' → mode manual. 'Enable Kite trading' → include orders_enabled=true.""",
     "kite_cancel_order": """Cancel a pending or trigger-pending order on Zerodha — call this when the user wants to abort an order that hasn't yet fully executed.
 
 Call when: user explicitly says "cancel that order", "abort the buy on RELIANCE", "kill my SL"; orchestrator detects that a placed order's premise has been invalidated and needs to retract; cleanup before market close.

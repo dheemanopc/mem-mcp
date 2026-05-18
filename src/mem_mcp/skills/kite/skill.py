@@ -7,6 +7,7 @@ vault and passed in via SkillCallContext.credentials.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from typing import Any, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -20,6 +21,7 @@ from mem_mcp.skills.base import (
     SkillToolNotFoundError,
     ToolDef,
 )
+from mem_mcp.skills.kite.auth import KiteCredentialsError, login_with_credentials
 from mem_mcp.skills.kite.client import KiteApiError, KiteClient
 
 # --------------------------------------------------------------------------
@@ -158,6 +160,50 @@ class KiteSkill(NativeSkill):
             ),
         ]
 
+    async def _call_with_auto_refresh(
+        self,
+        ctx: SkillCallContext,
+        do_call: Callable[[str, str], Awaitable[Any]],
+    ) -> Any:
+        """Run a Kite call (do_call(api_key, access_token) -> data). On TokenException,
+        re-login from stored credentials if available, persist, retry once."""
+        creds = ctx.credentials
+        try:
+            return await do_call(creds["api_key"], creds["access_token"])
+        except KiteApiError as exc:
+            if exc.error_type != "TokenException":
+                raise
+            # Token expired. Can we self-refresh?
+            if not all(creds.get(k) for k in ("user_id", "password", "totp_secret", "api_secret")):
+                raise SkillError(
+                    "kite access_token expired and auto-login not configured; re-onboard via memsys_enable_kite"
+                ) from exc
+            try:
+                login_result = await login_with_credentials(
+                    api_key=creds["api_key"],
+                    api_secret=creds["api_secret"],
+                    user_id=creds["user_id"],
+                    password=creds["password"],
+                    totp_secret=creds["totp_secret"],
+                )
+            except KiteCredentialsError as auth_exc:
+                raise SkillError(f"kite auto-login failed: {auth_exc}") from auth_exc
+            new_access = login_result["access_token"]
+            if not new_access:
+                raise SkillError("kite auto-login returned no access_token") from exc
+            # Update in-memory creds
+            creds["access_token"] = new_access
+            if login_result.get("kite_user_id"):
+                creds["kite_user_id"] = login_result["kite_user_id"]
+            # Persist (best-effort)
+            if ctx.persist_credentials is not None:
+                try:
+                    await ctx.persist_credentials(creds)
+                except Exception:
+                    pass  # don't fail the retry just because vault write hiccupped
+            # Retry once
+            return await do_call(creds["api_key"], new_access)
+
     def list_tools(self) -> list[ToolDef]:
         return [
             ToolDef(
@@ -221,21 +267,27 @@ class KiteSkill(NativeSkill):
     async def call_tool(self, tool_name: str, args: BaseModel, ctx: SkillCallContext) -> BaseModel:
         creds = ctx.credentials
         try:
-            api_key = creds["api_key"]
-            access_token = creds["access_token"]
+            _ = creds["api_key"]
+            _ = creds["access_token"]
         except KeyError as exc:
             raise SkillError(f"missing required Kite credential field: {exc}") from exc
 
+        # Gate place_order and cancel_order on orders_enabled flag
+        if tool_name in ("place_order", "cancel_order") and not creds.get("orders_enabled", False):
+            raise SkillError(
+                "trading is not enabled for this tenant; re-onboard with orders_enabled=true via memsys_enable_kite"
+            )
+
         try:
             if tool_name == "get_holdings":
-                holdings_data: Any = await self._client.get_holdings(
-                    api_key=api_key, access_token=access_token
+                holdings_data: Any = await self._call_with_auto_refresh(
+                    ctx, lambda ak, at: self._client.get_holdings(api_key=ak, access_token=at)
                 )
                 return GetHoldingsOutput(holdings=list(holdings_data or []))
 
             if tool_name == "get_positions":
-                pos_data: Any = await self._client.get_positions(
-                    api_key=api_key, access_token=access_token
+                pos_data: Any = await self._call_with_auto_refresh(
+                    ctx, lambda ak, at: self._client.get_positions(api_key=ak, access_token=at)
                 )
                 return GetPositionsOutput(
                     net=list((pos_data or {}).get("net") or []),
@@ -244,39 +296,44 @@ class KiteSkill(NativeSkill):
 
             if tool_name == "get_margins":
                 assert isinstance(args, GetMarginsInput)
-                margins_data: Any = await self._client.get_margins(
-                    api_key=api_key,
-                    access_token=access_token,
-                    segment=args.segment,
+                margins_data: Any = await self._call_with_auto_refresh(
+                    ctx,
+                    lambda ak, at: self._client.get_margins(
+                        api_key=ak, access_token=at, segment=args.segment
+                    ),
                 )
                 return GetMarginsOutput(margins=dict(margins_data or {}))
 
             if tool_name == "get_quote":
                 assert isinstance(args, GetQuoteInput)
-                quote_data: Any = await self._client.get_quote(
-                    api_key=api_key,
-                    access_token=access_token,
-                    instruments=args.instruments,
+                quote_data: Any = await self._call_with_auto_refresh(
+                    ctx,
+                    lambda ak, at: self._client.get_quote(
+                        api_key=ak, access_token=at, instruments=args.instruments
+                    ),
                 )
                 return GetQuoteOutput(quotes=dict(quote_data or {}))
 
             if tool_name == "get_historical_data":
                 assert isinstance(args, GetHistoricalDataInput)
-                hist_data: Any = await self._client.get_historical_data(
-                    api_key=api_key,
-                    access_token=access_token,
-                    instrument_token=args.instrument_token,
-                    interval=args.interval,
-                    from_date=args.from_date,
-                    to_date=args.to_date,
-                    continuous=args.continuous,
-                    oi=args.oi,
+                hist_data: Any = await self._call_with_auto_refresh(
+                    ctx,
+                    lambda ak, at: self._client.get_historical_data(
+                        api_key=ak,
+                        access_token=at,
+                        instrument_token=args.instrument_token,
+                        interval=args.interval,
+                        from_date=args.from_date,
+                        to_date=args.to_date,
+                        continuous=args.continuous,
+                        oi=args.oi,
+                    ),
                 )
                 return GetHistoricalDataOutput(candles=list((hist_data or {}).get("candles") or []))
 
             if tool_name == "get_orders":
-                orders_data: Any = await self._client.get_orders(
-                    api_key=api_key, access_token=access_token
+                orders_data: Any = await self._call_with_auto_refresh(
+                    ctx, lambda ak, at: self._client.get_orders(api_key=ak, access_token=at)
                 )
                 return GetOrdersOutput(orders=list(orders_data or []))
 
@@ -299,21 +356,27 @@ class KiteSkill(NativeSkill):
                     order_params["disclosed_quantity"] = args.disclosed_quantity
                 if args.tag is not None:
                     order_params["tag"] = args.tag
-                placed_order_data: Any = await self._client.place_order(
-                    api_key=api_key,
-                    access_token=access_token,
-                    variety=args.variety,
-                    order_params=order_params,
+                placed_order_data: Any = await self._call_with_auto_refresh(
+                    ctx,
+                    lambda ak, at: self._client.place_order(
+                        api_key=ak,
+                        access_token=at,
+                        variety=args.variety,
+                        order_params=order_params,
+                    ),
                 )
                 return PlaceOrderOutput(order_id=str((placed_order_data or {}).get("order_id", "")))
 
             if tool_name == "cancel_order":
                 assert isinstance(args, CancelOrderInput)
-                cancel_order_data: Any = await self._client.cancel_order(
-                    api_key=api_key,
-                    access_token=access_token,
-                    variety=args.variety,
-                    order_id=args.order_id,
+                cancel_order_data: Any = await self._call_with_auto_refresh(
+                    ctx,
+                    lambda ak, at: self._client.cancel_order(
+                        api_key=ak,
+                        access_token=at,
+                        variety=args.variety,
+                        order_id=args.order_id,
+                    ),
                 )
                 return CancelOrderOutput(
                     order_id=str((cancel_order_data or {}).get("order_id", args.order_id))

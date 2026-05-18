@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any, ClassVar, Protocol, runtime_checkable
 from uuid import UUID
@@ -46,6 +47,7 @@ class SkillCallContext:
     request_id: str
     credentials: dict[str, Any]
     tool_call_id: UUID
+    persist_credentials: Callable[[dict[str, Any]], Awaitable[None]] | None = None
 
 
 @runtime_checkable

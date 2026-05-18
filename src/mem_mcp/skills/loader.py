@@ -90,6 +90,10 @@ class SkillLoader:
                             },
                         ) from exc
 
+                async def _persist(updated_creds: dict[str, Any]) -> None:
+                    async with tenant_tx(ctx.db_pool, ctx.tenant_id) as conn:
+                        await vault.store(conn, ctx.tenant_id, skill.name, updated_creds)
+
                 skill_ctx = SkillCallContext(
                     tenant_id=ctx.tenant_id,
                     identity_id=ctx.identity_id,
@@ -97,6 +101,7 @@ class SkillLoader:
                     request_id=ctx.request_id,
                     credentials=creds,
                     tool_call_id=tool_call_id,
+                    persist_credentials=_persist,
                 )
 
                 # Step 2: invoke skill (outside any tx — skill calls external APIs)

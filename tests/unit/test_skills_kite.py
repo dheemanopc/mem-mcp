@@ -20,7 +20,7 @@ def _make_mock_client(handler: Any) -> httpx.AsyncClient:
     return httpx.AsyncClient(transport=transport)
 
 
-def _build_skill_ctx(creds: dict[str, str] | None = None) -> Any:
+def _build_skill_ctx(creds: dict[str, Any] | None = None) -> Any:
     from mem_mcp.skills.base import SkillCallContext
 
     return SkillCallContext(
@@ -425,7 +425,15 @@ class TestKiteSkill:
                 order_type="LIMIT",
                 price=2500.0,
             )
-            out = await skill.call_tool("place_order", inp, _build_skill_ctx())
+            ctx = _build_skill_ctx(
+                {
+                    "api_key": "AKEY",
+                    "api_secret": "ASEC",
+                    "access_token": "ATOK",
+                    "orders_enabled": True,
+                }
+            )
+            out = await skill.call_tool("place_order", inp, ctx)
         assert isinstance(out, PlaceOrderOutput)
         assert out.order_id == "ORDER42"
 
@@ -461,7 +469,7 @@ class TestKiteSkill:
                 json={
                     "status": "error",
                     "message": "Invalid token",
-                    "error_type": "TokenException",
+                    "error_type": "GeneralException",
                 },
             )
 
@@ -471,3 +479,365 @@ class TestKiteSkill:
             with pytest.raises(SkillError) as exc:
                 await skill.call_tool("get_holdings", _EmptyInput(), _build_skill_ctx())
         assert "kite_get_holdings" in str(exc.value)
+
+    @pytest.mark.asyncio
+    async def test_call_tool_place_order_gated_when_orders_disabled(self) -> None:
+        from mem_mcp.skills.base import SkillError
+        from mem_mcp.skills.kite.client import KiteClient
+        from mem_mcp.skills.kite.skill import KiteSkill, PlaceOrderInput
+
+        def handler(req: httpx.Request) -> httpx.Response:
+            raise AssertionError("should not reach Kite if gated")
+
+        async with _make_mock_client(handler) as http:
+            client = KiteClient(http=http)
+            skill = KiteSkill(client=client)
+            ctx = _build_skill_ctx(
+                {
+                    "api_key": "AKEY",
+                    "api_secret": "ASEC",
+                    "access_token": "ATOK",
+                    "orders_enabled": False,
+                }
+            )
+            inp = PlaceOrderInput(
+                variety="regular",
+                tradingsymbol="RELIANCE",
+                exchange="NSE",
+                transaction_type="BUY",
+                quantity=10,
+                product="MIS",
+                order_type="MARKET",
+            )
+            with pytest.raises(SkillError) as exc:
+                await skill.call_tool("place_order", inp, ctx)
+        assert "trading is not enabled" in str(exc.value)
+
+    @pytest.mark.asyncio
+    async def test_call_tool_place_order_allowed_when_orders_enabled(self) -> None:
+        from mem_mcp.skills.kite.client import KiteClient
+        from mem_mcp.skills.kite.skill import KiteSkill, PlaceOrderInput
+
+        def handler(req: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json=_envelope({"order_id": "ORD123"}))
+
+        async with _make_mock_client(handler) as http:
+            client = KiteClient(http=http)
+            skill = KiteSkill(client=client)
+            ctx = _build_skill_ctx(
+                {
+                    "api_key": "AKEY",
+                    "api_secret": "ASEC",
+                    "access_token": "ATOK",
+                    "orders_enabled": True,
+                }
+            )
+            inp = PlaceOrderInput(
+                variety="regular",
+                tradingsymbol="RELIANCE",
+                exchange="NSE",
+                transaction_type="BUY",
+                quantity=10,
+                product="MIS",
+                order_type="MARKET",
+            )
+            out = await skill.call_tool("place_order", inp, ctx)
+        from mem_mcp.skills.kite.skill import PlaceOrderOutput
+
+        assert isinstance(out, PlaceOrderOutput)
+        assert out.order_id == "ORD123"
+
+    @pytest.mark.asyncio
+    async def test_call_tool_cancel_order_gated_when_orders_disabled(self) -> None:
+        from mem_mcp.skills.base import SkillError
+        from mem_mcp.skills.kite.client import KiteClient
+        from mem_mcp.skills.kite.skill import CancelOrderInput, KiteSkill
+
+        def handler(req: httpx.Request) -> httpx.Response:
+            raise AssertionError("should not reach Kite if gated")
+
+        async with _make_mock_client(handler) as http:
+            client = KiteClient(http=http)
+            skill = KiteSkill(client=client)
+            ctx = _build_skill_ctx(
+                {
+                    "api_key": "AKEY",
+                    "api_secret": "ASEC",
+                    "access_token": "ATOK",
+                    "orders_enabled": False,
+                }
+            )
+            inp = CancelOrderInput(variety="regular", order_id="ORD123")
+            with pytest.raises(SkillError) as exc:
+                await skill.call_tool("cancel_order", inp, ctx)
+        assert "trading is not enabled" in str(exc.value)
+
+
+# ==========================================================================
+# Auto-Login (Mode C)
+# ==========================================================================
+
+
+class TestKiteAutoLogin:
+    @pytest.mark.asyncio
+    async def test_login_with_credentials_happy_path(self) -> None:
+        from unittest.mock import AsyncMock, patch
+
+        from mem_mcp.skills.kite.auth import login_with_credentials
+
+        call_count = {"n": 0}
+
+        async def mock_get(*args: Any, **kwargs: Any) -> Any:
+            # Step 4: return response with request_token in URL
+            return AsyncMock(url="https://example.com?request_token=RTOK123")
+
+        def handler(req: httpx.Request) -> httpx.Response:
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                # Step 1: login
+                assert req.url.path == "/api/login"
+                return httpx.Response(
+                    200, json={"status": "success", "data": {"request_id": "REQ123"}}
+                )
+            elif call_count["n"] == 2:
+                # Step 3: 2FA
+                assert req.url.path == "/api/twofa"
+                return httpx.Response(200, json={"status": "success", "data": {}})
+            elif call_count["n"] == 3:
+                # Step 5: exchange for access_token
+                assert req.url.path == "/session/token"
+                return httpx.Response(
+                    200,
+                    json={
+                        "status": "success",
+                        "data": {
+                            "access_token": "ATOK123",
+                            "public_token": "PTOK",
+                            "user_id": "U1",
+                        },
+                    },
+                )
+            raise AssertionError(f"unexpected call #{call_count['n']}")
+
+        # Mock the GET call (step 4) separately
+        with patch(
+            "mem_mcp.skills.kite.auth.httpx.AsyncClient.get",
+            new_callable=AsyncMock,
+        ) as mock_get_call:
+            mock_resp = AsyncMock()
+            mock_resp.url = "https://example.com?request_token=RTOK123"
+            mock_get_call.return_value = mock_resp
+            async with _make_mock_client(handler) as http:
+                result = await login_with_credentials(
+                    api_key="AKEY",
+                    api_secret="ASEC",
+                    user_id="U1",
+                    password="pwd123",
+                    totp_secret="JBSWY3DPEBLW64TMMQ======",
+                    http=http,
+                )
+        assert result["access_token"] == "ATOK123"
+        assert result["kite_user_id"] == "U1"
+        assert result["public_token"] == "PTOK"
+
+    @pytest.mark.asyncio
+    async def test_login_with_credentials_step1_failure(self) -> None:
+        from mem_mcp.skills.kite.auth import KiteCredentialsError, login_with_credentials
+
+        def handler(req: httpx.Request) -> httpx.Response:
+            if req.url.path == "/api/login":
+                return httpx.Response(
+                    400,
+                    json={
+                        "status": "error",
+                        "message": "Invalid user_id or password",
+                        "error_type": "InvalidCredentials",
+                    },
+                )
+            raise AssertionError(f"unexpected request to {req.url.path}")
+
+        async with _make_mock_client(handler) as http:
+            with pytest.raises(KiteCredentialsError) as exc:
+                await login_with_credentials(
+                    api_key="AKEY",
+                    api_secret="ASEC",
+                    user_id="baduser",
+                    password="badpwd",
+                    totp_secret="JBSWY3DPEBLW64TMMQ======",
+                    http=http,
+                )
+        assert "Invalid user_id or password" in str(exc.value)
+
+    @pytest.mark.asyncio
+    async def test_login_with_credentials_invalid_totp_secret(self) -> None:
+        from mem_mcp.skills.kite.auth import KiteCredentialsError, login_with_credentials
+
+        def handler(req: httpx.Request) -> httpx.Response:
+            if req.url.path == "/api/login":
+                return httpx.Response(
+                    200, json={"status": "success", "data": {"request_id": "REQ123"}}
+                )
+            raise AssertionError(f"unexpected request to {req.url.path}")
+
+        async with _make_mock_client(handler) as http:
+            with pytest.raises(KiteCredentialsError) as exc:
+                await login_with_credentials(
+                    api_key="AKEY",
+                    api_secret="ASEC",
+                    user_id="U1",
+                    password="pwd123",
+                    totp_secret="INVALID_BASE32_SECRET!!!",
+                    http=http,
+                )
+        assert "invalid TOTP secret" in str(exc.value)
+
+    @pytest.mark.asyncio
+    async def test_call_tool_token_expired_triggers_relogin(self) -> None:
+        from unittest.mock import AsyncMock, patch
+
+        from mem_mcp.skills.kite.client import KiteClient
+        from mem_mcp.skills.kite.skill import GetHoldingsOutput, KiteSkill, _EmptyInput
+
+        call_count = {"n": 0}
+
+        def handler(req: httpx.Request) -> httpx.Response:
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                # First call fails with TokenException
+                return httpx.Response(
+                    401,
+                    json={
+                        "status": "error",
+                        "message": "Invalid token",
+                        "error_type": "TokenException",
+                    },
+                )
+            elif call_count["n"] == 2:
+                # After re-login (in login_with_credentials step 5), retry succeeds
+                return httpx.Response(
+                    200, json={"status": "success", "data": [{"tradingsymbol": "RELIANCE"}]}
+                )
+            raise AssertionError(f"unexpected call #{call_count['n']}")
+
+        persist_called: dict[str, Any] = {}
+
+        async def mock_persist(creds: dict[str, Any]) -> None:
+            persist_called["creds"] = creds
+
+        async with _make_mock_client(handler) as http:
+            # Mock login_with_credentials to return a new token without making 5 steps
+            with patch(
+                "mem_mcp.skills.kite.skill.login_with_credentials",
+                new_callable=AsyncMock,
+            ) as mock_login:
+                mock_login.return_value = {
+                    "access_token": "NEW_ATOK",
+                    "kite_user_id": "U1",
+                    "public_token": "PTOK",
+                }
+                client = KiteClient(http=http)
+                skill = KiteSkill(client=client)
+                ctx = _build_skill_ctx(
+                    {
+                        "api_key": "AKEY",
+                        "api_secret": "ASEC",
+                        "access_token": "OLD_ATOK",
+                        "user_id": "U1",
+                        "password": "pwd123",
+                        "totp_secret": "JBSWY3DPEBLW64TMMQ======",
+                    }
+                )
+                ctx.persist_credentials = mock_persist
+                out = await skill.call_tool("get_holdings", _EmptyInput(), ctx)
+        assert isinstance(out, GetHoldingsOutput)
+        assert out.holdings[0]["tradingsymbol"] == "RELIANCE"
+        # Verify persist_credentials was called with updated creds
+        assert persist_called["creds"]["access_token"] == "NEW_ATOK"
+        assert persist_called["creds"]["kite_user_id"] == "U1"
+
+    @pytest.mark.asyncio
+    async def test_call_tool_token_expired_no_auto_login_creds(self) -> None:
+        from mem_mcp.skills.base import SkillError
+        from mem_mcp.skills.kite.client import KiteClient
+        from mem_mcp.skills.kite.skill import KiteSkill, _EmptyInput
+
+        def handler(req: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                401,
+                json={
+                    "status": "error",
+                    "message": "Invalid token",
+                    "error_type": "TokenException",
+                },
+            )
+
+        async with _make_mock_client(handler) as http:
+            client = KiteClient(http=http)
+            skill = KiteSkill(client=client)
+            # No auto-login fields in creds
+            ctx = _build_skill_ctx(
+                {"api_key": "AKEY", "api_secret": "ASEC", "access_token": "OLD_ATOK"}
+            )
+            with pytest.raises(SkillError) as exc:
+                await skill.call_tool("get_holdings", _EmptyInput(), ctx)
+        assert "auto-login not configured" in str(exc.value)
+
+
+# ==========================================================================
+# Enable Kite Tool Input Validation
+# ==========================================================================
+
+
+class TestMemsysEnableKiteInput:
+    def test_mode_c_requires_all_three(self) -> None:
+        from pydantic import ValidationError
+
+        from mem_mcp.skills.kite.enable_tool import MemsysEnableKiteInput
+
+        # Only user_id provided
+        with pytest.raises(ValidationError) as exc:
+            MemsysEnableKiteInput(
+                api_key="AKEY",
+                api_secret="ASEC",
+                user_id="U1",
+            )
+        assert "auto-login requires" in str(exc.value)
+
+        # Only user_id and password provided
+        with pytest.raises(ValidationError) as exc:
+            MemsysEnableKiteInput(
+                api_key="AKEY",
+                api_secret="ASEC",
+                user_id="U1",
+                password="pwd",
+            )
+        assert "auto-login requires" in str(exc.value)
+
+    def test_mode_c_with_orders_enabled(self) -> None:
+        from mem_mcp.skills.kite.enable_tool import MemsysEnableKiteInput
+
+        inp = MemsysEnableKiteInput(
+            api_key="AKEY",
+            api_secret="ASEC",
+            user_id="U1",
+            password="pwd123",
+            totp_secret="JBSWY3DPEBLW64TMMQ======",
+            orders_enabled=True,
+        )
+        assert inp.user_id == "U1"
+        assert inp.orders_enabled is True
+
+    def test_exactly_one_mode_enforced(self) -> None:
+        from pydantic import ValidationError
+
+        from mem_mcp.skills.kite.enable_tool import MemsysEnableKiteInput
+
+        # Two modes provided
+        with pytest.raises(ValidationError) as exc:
+            MemsysEnableKiteInput(
+                api_key="AKEY",
+                api_secret="ASEC",
+                access_token="ATOK",
+                request_token="RTOK",
+            )
+        assert "exactly one of" in str(exc.value)
