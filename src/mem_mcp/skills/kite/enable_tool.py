@@ -22,7 +22,12 @@ from mem_mcp.db import tenant_tx
 from mem_mcp.mcp.errors import JsonRpcError
 from mem_mcp.mcp.tool_descriptions import TOOL_DESCRIPTIONS
 from mem_mcp.mcp.tools._base import BaseTool, ToolContext
-from mem_mcp.skills.kite.auth import KiteAuthError, exchange_request_token
+from mem_mcp.skills.kite.auth import (
+    KiteAuthError,
+    KiteCredentialsError,
+    exchange_request_token,
+    login_with_credentials,
+)
 from mem_mcp.skills.kite.client import KiteApiError, KiteClient
 from mem_mcp.skills.vault import SkillVault, SkillVaultDisabledError, SkillVaultError
 
@@ -34,18 +39,36 @@ class MemsysEnableKiteInput(BaseModel):
     api_secret: str
     request_token: str | None = None
     access_token: str | None = None
+    user_id: str | None = None
+    password: str | None = None
+    totp_secret: str | None = None
+    orders_enabled: bool = False
 
     @model_validator(mode="after")
     def _exactly_one_token(self) -> MemsysEnableKiteInput:
         rt = self.request_token
         at = self.access_token
-        if (rt is None) == (at is None):
-            raise ValueError("exactly one of request_token or access_token must be provided")
+        has_auto = self.user_id and self.password and self.totp_secret
+        partial_auto = (
+            (self.user_id is not None)
+            or (self.password is not None)
+            or (self.totp_secret is not None)
+        ) and not has_auto
+        if partial_auto:
+            raise ValueError(
+                "auto-login requires user_id AND password AND totp_secret together (or omit all three)"
+            )
+        provided = sum([rt is not None, at is not None, bool(has_auto)])
+        if provided != 1:
+            raise ValueError(
+                "provide exactly one of: access_token, request_token, or (user_id+password+totp_secret)"
+            )
         return self
 
 
 class MemsysEnableKiteOutput(BaseModel):
     status: str
+    mode: str
     user_id: str | None
     smoke_test_result: str
     request_id: str
@@ -81,7 +104,9 @@ class MemsysEnableKiteTool(BaseTool):
 
         # Step 1: resolve access_token
         kite_user_id: str | None = None
+        mode: str = "manual"
         if inp.request_token is not None:
+            mode = "request_token_exchange"
             try:
                 token_data = await exchange_request_token(
                     inp.api_key, inp.request_token, inp.api_secret
@@ -103,6 +128,33 @@ class MemsysEnableKiteTool(BaseTool):
                     "kite returned no access_token after exchange",
                     data={"code": "kite_no_access_token"},
                 )
+        elif inp.user_id is not None:
+            mode = "auto_login"
+            # Mode C: full auto-login
+            # model_validator guarantees all three are present together
+            assert inp.password is not None and inp.totp_secret is not None
+            try:
+                login_result = await login_with_credentials(
+                    api_key=inp.api_key,
+                    api_secret=inp.api_secret,
+                    user_id=inp.user_id,
+                    password=inp.password,
+                    totp_secret=inp.totp_secret,
+                )
+            except KiteCredentialsError as exc:
+                raise JsonRpcError(
+                    -32000,
+                    f"kite auto-login failed: {exc}",
+                    data={"code": "kite_auto_login_failed", "error_type": exc.error_type},
+                ) from exc
+            access_token = login_result.get("access_token")
+            kite_user_id = login_result.get("kite_user_id")
+            if not access_token:
+                raise JsonRpcError(
+                    -32603,
+                    "kite auto-login returned no access_token",
+                    data={"code": "kite_no_access_token"},
+                )
         else:
             assert inp.access_token is not None  # model_validator guarantees
             access_token = inp.access_token
@@ -112,9 +164,15 @@ class MemsysEnableKiteTool(BaseTool):
             "api_key": inp.api_key,
             "api_secret": inp.api_secret,
             "access_token": access_token,
+            "orders_enabled": inp.orders_enabled,
         }
         if kite_user_id is not None:
-            creds["user_id"] = kite_user_id
+            creds["kite_user_id"] = kite_user_id
+        if inp.user_id is not None:
+            # Mode C: store the auto-login secrets so we can refresh tomorrow
+            creds["user_id"] = inp.user_id
+            creds["password"] = inp.password
+            creds["totp_secret"] = inp.totp_secret
         async with tenant_tx(ctx.db_pool, ctx.tenant_id) as conn:
             await vault.store(conn, ctx.tenant_id, "kite", creds)
 
@@ -134,6 +192,7 @@ class MemsysEnableKiteTool(BaseTool):
             # response so the caller knows. They can retry with a fresh token.
             return MemsysEnableKiteOutput(
                 status="stored_but_smoke_failed",
+                mode=mode,
                 user_id=kite_user_id,
                 smoke_test_result=smoke_result,
                 request_id=ctx.request_id,
@@ -142,6 +201,7 @@ class MemsysEnableKiteTool(BaseTool):
             smoke_result = f"smoke test exception: {type(exc).__name__}: {exc}"
             return MemsysEnableKiteOutput(
                 status="stored_but_smoke_failed",
+                mode=mode,
                 user_id=kite_user_id,
                 smoke_test_result=smoke_result,
                 request_id=ctx.request_id,
@@ -149,6 +209,7 @@ class MemsysEnableKiteTool(BaseTool):
 
         return MemsysEnableKiteOutput(
             status="enabled",
+            mode=mode,
             user_id=kite_user_id,
             smoke_test_result=smoke_result,
             request_id=ctx.request_id,

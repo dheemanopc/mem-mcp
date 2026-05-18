@@ -6,16 +6,18 @@ The Kite Connect login flow:
 3. We POST request_token + api_key + checksum to /session/token to receive access_token
 4. access_token is valid until the next morning (~6 AM IST); it must be regenerated daily
 
-Phase 1: TOTP-based auto-refresh is NOT in scope. Tenant must supply a fresh
-access_token via the onboarding flow each day until automation is added.
+Phase 1: Manual or request_token-based onboarding.
+Phase 2: TOTP-based auto-refresh via stored credentials (Mode C).
 """
 
 from __future__ import annotations
 
 import hashlib
 from typing import Any, cast
+from urllib.parse import parse_qs, urlparse
 
 import httpx
+import pyotp
 
 KITE_API_BASE_URL = "https://api.kite.trade"
 
@@ -26,6 +28,12 @@ class KiteAuthError(Exception):
     def __init__(self, message: str, error_type: str | None = None) -> None:
         super().__init__(message)
         self.error_type = error_type
+
+
+class KiteCredentialsError(KiteAuthError):
+    """Raised when stored credentials don't allow auto-login (missing field, expired TOTP, etc.)."""
+
+    pass
 
 
 def compute_checksum(api_key: str, request_token: str, api_secret: str) -> str:
@@ -73,6 +81,101 @@ async def exchange_request_token(
                 error_type=body.get("error_type"),
             )
         return cast(dict[str, Any], body.get("data", {}))
+
+    if http is not None:
+        return await _do(http)
+    async with httpx.AsyncClient() as client:
+        return await _do(client)
+
+
+async def login_with_credentials(
+    *,
+    api_key: str,
+    api_secret: str,
+    user_id: str,
+    password: str,
+    totp_secret: str,
+    http: httpx.AsyncClient | None = None,
+    timeout: float = 20.0,
+) -> dict[str, Any]:
+    """Run the 5-step Zerodha auto-login. Returns dict with access_token, kite_user_id, public_token.
+
+    Reference: memsys 0a0b0e1a Java implementation. Plain HTTPS, no Selenium.
+
+    Steps:
+      1. POST kite.zerodha.com/api/login (user_id, password) -> request_id
+      2. Generate TOTP code from totp_secret (RFC 6238, SHA1, 6 digits, 30s window)
+      3. POST kite.zerodha.com/api/twofa (user_id, request_id, twofa_value, twofa_type=totp)
+      4. GET kite.zerodha.com/connect/login?api_key=... — follow redirects, parse ?request_token=
+      5. POST api.kite.trade/session/token with checksum(api_key+request_token+api_secret) -> access_token
+    """
+
+    base_kite = "https://kite.zerodha.com"
+
+    async def _do(client: httpx.AsyncClient) -> dict[str, Any]:
+        # Step 1: login
+        r1 = await client.post(
+            f"{base_kite}/api/login",
+            data={"user_id": user_id, "password": password},
+            timeout=timeout,
+        )
+        b1 = r1.json()
+        if r1.status_code != 200 or b1.get("status") != "success":
+            raise KiteCredentialsError(
+                b1.get("message") or f"login step 1 failed (status {r1.status_code})",
+                error_type=b1.get("error_type"),
+            )
+        request_id = b1["data"].get("request_id")
+        if not request_id:
+            raise KiteCredentialsError("login step 1: no request_id in response")
+
+        # Step 2: TOTP
+        try:
+            twofa_value = pyotp.TOTP(totp_secret).now()
+        except Exception as exc:
+            raise KiteCredentialsError(f"invalid TOTP secret: {exc}") from exc
+
+        # Step 3: 2FA
+        r2 = await client.post(
+            f"{base_kite}/api/twofa",
+            data={
+                "user_id": user_id,
+                "request_id": request_id,
+                "twofa_value": twofa_value,
+                "twofa_type": "totp",
+            },
+            timeout=timeout,
+        )
+        b2 = r2.json()
+        if r2.status_code != 200 or b2.get("status") != "success":
+            raise KiteCredentialsError(
+                b2.get("message") or f"2FA failed (status {r2.status_code})",
+                error_type=b2.get("error_type"),
+            )
+
+        # Step 4: get request_token (follow redirects, parse final URL)
+        r3 = await client.get(
+            f"{base_kite}/connect/login",
+            params={"api_key": api_key, "v": "3"},
+            follow_redirects=True,
+            timeout=timeout,
+        )
+        # The final URL should contain ?request_token=...
+        parsed = urlparse(str(r3.url))
+        qs = parse_qs(parsed.query)
+        request_token = qs.get("request_token", [None])[0]
+        if not request_token:
+            raise KiteCredentialsError(f"could not extract request_token from final URL: {r3.url}")
+
+        # Step 5: exchange for access_token
+        token_data = await exchange_request_token(
+            api_key, request_token, api_secret, http=client, timeout=timeout
+        )
+        return {
+            "access_token": token_data.get("access_token"),
+            "public_token": token_data.get("public_token"),
+            "kite_user_id": token_data.get("user_id"),
+        }
 
     if http is not None:
         return await _do(http)
