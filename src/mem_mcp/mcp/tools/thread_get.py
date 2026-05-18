@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from typing import Any, ClassVar
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 from mem_mcp.db import tenant_tx
 from mem_mcp.mcp.errors import JsonRpcError
@@ -34,6 +35,14 @@ class ThreadMemoryRecord(BaseModel):
     created_at: datetime
     updated_at: datetime
     deleted_at: datetime | None
+
+    @field_validator("metadata", mode="before")
+    @classmethod
+    def _parse_jsonb(cls, v: Any) -> Any:
+        # See get.py MemoryRecord._parse_jsonb — same asyncpg codec quirk.
+        if isinstance(v, str):
+            return json.loads(v) if v else {}
+        return v
 
 
 class MemoryThreadGetOutput(BaseModel):

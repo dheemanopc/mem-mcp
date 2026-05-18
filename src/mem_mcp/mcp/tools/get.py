@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from typing import Any, ClassVar
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 from mem_mcp.db import tenant_tx
 from mem_mcp.mcp.errors import JsonRpcError
@@ -34,6 +35,19 @@ class MemoryRecord(BaseModel):
     created_at: datetime
     updated_at: datetime
     deleted_at: datetime | None
+
+    @field_validator("metadata", mode="before")
+    @classmethod
+    def _parse_jsonb(cls, v: Any) -> Any:
+        # asyncpg returns the JSONB column as a raw JSON str when no codec is
+        # registered for it on the active connection. Connection codecs are
+        # registered via the pool init (db/pool.py) but the registration only
+        # applies reliably to *literal* casts; column-typed JSONB reads on
+        # already-prepared statements still return str on asyncpg 0.30.
+        # Accept both shapes; parse str to dict on the way in.
+        if isinstance(v, str):
+            return json.loads(v) if v else {}
+        return v
 
 
 class MemoryGetOutput(BaseModel):
