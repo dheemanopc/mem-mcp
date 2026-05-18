@@ -47,6 +47,11 @@
       "title": "Log Level",
       "type": "string"
     },
+    "operator_email": {
+      "default": "anand@dheemantech.com",
+      "title": "Operator Email",
+      "type": "string"
+    },
     "region": {
       "default": "ap-south-1",
       "title": "Region",

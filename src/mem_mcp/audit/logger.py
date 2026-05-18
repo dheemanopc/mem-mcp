@@ -70,6 +70,11 @@ AUDIT_ACTIONS: tuple[str, ...] = (
     # quotas / abuse
     "quota.exceeded",
     "ratelimit.exceeded",
+    # signup requests
+    "signup.requested",
+    "signup.verified",
+    "signup.approved",
+    "signup.rejected",
 )
 
 
@@ -104,6 +109,10 @@ AuditAction = Literal[
     "memory.dedupe_merged",
     "quota.exceeded",
     "ratelimit.exceeded",
+    "signup.requested",
+    "signup.verified",
+    "signup.approved",
+    "signup.rejected",
 ]
 
 AuditResult = Literal["success", "denied", "error"]

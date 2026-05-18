@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     backup_gpg_passphrase: str
     web_session_secret: str
     link_state_secret: str
+    operator_email: str = "anand@dheemantech.com"
     # Skill framework — base64-encoded 32-byte AES-256 master key for the
     # tenant_skill_credentials vault. None disables the skill framework at boot.
     skill_vault_master_key: str | None = None
