@@ -206,36 +206,44 @@ async def login_with_credentials(
                 upstream_status=r2.status_code,
             )
 
-        # Step 4: get request_token (follow redirects, parse final URL).
-        # The redirect chain is:
-        #   /connect/login -> /connect/finish -> <app's configured callback URL>?request_token=...
-        # If the callback URL is unreachable (DNS, connect refused, timeout)
-        # httpx raises a RequestError during the redirect-follow.
+        # Step 4: get request_token. Zerodha redirects to the developer app's
+        # configured callback URL with `?request_token=...` in the query string.
+        # We do NOT follow the redirect — the callback target is app-developer
+        # controlled (could be unreachable from mem-mcp's host, require auth,
+        # or bind to a private network). The `request_token` is fully present
+        # in the Location header; that's all we need for the server-side flow.
+        # This matches algotrade's Java reference implementation (memsys 0a0b0e1a).
         try:
             r3 = await client.get(
                 f"{base_kite}/connect/login",
                 params={"api_key": api_key, "v": "3"},
-                follow_redirects=True,
+                follow_redirects=False,
                 timeout=timeout,
             )
-        except httpx.TooManyRedirects as exc:
-            raise KiteCredentialsError(
-                "redirect chain exceeded limit during /connect/login follow",
-                step="connect_login",
-            ) from exc
         except httpx.RequestError as exc:
             raise KiteCredentialsError(
-                f"transport error following /connect/login redirects: {type(exc).__name__}: {exc}. "
-                "Check the Kite Connect app's redirect URL — it must be reachable from mem-mcp's host.",
+                f"transport error on /connect/login: {type(exc).__name__}: {exc}",
                 step="connect_login",
             ) from exc
-        # The final URL should contain ?request_token=...
-        parsed = urlparse(str(r3.url))
+        if r3.status_code != 302:
+            raise KiteCredentialsError(
+                f"expected 302 from /connect/login, got {r3.status_code}",
+                step="connect_login",
+                upstream_status=r3.status_code,
+            )
+        location = r3.headers.get("location") or ""
+        if not location:
+            raise KiteCredentialsError(
+                "302 from /connect/login missing Location header",
+                step="connect_login",
+                upstream_status=r3.status_code,
+            )
+        parsed = urlparse(location)
         qs = parse_qs(parsed.query)
         request_token = qs.get("request_token", [None])[0]
         if not request_token:
             raise KiteCredentialsError(
-                f"could not extract request_token from final URL: {r3.url}",
+                f"302 Location missing request_token query param: {location}",
                 step="connect_login",
                 upstream_status=r3.status_code,
             )
