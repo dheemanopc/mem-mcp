@@ -75,6 +75,11 @@ AUDIT_ACTIONS: tuple[str, ...] = (
     "signup.verified",
     "signup.approved",
     "signup.rejected",
+    # skill: kite intents
+    "skill.kite.intent_created",
+    "skill.kite.intent_confirmed",
+    "skill.kite.intent_cancelled",
+    "skill.kite.intent_smoke_failed",
 )
 
 
@@ -113,6 +118,10 @@ AuditAction = Literal[
     "signup.verified",
     "signup.approved",
     "signup.rejected",
+    "skill.kite.intent_created",
+    "skill.kite.intent_confirmed",
+    "skill.kite.intent_cancelled",
+    "skill.kite.intent_smoke_failed",
 ]
 
 AuditResult = Literal["success", "denied", "error"]

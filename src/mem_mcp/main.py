@@ -71,6 +71,7 @@ from mem_mcp.mcp.tools.write import MemoryWriteTool
 from mem_mcp.mcp.transport import make_mcp_router
 from mem_mcp.quotas.enforcer import QuotaEnforcer
 from mem_mcp.skills.kite.enable_tool import MemsysEnableKiteTool
+from mem_mcp.skills.vault import SkillVault, SkillVaultDisabledError
 from mem_mcp.web.csrf import CsrfMiddleware
 from mem_mcp.web.handlers.clients import make_clients_router
 from mem_mcp.web.handlers.export import make_export_router
@@ -398,6 +399,22 @@ def _wire_routers(app: FastAPI) -> None:
     admin_signup_router = make_admin_signup_router(pool=pool, audit=audit)
     app.include_router(admin_signup_router)
 
+    # Wire kite confirm router (user-facing intent confirmation)
+    try:
+        from mem_mcp.web.skills.kite_confirm import make_kite_confirm_router
+
+        vault_for_confirm = SkillVault.from_settings(s)
+        kite_confirm_router = make_kite_confirm_router(
+            pool=pool,
+            audit=audit,
+            vault=vault_for_confirm,
+        )
+        app.include_router(kite_confirm_router)
+    except SkillVaultDisabledError:
+        log.warning("kite_confirm_router_disabled", reason="vault not configured")
+    except Exception as exc:
+        log.warning("kite_confirm_router_disabled", reason=str(exc))
+
     # Wire .well-known router
     well_known_router = make_well_known_router(
         resource_url=s.resource_url,
@@ -445,6 +462,26 @@ def _wire_routers(app: FastAPI) -> None:
         shared_secret=s.internal_lambda_secret,
     )
     app.include_router(internal_invite_router)
+
+    # Wire kite intent router (S2S credential handoff)
+    try:
+        vault = SkillVault.from_settings(s)
+        jwks_fetcher = HttpxJwksFetcher(region=s.region, user_pool_id=s.cognito_user_pool_id)
+        jwks_cache = JwksCache(jwks_fetcher)
+        issuer = f"https://cognito-idp.{s.region}.amazonaws.com/{s.cognito_user_pool_id}"
+        jwt_validator = JwtValidator(jwks_cache=jwks_cache, issuer=issuer)
+        from mem_mcp.web.admin.kite_intents import make_kite_intent_router
+
+        kite_intent_router = make_kite_intent_router(
+            pool=pool,
+            audit=audit,
+            vault=vault,
+            jwt_validator=jwt_validator,
+            settings=s,
+        )
+        app.include_router(kite_intent_router)
+    except Exception as exc:
+        log.warning("kite_intent_router_disabled", reason=str(exc))
 
     # Wire MCP transport router
     mcp_router = make_mcp_router(
