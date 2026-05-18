@@ -464,7 +464,8 @@ Resources:
   SnapshotPolicy:
     Type: AWS::DLM::LifecyclePolicy
     Properties:
-      Description: Daily root-volume snapshots for mem-mcp-host, retain 7 days
+      # DLM Description pattern is [0-9A-Za-z _-]+ -- no commas allowed
+      Description: Daily root-volume snapshots for mem-mcp-host - retain 7 days
       State: ENABLED
       ExecutionRoleArn: !GetAtt DlmExecutionRole.Arn
       PolicyDetails:
