@@ -15,7 +15,7 @@ export default function Home() {
             Sign in with Google
           </a>
           <a
-            href="#docs"
+            href="/docs"
             className="inline-block px-6 py-2 border border-gray-300 text-gray-700 rounded hover:bg-gray-50 transition"
           >
             View Docs
