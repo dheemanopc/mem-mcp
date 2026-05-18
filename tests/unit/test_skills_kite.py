@@ -690,6 +690,75 @@ class TestKiteAutoLogin:
                     http=http,
                 )
         assert "invalid TOTP secret" in str(exc.value)
+        # Observability: step annotation present so callers know WHERE it failed
+        assert exc.value.step == "totp_generate"
+
+    @pytest.mark.asyncio
+    async def test_login_step1_failure_carries_step_and_status(self) -> None:
+        """Step-1 KiteCredentialsError must carry step='api_login' + upstream_status."""
+        from mem_mcp.skills.kite.auth import KiteCredentialsError, login_with_credentials
+
+        def handler(req: httpx.Request) -> httpx.Response:
+            if req.url.path == "/api/login":
+                return httpx.Response(
+                    403,
+                    json={
+                        "status": "error",
+                        "message": "Account locked",
+                        "error_type": "UserBlocked",
+                    },
+                )
+            raise AssertionError(f"unexpected request to {req.url.path}")
+
+        async with _make_mock_client(handler) as http:
+            with pytest.raises(KiteCredentialsError) as exc:
+                await login_with_credentials(
+                    api_key="AKEY",
+                    api_secret="ASEC",
+                    user_id="U1",
+                    password="pwd123",
+                    totp_secret="JBSWY3DPEBLW64TMMQ======",
+                    http=http,
+                )
+        assert exc.value.step == "api_login"
+        assert exc.value.upstream_status == 403
+        assert exc.value.error_type == "UserBlocked"
+
+    @pytest.mark.asyncio
+    async def test_login_step4_connect_login_transport_error(self) -> None:
+        """If httpx raises RequestError following /connect/login redirects (e.g.
+        callback URL unreachable), surface as KiteCredentialsError with
+        step='connect_login'. This is the suspected algotrade 17:31 failure shape."""
+        from unittest.mock import AsyncMock, patch
+
+        from mem_mcp.skills.kite.auth import KiteCredentialsError, login_with_credentials
+
+        def handler(req: httpx.Request) -> httpx.Response:
+            if req.url.path == "/api/login":
+                return httpx.Response(
+                    200, json={"status": "success", "data": {"request_id": "REQ123"}}
+                )
+            if req.url.path == "/api/twofa":
+                return httpx.Response(200, json={"status": "success", "data": {}})
+            raise AssertionError(f"unexpected request to {req.url.path}")
+
+        async with _make_mock_client(handler) as http:
+            with patch.object(
+                http,
+                "get",
+                new=AsyncMock(side_effect=httpx.ConnectError("Cannot connect to host")),
+            ):
+                with pytest.raises(KiteCredentialsError) as exc:
+                    await login_with_credentials(
+                        api_key="AKEY",
+                        api_secret="ASEC",
+                        user_id="U1",
+                        password="pwd123",
+                        totp_secret="JBSWY3DPEBLW64TMMQ======",
+                        http=http,
+                    )
+        assert exc.value.step == "connect_login"
+        assert "ConnectError" in str(exc.value)
 
     @pytest.mark.asyncio
     async def test_call_tool_token_expired_triggers_relogin(self) -> None:

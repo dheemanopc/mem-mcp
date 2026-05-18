@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
+import traceback
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ValidationError
 
+from mem_mcp.logging_setup import get_logger
 from mem_mcp.mcp.errors import JsonRpcError
 
 if TYPE_CHECKING:
     from mem_mcp.mcp.tools._base import BaseTool, ToolContext
+
+
+_log = get_logger("mem_mcp.mcp.registry")
 
 
 class ToolRegistry:
@@ -85,6 +90,23 @@ class ToolRegistry:
         except JsonRpcError:
             raise
         except Exception as exc:
-            raise JsonRpcError(-32603, "internal error") from exc
+            # Catch-all: log enough to diagnose + surface exc type/message in
+            # error.data so partner apps don't have to grep mem-mcp logs.
+            # Full traceback stays server-side only.
+            _log.error(
+                "tool_dispatch_unhandled_exception",
+                tool=method,
+                exc_type=type(exc).__name__,
+                exc_message=str(exc)[:500],
+                traceback=traceback.format_exc(),
+            )
+            raise JsonRpcError(
+                -32603,
+                "internal error",
+                data={
+                    "exc_type": type(exc).__name__,
+                    "message": str(exc)[:300],
+                },
+            ) from exc
 
         return output.model_dump(mode="json")

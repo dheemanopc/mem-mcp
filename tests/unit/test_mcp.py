@@ -182,6 +182,11 @@ class TestToolRegistry:
         with pytest.raises(JsonRpcError) as exc_info:
             await r.dispatch(_ctx(), "_test.crash", {})
         assert exc_info.value.code == -32603
+        # Observability: error.data now carries the exception type + message
+        # so partner apps don't have to grep mem-mcp logs to debug failures.
+        assert exc_info.value.data is not None
+        assert exc_info.value.data["exc_type"] == "RuntimeError"
+        assert "oops" in exc_info.value.data["message"]
 
 
 # --------------------------------------------------------------------------
