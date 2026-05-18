@@ -7,12 +7,15 @@ lifespan handler (T-3.5). Tests skip the real pool entirely — see
 
 from __future__ import annotations
 
+import json
+
 import asyncpg  # type: ignore[import-untyped]
 
 from mem_mcp.config import get_settings
 
 
 async def _init_connection(conn: asyncpg.Connection) -> None:
+    # pgvector text codec — vector columns ship as e.g. "[0.1,0.2,...]"
     await conn.set_type_codec(
         "vector",
         encoder=lambda v: "[" + ",".join(map(str, v)) + "]",
@@ -20,6 +23,18 @@ async def _init_connection(conn: asyncpg.Connection) -> None:
         schema="public",
         format="text",
     )
+    # JSON / JSONB codec — without this, asyncpg returns JSONB columns as raw
+    # str instead of parsed dict, which makes Pydantic models with
+    # `metadata: dict[str, Any]` (memory_get, memory_thread_get, memory_list)
+    # fail validation and surface as JsonRpcError(-32603, "internal error").
+    # See bug report fed1023c-d715-4b15-96e1-e2a47b8deb5e.
+    for typename in ("jsonb", "json"):
+        await conn.set_type_codec(
+            typename,
+            encoder=json.dumps,
+            decoder=json.loads,
+            schema="pg_catalog",
+        )
 
 
 _pool: asyncpg.Pool | None = None
