@@ -215,9 +215,11 @@ class TestDcrEndpointSuccess:
         assert body["client_secret_expires_at"] == 0
         assert body["redirect_uris"] == ["http://localhost:8080/callback"]
         assert body["token_endpoint_auth_method"] == "none"
+        # DCR clients only get memory.read + memory.write; memory.admin and
+        # account.manage are reserved for the session-cookie (web UI) path.
         assert (
             body["scope"]
-            == "https://memsys.dheemantech.in/account.manage https://memsys.dheemantech.in/memory.admin https://memsys.dheemantech.in/memory.read https://memsys.dheemantech.in/memory.write"
+            == "https://memsys.dheemantech.in/memory.read https://memsys.dheemantech.in/memory.write"
         )
         assert isinstance(body["registration_access_token"], str)
         assert len(body["registration_access_token"]) >= 32
@@ -293,6 +295,106 @@ class TestDcrEndpointSuccess:
         payload = {**_valid_payload(), "redirect_uris": ["https://arbitrary.example/callback"]}
         resp = client.post("/oauth/register", json=payload)
         assert resp.status_code == 201
+
+    def test_tier2_honors_requested_scopes_only(self) -> None:
+        """Tier-2 (confidential) client asks for memory.read+memory.write and gets
+        exactly those — NOT the full advertised set. memory.admin / account.manage
+        stay out of the Cognito client's eligible scopes."""
+        allowed = FakeAllowed(
+            {
+                "algotrade": AllowedSoftwarePolicy(
+                    status="allowed",
+                    require_secret=True,
+                    allowed_redirect_uris=["https://tradeapi.dheemantech.in/memsys/callback"],
+                )
+            }
+        )
+        client, deps = _build_client(allowed=allowed)
+        payload = {
+            **_valid_payload(),
+            "software_id": "algotrade",
+            "redirect_uris": ["https://tradeapi.dheemantech.in/memsys/callback"],
+            "token_endpoint_auth_method": "client_secret_post",
+            "scope": "memory.read memory.write",
+        }
+        resp = client.post("/oauth/register", json=payload)
+        assert resp.status_code == 201
+        body = resp.json()
+        # Exact match — no admin scopes sneaked in
+        assert (
+            body["scope"]
+            == "https://memsys.dheemantech.in/memory.read https://memsys.dheemantech.in/memory.write"
+        )
+        # Verify Cognito was registered with only these two scopes
+        cognito_scopes = deps["cognito"].calls[0]["scopes"]
+        assert sorted(cognito_scopes) == ["memory.read", "memory.write"]
+        assert "memory.admin" not in cognito_scopes
+        assert "account.manage" not in cognito_scopes
+
+    def test_tier1_expands_to_dcr_allowed_subset(self) -> None:
+        """Tier-1 (public) client asks for memory.read only; gets expanded to the
+        full DCR-allowed set (still excludes memory.admin / account.manage)."""
+        client, deps = _build_client()
+        payload = {**_valid_payload(), "scope": "memory.read"}
+        resp = client.post("/oauth/register", json=payload)
+        assert resp.status_code == 201
+        cognito_scopes = deps["cognito"].calls[0]["scopes"]
+        assert sorted(cognito_scopes) == ["memory.read", "memory.write"]
+        assert "memory.admin" not in cognito_scopes
+
+
+class TestDcrScopeAllowlist:
+    """Scope-allowlist enforcement: DCR rejects requests for elevated scopes.
+
+    memory.admin and account.manage are not eligible via DCR; the web UI's
+    session-cookie path is the only place those scopes are granted.
+    """
+
+    def test_rejects_memory_admin_scope(self) -> None:
+        client, _ = _build_client()
+        payload = {**_valid_payload(), "scope": "memory.read memory.admin"}
+        resp = client.post("/oauth/register", json=payload)
+        assert resp.status_code == 400
+        body = resp.json()
+        assert body["detail"]["error"] == "invalid_scope"
+        assert "memory.admin" in body["detail"]["error_description"]
+
+    def test_rejects_account_manage_scope(self) -> None:
+        client, _ = _build_client()
+        payload = {**_valid_payload(), "scope": "account.manage"}
+        resp = client.post("/oauth/register", json=payload)
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["error"] == "invalid_scope"
+
+    def test_rejects_unknown_scope(self) -> None:
+        client, _ = _build_client()
+        payload = {**_valid_payload(), "scope": "memory.read foo.bar"}
+        resp = client.post("/oauth/register", json=payload)
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["error"] == "invalid_scope"
+
+    def test_tier2_also_rejects_admin_scopes(self) -> None:
+        """Tier-2 confidential clients can't escalate via DCR either."""
+        allowed = FakeAllowed(
+            {
+                "algotrade": AllowedSoftwarePolicy(
+                    status="allowed",
+                    require_secret=True,
+                    allowed_redirect_uris=["https://tradeapi.dheemantech.in/memsys/callback"],
+                )
+            }
+        )
+        client, _ = _build_client(allowed=allowed)
+        payload = {
+            **_valid_payload(),
+            "software_id": "algotrade",
+            "redirect_uris": ["https://tradeapi.dheemantech.in/memsys/callback"],
+            "token_endpoint_auth_method": "client_secret_post",
+            "scope": "memory.read memory.write memory.admin",
+        }
+        resp = client.post("/oauth/register", json=payload)
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["error"] == "invalid_scope"
 
 
 # --------------------------------------------------------------------------
