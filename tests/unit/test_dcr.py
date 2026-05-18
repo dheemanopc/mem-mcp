@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from mem_mcp.auth.dcr import (
+    AllowedSoftwarePolicy,
     DcrInput,
     InMemoryRateLimiter,
     _sanitize_client_name,
@@ -26,20 +27,31 @@ _RESOURCE = "https://memsys.dheemantech.in"
 
 
 class FakeCognito:
-    def __init__(self, error: Exception | None = None) -> None:
+    def __init__(self, error: Exception | None = None, client_secret: str | None = None) -> None:
         self.error = error
         self.calls: list[dict[str, Any]] = []
         self.next_id = "cognito-client-id-1"
+        self.client_secret = client_secret
 
     async def create_user_pool_client(
-        self, *, client_name: str, callback_urls: list[str], scopes: list[str]
-    ) -> str:
+        self,
+        *,
+        client_name: str,
+        callback_urls: list[str],
+        scopes: list[str],
+        generate_secret: bool = False,
+    ) -> tuple[str, str | None]:
         self.calls.append(
-            {"client_name": client_name, "callback_urls": callback_urls, "scopes": scopes}
+            {
+                "client_name": client_name,
+                "callback_urls": callback_urls,
+                "scopes": scopes,
+                "generate_secret": generate_secret,
+            }
         )
         if self.error:
             raise self.error
-        return self.next_id
+        return self.next_id, self.client_secret
 
 
 class FakeStore:
@@ -51,13 +63,13 @@ class FakeStore:
 
 
 class FakeAllowed:
-    def __init__(self, status_map: dict[str, str]) -> None:
-        self.status_map = status_map
+    def __init__(self, policy_map: dict[str, AllowedSoftwarePolicy] | None = None) -> None:
+        self.policy_map = policy_map or {}
         self.calls: list[str] = []
 
-    async def status(self, software_id: str) -> Any:
+    async def policy(self, software_id: str) -> AllowedSoftwarePolicy:
         self.calls.append(software_id)
-        return self.status_map.get(software_id, "unknown")
+        return self.policy_map.get(software_id, AllowedSoftwarePolicy(status="unknown"))
 
 
 def _build_client(
@@ -69,7 +81,12 @@ def _build_client(
 ) -> tuple[TestClient, dict[str, Any]]:
     cognito = cognito or FakeCognito()
     store = store or FakeStore()
-    allowed = allowed or FakeAllowed({"claude-code": "allowed", "claude-ai": "allowed"})
+    allowed = allowed or FakeAllowed(
+        {
+            "claude-code": AllowedSoftwarePolicy(status="allowed"),
+            "claude-ai": AllowedSoftwarePolicy(status="allowed"),
+        }
+    )
     limiter = limiter or InMemoryRateLimiter()
     app = FastAPI()
     app.include_router(
@@ -225,6 +242,58 @@ class TestDcrEndpointSuccess:
         assert ins["client_id"] == "cognito-client-id-1"
         assert ins["software_id"] == "claude-code"
 
+    def test_confidential_client_returns_secret(self) -> None:
+        cognito = FakeCognito(client_secret="super-secret-value")
+        allowed = FakeAllowed(
+            {"claude-code": AllowedSoftwarePolicy(status="allowed", require_secret=True)}
+        )
+        client, deps = _build_client(cognito=cognito, allowed=allowed)
+        payload = {**_valid_payload(), "token_endpoint_auth_method": "client_secret_post"}
+        resp = client.post("/oauth/register", json=payload)
+        assert resp.status_code == 201
+        body = resp.json()
+        assert body["client_secret"] == "super-secret-value"
+        assert body["token_endpoint_auth_method"] == "client_secret_post"
+        # Verify cognito was called with generate_secret=True
+        assert len(deps["cognito"].calls) == 1
+        assert deps["cognito"].calls[0]["generate_secret"] is True
+
+    def test_redirect_uri_allowlist_accepts_known_uri(self) -> None:
+        allowed = FakeAllowed(
+            {
+                "claude-code": AllowedSoftwarePolicy(
+                    status="allowed", allowed_redirect_uris=["https://known.example/callback"]
+                )
+            }
+        )
+        client, _ = _build_client(allowed=allowed)
+        payload = {**_valid_payload(), "redirect_uris": ["https://known.example/callback"]}
+        resp = client.post("/oauth/register", json=payload)
+        assert resp.status_code == 201
+
+    def test_redirect_uri_allowlist_rejects_unknown_uri(self) -> None:
+        allowed = FakeAllowed(
+            {
+                "claude-code": AllowedSoftwarePolicy(
+                    status="allowed", allowed_redirect_uris=["https://known.example/callback"]
+                )
+            }
+        )
+        client, _ = _build_client(allowed=allowed)
+        payload = {**_valid_payload(), "redirect_uris": ["https://attacker.example/callback"]}
+        resp = client.post("/oauth/register", json=payload)
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["error"] == "invalid_redirect_uri"
+
+    def test_redirect_uri_allowlist_null_means_any(self) -> None:
+        allowed = FakeAllowed(
+            {"claude-code": AllowedSoftwarePolicy(status="allowed", allowed_redirect_uris=None)}
+        )
+        client, _ = _build_client(allowed=allowed)
+        payload = {**_valid_payload(), "redirect_uris": ["https://arbitrary.example/callback"]}
+        resp = client.post("/oauth/register", json=payload)
+        assert resp.status_code == 201
+
 
 # --------------------------------------------------------------------------
 # Endpoint — failure cases
@@ -242,7 +311,7 @@ class TestDcrEndpointFailures:
         assert resp.json()["detail"]["error"] == "unauthorized_client"
 
     def test_blocked_software_id_returns_403(self) -> None:
-        allowed = FakeAllowed({"cursor": "blocked"})
+        allowed = FakeAllowed({"cursor": AllowedSoftwarePolicy(status="blocked")})
         client, _ = _build_client(allowed=allowed)
         resp = client.post("/oauth/register", json={**_valid_payload(), "software_id": "cursor"})
         assert resp.status_code == 403
@@ -282,6 +351,16 @@ class TestDcrEndpointFailures:
         resp = client.post("/oauth/register", json=_valid_payload())
         assert resp.status_code == 500
         assert resp.json()["detail"]["error"] == "server_error"
+
+    def test_confidential_client_rejects_none_auth_method(self) -> None:
+        allowed = FakeAllowed(
+            {"claude-code": AllowedSoftwarePolicy(status="allowed", require_secret=True)}
+        )
+        client, _ = _build_client(allowed=allowed)
+        # Default token_endpoint_auth_method is "none", which should be rejected for confidential clients
+        resp = client.post("/oauth/register", json=_valid_payload())
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["error"] == "invalid_client_metadata"
 
 
 # --------------------------------------------------------------------------

@@ -53,6 +53,16 @@ _SUPPORTED_IDPS = ("Google",)
 
 AllowedSoftwareStatus = Literal["allowed", "blocked", "pending_review", "revoked", "unknown"]
 
+
+@dataclass(frozen=True)
+class AllowedSoftwarePolicy:
+    """Result of looking up an allowed_software row. status='unknown' for rows that don't exist."""
+
+    status: AllowedSoftwareStatus
+    require_secret: bool = False
+    allowed_redirect_uris: list[str] | None = None  # None == any URI allowed
+
+
 # Map of client_name (lowercased, trimmed) → canonical software_id, used when
 # the DCR request omits `software_id` (Claude.ai and many other MCP clients
 # don't send it, even though we still want to gate via allowed_software).
@@ -150,6 +160,7 @@ class DcrOutput(BaseModel):
 
     client_id: str
     client_id_issued_at: int
+    client_secret: str | None = None  # NEW — present for confidential clients
     client_secret_expires_at: int = 0  # public client = no secret = never expires (per RFC 7591)
     redirect_uris: list[str]
     grant_types: list[str]
@@ -172,8 +183,9 @@ class CognitoClientFactory(Protocol):
         client_name: str,
         callback_urls: list[str],
         scopes: list[str],
-    ) -> str:
-        """Return the new Cognito ClientId."""
+        generate_secret: bool = False,
+    ) -> tuple[str, str | None]:
+        """Return (client_id, client_secret_or_None)."""
         ...
 
 
@@ -192,7 +204,7 @@ class OauthClientStore(Protocol):
 
 
 class AllowedSoftwareLookup(Protocol):
-    async def status(self, software_id: str) -> AllowedSoftwareStatus: ...
+    async def policy(self, software_id: str) -> AllowedSoftwarePolicy: ...
 
 
 class RateLimiter(Protocol):
@@ -243,8 +255,13 @@ class BotoCognitoClientFactory:
         return out
 
     async def create_user_pool_client(
-        self, *, client_name: str, callback_urls: list[str], scopes: list[str]
-    ) -> str:
+        self,
+        *,
+        client_name: str,
+        callback_urls: list[str],
+        scopes: list[str],
+        generate_secret: bool = False,
+    ) -> tuple[str, str | None]:
         # Lazy import keeps boto3 cost out of test paths
         import asyncio
 
@@ -252,7 +269,7 @@ class BotoCognitoClientFactory:
 
         qualified = self._qualify_scopes(scopes)
 
-        def _call() -> str:
+        def _call() -> tuple[str, str | None]:
             client = boto3.client("cognito-idp", region_name=self.region)
             response = client.create_user_pool_client(
                 UserPoolId=self.user_pool_id,
@@ -262,10 +279,13 @@ class BotoCognitoClientFactory:
                 AllowedOAuthScopes=qualified,
                 CallbackURLs=callback_urls,
                 SupportedIdentityProviders=list(self.supported_idps),
-                GenerateSecret=False,
+                GenerateSecret=generate_secret,
                 EnableTokenRevocation=True,
             )
-            return str(response["UserPoolClient"]["ClientId"])
+            user_pool_client = response["UserPoolClient"]
+            client_id = str(user_pool_client["ClientId"])
+            client_secret = user_pool_client.get("ClientSecret")
+            return client_id, (str(client_secret) if client_secret else None)
 
         return await asyncio.to_thread(_call)
 
@@ -314,15 +334,22 @@ class DbAllowedSoftwareLookup:
     def __init__(self, pool: asyncpg.Pool) -> None:
         self._pool = pool
 
-    async def status(self, software_id: str) -> AllowedSoftwareStatus:
+    async def policy(self, software_id: str) -> AllowedSoftwarePolicy:
         async with system_tx(self._pool) as conn:
             row = await conn.fetchrow(
-                "SELECT status FROM allowed_software WHERE software_id = $1",
+                "SELECT status, require_secret, allowed_redirect_uris "
+                "FROM allowed_software WHERE software_id = $1",
                 software_id,
             )
         if row is None:
-            return "unknown"
-        return row["status"]  # type: ignore[no-any-return]
+            return AllowedSoftwarePolicy(status="unknown")
+        return AllowedSoftwarePolicy(
+            status=row["status"],
+            require_secret=bool(row["require_secret"]),
+            allowed_redirect_uris=list(row["allowed_redirect_uris"])
+            if row["allowed_redirect_uris"] is not None
+            else None,
+        )
 
 
 @dataclass
@@ -451,22 +478,51 @@ def make_dcr_router(
         # Many MCP clients (Claude.ai included) omit software_id in DCR; derive
         # a canonical id from client_name so the allowlist still gates access.
         effective_software_id = payload.software_id or _derive_software_id(payload.client_name)
-        soft_status = await software_lookup.status(effective_software_id)
-        if soft_status != "allowed":
+        policy = await software_lookup.policy(effective_software_id)
+        if policy.status != "allowed":
             # TODO(T-5.12): audit oauth.dcr_rejected
             _log.warning(
                 "dcr_rejected",
                 software_id=effective_software_id,
-                status=soft_status,
+                status=policy.status,
                 ip=ip,
             )
             raise HTTPException(
                 status_code=403,
                 detail={
                     "error": "unauthorized_client",
-                    "error_description": f"software_id {effective_software_id!r} status={soft_status}",
+                    "error_description": f"software_id {effective_software_id!r} status={policy.status}",
                 },
             )
+
+        # Confidential clients: must request client_secret_post
+        if policy.require_secret and payload.token_endpoint_auth_method != "client_secret_post":
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "invalid_client_metadata",
+                    "error_description": (
+                        f"software_id {effective_software_id!r} is a confidential client; "
+                        "token_endpoint_auth_method must be 'client_secret_post'"
+                    ),
+                },
+            )
+
+        # Redirect URI allowlist (per-software, if configured)
+        if policy.allowed_redirect_uris is not None:
+            allow = set(policy.allowed_redirect_uris)
+            for uri in payload.redirect_uris:
+                if uri not in allow:
+                    raise HTTPException(
+                        status_code=400,
+                        detail={
+                            "error": "invalid_redirect_uri",
+                            "error_description": (
+                                f"redirect_uri {uri!r} not in allowlist for software_id "
+                                f"{effective_software_id!r}"
+                            ),
+                        },
+                    )
 
         # FR-6.5.8: sanitize client name
         sanitized_name = _sanitize_client_name(payload.client_name)
@@ -479,10 +535,14 @@ def make_dcr_router(
 
         # Create in Cognito
         try:
-            cognito_client_id = await cognito_factory.create_user_pool_client(
+            (
+                cognito_client_id,
+                cognito_client_secret,
+            ) = await cognito_factory.create_user_pool_client(
                 client_name=sanitized_name,
                 callback_urls=payload.redirect_uris,
                 scopes=effective_scopes,
+                generate_secret=policy.require_secret,
             )
         except Exception as exc:
             # Catch all exceptions from boto3 API call
@@ -516,17 +576,23 @@ def make_dcr_router(
             s if (s in _OIDC or "/" in s) else f"{_prefix}/{s}" for s in effective_scopes
         )
 
-        out = DcrOutput(
-            client_id=cognito_client_id,
-            client_id_issued_at=int(time.time()),
-            redirect_uris=payload.redirect_uris,
-            grant_types=payload.grant_types,
-            response_types=payload.response_types,
-            token_endpoint_auth_method="none",
-            scope=qualified_scope,
-            registration_access_token=plaintext_token,
-            registration_client_uri=f"{resource_url}/oauth/register/{cognito_client_id}",
-        )
-        return JSONResponse(content=out.model_dump(), status_code=201)
+        response_body = {
+            "client_id": cognito_client_id,
+            "client_id_issued_at": int(time.time()),
+            "client_secret_expires_at": 0,
+            "redirect_uris": payload.redirect_uris,
+            "grant_types": payload.grant_types,
+            "response_types": payload.response_types,
+            "token_endpoint_auth_method": (
+                "client_secret_post" if cognito_client_secret else "none"
+            ),
+            "scope": qualified_scope,
+            "registration_access_token": plaintext_token,
+            "registration_client_uri": f"{resource_url.rstrip('/')}/oauth/register/{cognito_client_id}",
+        }
+        if cognito_client_secret:
+            response_body["client_secret"] = cognito_client_secret
+
+        return JSONResponse(content=response_body, status_code=status.HTTP_201_CREATED)
 
     return router
