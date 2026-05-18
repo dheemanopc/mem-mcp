@@ -23,11 +23,27 @@ KITE_API_BASE_URL = "https://api.kite.trade"
 
 
 class KiteAuthError(Exception):
-    """Raised when Kite session-token exchange fails."""
+    """Raised when Kite session-token exchange fails.
 
-    def __init__(self, message: str, error_type: str | None = None) -> None:
+    ``step`` identifies which phase of the auto-login flow raised — useful for
+    callers (algotrade etc.) that need to tell users *why* setup failed
+    without grepping mem-mcp logs. Values: ``api_login`` | ``totp_generate``
+    | ``twofa`` | ``connect_login`` | ``session_token`` | ``transport``.
+    ``upstream_status`` carries the HTTP status from Zerodha when relevant.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_type: str | None = None,
+        *,
+        step: str | None = None,
+        upstream_status: int | None = None,
+    ) -> None:
         super().__init__(message)
         self.error_type = error_type
+        self.step = step
+        self.upstream_status = upstream_status
 
 
 class KiteCredentialsError(KiteAuthError):
@@ -114,63 +130,134 @@ async def login_with_credentials(
 
     async def _do(client: httpx.AsyncClient) -> dict[str, Any]:
         # Step 1: login
-        r1 = await client.post(
-            f"{base_kite}/api/login",
-            data={"user_id": user_id, "password": password},
-            timeout=timeout,
-        )
-        b1 = r1.json()
+        try:
+            r1 = await client.post(
+                f"{base_kite}/api/login",
+                data={"user_id": user_id, "password": password},
+                timeout=timeout,
+            )
+        except httpx.RequestError as exc:
+            raise KiteCredentialsError(
+                f"transport error on api/login: {type(exc).__name__}: {exc}",
+                step="api_login",
+            ) from exc
+        try:
+            b1 = r1.json()
+        except Exception as exc:
+            raise KiteCredentialsError(
+                f"non-JSON response from api/login (status {r1.status_code})",
+                step="api_login",
+                upstream_status=r1.status_code,
+            ) from exc
         if r1.status_code != 200 or b1.get("status") != "success":
             raise KiteCredentialsError(
                 b1.get("message") or f"login step 1 failed (status {r1.status_code})",
                 error_type=b1.get("error_type"),
+                step="api_login",
+                upstream_status=r1.status_code,
             )
         request_id = b1["data"].get("request_id")
         if not request_id:
-            raise KiteCredentialsError("login step 1: no request_id in response")
+            raise KiteCredentialsError(
+                "login step 1: no request_id in response",
+                step="api_login",
+                upstream_status=r1.status_code,
+            )
 
         # Step 2: TOTP
         try:
             twofa_value = pyotp.TOTP(totp_secret).now()
         except Exception as exc:
-            raise KiteCredentialsError(f"invalid TOTP secret: {exc}") from exc
+            raise KiteCredentialsError(
+                f"invalid TOTP secret: {exc}",
+                step="totp_generate",
+            ) from exc
 
         # Step 3: 2FA
-        r2 = await client.post(
-            f"{base_kite}/api/twofa",
-            data={
-                "user_id": user_id,
-                "request_id": request_id,
-                "twofa_value": twofa_value,
-                "twofa_type": "totp",
-            },
-            timeout=timeout,
-        )
-        b2 = r2.json()
+        try:
+            r2 = await client.post(
+                f"{base_kite}/api/twofa",
+                data={
+                    "user_id": user_id,
+                    "request_id": request_id,
+                    "twofa_value": twofa_value,
+                    "twofa_type": "totp",
+                },
+                timeout=timeout,
+            )
+        except httpx.RequestError as exc:
+            raise KiteCredentialsError(
+                f"transport error on api/twofa: {type(exc).__name__}: {exc}",
+                step="twofa",
+            ) from exc
+        try:
+            b2 = r2.json()
+        except Exception as exc:
+            raise KiteCredentialsError(
+                f"non-JSON response from api/twofa (status {r2.status_code})",
+                step="twofa",
+                upstream_status=r2.status_code,
+            ) from exc
         if r2.status_code != 200 or b2.get("status") != "success":
             raise KiteCredentialsError(
                 b2.get("message") or f"2FA failed (status {r2.status_code})",
                 error_type=b2.get("error_type"),
+                step="twofa",
+                upstream_status=r2.status_code,
             )
 
-        # Step 4: get request_token (follow redirects, parse final URL)
-        r3 = await client.get(
-            f"{base_kite}/connect/login",
-            params={"api_key": api_key, "v": "3"},
-            follow_redirects=True,
-            timeout=timeout,
-        )
+        # Step 4: get request_token (follow redirects, parse final URL).
+        # The redirect chain is:
+        #   /connect/login -> /connect/finish -> <app's configured callback URL>?request_token=...
+        # If the callback URL is unreachable (DNS, connect refused, timeout)
+        # httpx raises a RequestError during the redirect-follow.
+        try:
+            r3 = await client.get(
+                f"{base_kite}/connect/login",
+                params={"api_key": api_key, "v": "3"},
+                follow_redirects=True,
+                timeout=timeout,
+            )
+        except httpx.TooManyRedirects as exc:
+            raise KiteCredentialsError(
+                "redirect chain exceeded limit during /connect/login follow",
+                step="connect_login",
+            ) from exc
+        except httpx.RequestError as exc:
+            raise KiteCredentialsError(
+                f"transport error following /connect/login redirects: {type(exc).__name__}: {exc}. "
+                "Check the Kite Connect app's redirect URL — it must be reachable from mem-mcp's host.",
+                step="connect_login",
+            ) from exc
         # The final URL should contain ?request_token=...
         parsed = urlparse(str(r3.url))
         qs = parse_qs(parsed.query)
         request_token = qs.get("request_token", [None])[0]
         if not request_token:
-            raise KiteCredentialsError(f"could not extract request_token from final URL: {r3.url}")
+            raise KiteCredentialsError(
+                f"could not extract request_token from final URL: {r3.url}",
+                step="connect_login",
+                upstream_status=r3.status_code,
+            )
 
         # Step 5: exchange for access_token
-        token_data = await exchange_request_token(
-            api_key, request_token, api_secret, http=client, timeout=timeout
-        )
+        try:
+            token_data = await exchange_request_token(
+                api_key, request_token, api_secret, http=client, timeout=timeout
+            )
+        except KiteAuthError as exc:
+            # Re-raise with step annotation so caller knows it was the last hop.
+            raise KiteCredentialsError(
+                str(exc),
+                error_type=exc.error_type,
+                step="session_token",
+                upstream_status=exc.upstream_status,
+            ) from exc
+        except httpx.RequestError as exc:
+            raise KiteCredentialsError(
+                f"transport error on session/token: {type(exc).__name__}: {exc}",
+                step="session_token",
+            ) from exc
         return {
             "access_token": token_data.get("access_token"),
             "public_token": token_data.get("public_token"),

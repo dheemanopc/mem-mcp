@@ -24,7 +24,6 @@ from mem_mcp.mcp.tool_descriptions import TOOL_DESCRIPTIONS
 from mem_mcp.mcp.tools._base import BaseTool, ToolContext
 from mem_mcp.skills.kite.auth import (
     KiteAuthError,
-    KiteCredentialsError,
     exchange_request_token,
     login_with_credentials,
 )
@@ -117,7 +116,11 @@ class MemsysEnableKiteTool(BaseTool):
                     f"kite auth failed: {exc}",
                     data={
                         "code": "kite_auth_failed",
+                        "kind": "session_token_exchange_failed",
                         "error_type": exc.error_type,
+                        "step": getattr(exc, "step", None),
+                        "upstream_status": getattr(exc, "upstream_status", None),
+                        "message": str(exc)[:300],
                     },
                 ) from exc
             access_token = token_data.get("access_token")
@@ -141,11 +144,22 @@ class MemsysEnableKiteTool(BaseTool):
                     password=inp.password,
                     totp_secret=inp.totp_secret,
                 )
-            except KiteCredentialsError as exc:
+            except KiteAuthError as exc:
+                # Covers KiteCredentialsError (5-step flow) AND any other
+                # KiteAuthError subclass. The exception carries step + upstream
+                # status so callers can tell users WHY setup failed without
+                # grepping mem-mcp logs.
                 raise JsonRpcError(
                     -32000,
                     f"kite auto-login failed: {exc}",
-                    data={"code": "kite_auto_login_failed", "error_type": exc.error_type},
+                    data={
+                        "code": "kite_auto_login_failed",
+                        "kind": "smoke_login_failed",
+                        "step": getattr(exc, "step", None),
+                        "error_type": exc.error_type,
+                        "upstream_status": getattr(exc, "upstream_status", None),
+                        "message": str(exc)[:300],
+                    },
                 ) from exc
             access_token = login_result.get("access_token")
             kite_user_id = login_result.get("kite_user_id")
@@ -174,7 +188,19 @@ class MemsysEnableKiteTool(BaseTool):
             creds["password"] = inp.password
             creds["totp_secret"] = inp.totp_secret
         async with tenant_tx(ctx.db_pool, ctx.tenant_id) as conn:
-            await vault.store(conn, ctx.tenant_id, "kite", creds)
+            try:
+                await vault.store(conn, ctx.tenant_id, "kite", creds)
+            except Exception as exc:
+                raise JsonRpcError(
+                    -32603,
+                    f"kite credentials vault write failed: {type(exc).__name__}",
+                    data={
+                        "code": "vault_write_failed",
+                        "kind": "vault_write_failed",
+                        "exc_type": type(exc).__name__,
+                        "message": str(exc)[:300],
+                    },
+                ) from exc
 
         # Step 3: smoke test — call get_holdings
         smoke_result: str
