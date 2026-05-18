@@ -3,19 +3,20 @@
  * Server component that fetches /api/web/me and renders profile info.
  */
 
+import { serverApiFetch } from "@/lib/server-api";
 import { TenantSettingsClient } from "./TenantSettingsClient";
 
+interface MeResponse {
+  tenant: {
+    email: string;
+    tier: string;
+    status: string;
+    retention_days: number;
+  };
+}
+
 async function fetchMe() {
-  try {
-    const res = await fetch("http://127.0.0.1:8080/api/web/me", {
-      cache: "no-store",
-      credentials: "include",
-    });
-    if (!res.ok) return null;
-    return res.json();
-  } catch {
-    return null;
-  }
+  return serverApiFetch<MeResponse>("/api/web/me", { redirectTo: "/settings" });
 }
 
 export default async function SettingsPage() {
@@ -25,7 +26,7 @@ export default async function SettingsPage() {
     return (
       <main className="mx-auto max-w-3xl px-4 py-12">
         <h1 className="text-3xl font-bold">Settings</h1>
-        <p className="text-red-600 mt-4">Not signed in.</p>
+        <p className="text-red-600 mt-4">Could not load settings. The backend may be unavailable; please try again.</p>
       </main>
     );
   }

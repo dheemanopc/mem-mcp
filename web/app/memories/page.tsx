@@ -1,9 +1,20 @@
 import Link from "next/link";
+import { serverApiFetch } from "@/lib/server-api";
 
 interface SearchParams {
   cursor?: string;
   type?: string;
   tag?: string;
+}
+
+interface MemoriesResponse {
+  results: Array<{
+    id: string;
+    type: string;
+    content: string;
+    tags: string[];
+  }>;
+  next_cursor?: string;
 }
 
 async function fetchMemories(params: SearchParams) {
@@ -13,9 +24,9 @@ async function fetchMemories(params: SearchParams) {
   if (params.tag) {
     for (const t of params.tag.split(",")) qs.append("tag", t.trim());
   }
-  const res = await fetch(`http://127.0.0.1:8080/api/web/memories?${qs.toString()}`, { cache: "no-store" });
-  if (!res.ok) return null;
-  return res.json();
+  return serverApiFetch<MemoriesResponse>(`/api/web/memories?${qs.toString()}`, {
+    redirectTo: "/memories",
+  });
 }
 
 export default async function MemoriesPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
@@ -43,7 +54,7 @@ export default async function MemoriesPage({ searchParams }: { searchParams: Pro
         <button className="bg-blue-600 text-white rounded px-4 py-1.5">Filter</button>
       </form>
       {data === null ? (
-        <p className="text-red-600">Could not load memories. Are you signed in?</p>
+        <p className="text-red-600">Could not load memories. The backend may be unavailable; please try again.</p>
       ) : (
         <>
           <p className="text-sm text-gray-500">{data.results?.length ?? 0} of {data.results?.length ?? "?"} matching</p>

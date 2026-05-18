@@ -1,10 +1,18 @@
+import { serverApiFetch } from "@/lib/server-api";
 import { DeleteFlowClient } from "./DeleteFlowClient";
 import Link from "next/link";
 
+interface MeResponse {
+  tenant: {
+    email: string;
+    tier: string;
+    status: string;
+    retention_days: number;
+  };
+}
+
 async function fetchMe() {
-  const res = await fetch("http://127.0.0.1:8080/api/web/me", { cache: "no-store" });
-  if (!res.ok) return null;
-  return res.json();
+  return serverApiFetch<MeResponse>("/api/web/me", { redirectTo: "/data/delete" });
 }
 
 export default async function DeletePage() {
@@ -13,7 +21,7 @@ export default async function DeletePage() {
     return (
       <main className="mx-auto max-w-2xl px-4 py-12">
         <h1 className="text-3xl font-bold">Delete account</h1>
-        <p className="text-red-600">Not signed in.</p>
+        <p className="text-red-600">Could not load account. The backend may be unavailable; please try again.</p>
       </main>
     );
   }

@@ -3,19 +3,13 @@
  * Server component that fetches /api/web/clients.
  */
 
+import { serverApiFetch } from "@/lib/server-api";
 import { ApplicationActionsClient } from "./ApplicationActionsClient";
 
 async function fetchClients() {
-  try {
-    const res = await fetch("http://127.0.0.1:8080/api/web/clients", {
-      cache: "no-store",
-      credentials: "include",
-    });
-    if (!res.ok) return [];
-    return res.json();
-  } catch {
-    return [];
-  }
+  return (await serverApiFetch<any[]>("/api/web/clients", {
+    redirectTo: "/settings/applications",
+  })) ?? [];
 }
 
 export default async function ApplicationsPage() {
