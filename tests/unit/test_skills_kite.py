@@ -619,18 +619,25 @@ class TestKiteAutoLogin:
                 )
             raise AssertionError(f"unexpected call #{call_count['n']}")
 
-        # Mock the GET call (step 4) — returns a 302 with Location header
-        # carrying request_token. We don't follow the redirect server-side.
-        mock_resp = AsyncMock()
-        mock_resp.status_code = 302
-        mock_resp.headers = {
-            "location": "https://tradeapi.dheemantech.in/kite-callback?request_token=RTOK123&action=login&status=success"
+        # Mock the GET chain (step 4). Real Zerodha flow has TWO 302s:
+        #   1. /connect/login -> 302 Location: /connect/finish?sess_id=...
+        #   2. /connect/finish -> 302 Location: <callback>?request_token=...
+        # We must extract from the SECOND Location WITHOUT a third GET to the
+        # callback (which would fail for developer-app URLs unreachable from
+        # mem-mcp). Per algotrade memory e7004602.
+        first_302 = AsyncMock()
+        first_302.status_code = 302
+        first_302.headers = {"location": "/connect/finish?api_key=AKEY&sess_id=SESS123"}
+        second_302 = AsyncMock()
+        second_302.status_code = 302
+        second_302.headers = {
+            "location": "https://tradeapi.dheemantech.in/kite-callback?action=login&status=success&request_token=RTOK123"
         }
         with patch(
             "mem_mcp.skills.kite.auth.httpx.AsyncClient.get",
             new_callable=AsyncMock,
         ) as mock_get_call:
-            mock_get_call.return_value = mock_resp
+            mock_get_call.side_effect = [first_302, second_302]
             async with _make_mock_client(handler) as http:
                 result = await login_with_credentials(
                     api_key="AKEY",
@@ -640,9 +647,17 @@ class TestKiteAutoLogin:
                     totp_secret="JBSWY3DPEBLW64TMMQ======",
                     http=http,
                 )
-            # Critical: verify we did NOT follow the redirect (the original
-            # bug — algotrade memory 9441787e). The kwarg should be False.
-            assert mock_get_call.call_args.kwargs["follow_redirects"] is False
+            # Regression guards (algotrade memory 9441787e + e7004602):
+            # - follow_redirects must be False on every call
+            # - We must have walked the chain (>= 2 GETs)
+            # - We must NOT have GET'd the developer-app callback URL (3rd hop)
+            assert mock_get_call.call_count == 2
+            for call in mock_get_call.call_args_list:
+                assert call.kwargs["follow_redirects"] is False
+            # Verify the second call was /connect/finish (not the callback)
+            second_call_url = mock_get_call.call_args_list[1].args[0]
+            assert "/connect/finish" in second_call_url
+            assert "tradeapi.dheemantech.in" not in second_call_url
         assert result["access_token"] == "ATOK123"
         assert result["kite_user_id"] == "U1"
         assert result["public_token"] == "PTOK"
@@ -803,13 +818,12 @@ class TestKiteAutoLogin:
                     )
         assert exc.value.step == "connect_login"
         assert exc.value.upstream_status == 500
-        assert "expected 302" in str(exc.value)
+        assert "unexpected status 500" in str(exc.value)
 
     @pytest.mark.asyncio
-    async def test_login_step4_302_without_request_token(self) -> None:
-        """If /connect/login returns 302 but the Location header has no
-        request_token param (auth flow incomplete on Zerodha's end), surface as
-        KiteCredentialsError carrying the offending Location URL."""
+    async def test_login_step4_max_redirects_exceeded(self) -> None:
+        """If the redirect chain never yields a Location with request_token
+        within MAX_REDIRECTS hops, surface as KiteCredentialsError."""
         from unittest.mock import AsyncMock, patch
 
         from mem_mcp.skills.kite.auth import KiteCredentialsError, login_with_credentials
@@ -823,14 +837,13 @@ class TestKiteAutoLogin:
                 return httpx.Response(200, json={"status": "success", "data": {}})
             raise AssertionError(f"unexpected request to {req.url.path}")
 
-        mock_resp = AsyncMock()
-        mock_resp.status_code = 302
-        mock_resp.headers = {
-            "location": "https://kite.zerodha.com/connect/login?api_key=X&status=error"
-        }
+        # Endless 302 loop with no request_token in any Location
+        forever_302 = AsyncMock()
+        forever_302.status_code = 302
+        forever_302.headers = {"location": "/looping?n=1"}
 
         async with _make_mock_client(handler) as http:
-            with patch.object(http, "get", new=AsyncMock(return_value=mock_resp)):
+            with patch.object(http, "get", new=AsyncMock(return_value=forever_302)):
                 with pytest.raises(KiteCredentialsError) as exc:
                     await login_with_credentials(
                         api_key="AKEY",
@@ -841,7 +854,58 @@ class TestKiteAutoLogin:
                         http=http,
                     )
         assert exc.value.step == "connect_login"
-        assert "missing request_token" in str(exc.value)
+        assert "exceeded max redirects" in str(exc.value)
+
+    @pytest.mark.asyncio
+    async def test_login_step4_two_step_chain_extracts_from_second_302(self) -> None:
+        """Explicit regression test for algotrade memory e7004602: when the
+        flow has two 302s and request_token only appears in the SECOND
+        Location header, we must follow the chain and extract from the second."""
+        from unittest.mock import AsyncMock, patch
+
+        from mem_mcp.skills.kite.auth import _follow_connect_login_chain
+
+        first = AsyncMock()
+        first.status_code = 302
+        first.headers = {"location": "/connect/finish?api_key=K&sess_id=SX"}
+        second = AsyncMock()
+        second.status_code = 302
+        second.headers = {
+            "location": "https://app.example.com/cb?request_token=RT_FOUND&status=success"
+        }
+
+        async with _make_mock_client(lambda req: httpx.Response(200)) as http:
+            with patch.object(http, "get", new=AsyncMock(side_effect=[first, second])) as mg:
+                token = await _follow_connect_login_chain(
+                    http, "https://kite.zerodha.com/connect/login?v=3&api_key=K"
+                )
+                assert token == "RT_FOUND"
+                # Critical: we made exactly 2 GETs — never reached the callback URL
+                assert mg.call_count == 2
+                assert "app.example.com" not in mg.call_args_list[1].args[0]
+
+    @pytest.mark.asyncio
+    async def test_login_step4_200_meta_refresh_with_token(self) -> None:
+        """Fallback path: if a hop returns 200 instead of 302, scan body for
+        request_token=... (algotrade's Java reference handles this case)."""
+        from unittest.mock import AsyncMock, patch
+
+        from mem_mcp.skills.kite.auth import _follow_connect_login_chain
+
+        first = AsyncMock()
+        first.status_code = 302
+        first.headers = {"location": "/connect/finish?sess_id=X"}
+        second = AsyncMock()
+        second.status_code = 200
+        second.headers = {}
+        second.text = '<html><meta http-equiv="refresh" content="0;url=https://app/cb?request_token=RT_BODY&z=1"></html>'
+
+        async with _make_mock_client(lambda req: httpx.Response(200)) as http:
+            with patch.object(http, "get", new=AsyncMock(side_effect=[first, second])):
+                token = await _follow_connect_login_chain(
+                    http, "https://kite.zerodha.com/connect/login?v=3&api_key=K"
+                )
+                assert token == "RT_BODY"
 
     @pytest.mark.asyncio
     async def test_call_tool_token_expired_triggers_relogin(self) -> None:
