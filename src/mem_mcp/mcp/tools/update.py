@@ -214,7 +214,13 @@ class MemoryUpdateTool(BaseTool):
                 final_tags = self._compute_tags(target["tags"], inp.tags, inp.tags_op)
 
                 # Determine new metadata
-                new_metadata = inp.metadata if inp.metadata is not None else target["metadata"]
+                # asyncpg may return JSONB columns as raw str (see pool codec
+                # quirk noted in get.py); parse to dict so the subsequent
+                # json.dumps doesn't double-encode.
+                existing_meta = target["metadata"]
+                if isinstance(existing_meta, str):
+                    existing_meta = json.loads(existing_meta) if existing_meta else {}
+                new_metadata = inp.metadata if inp.metadata is not None else existing_meta
 
                 # Only re-embed if content changed
                 embed_tokens = 0

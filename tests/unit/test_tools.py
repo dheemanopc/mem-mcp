@@ -334,6 +334,65 @@ class TestMemoryGetTool:
         assert exc_info.value.code == -32602
 
     @pytest.mark.asyncio
+    async def test_handles_metadata_as_str_from_asyncpg(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Regression: asyncpg may return JSONB columns as raw str when the codec
+        timing misses column reads. The MemoryRecord validator must accept both
+        str (parse) and dict (passthrough) so memory_get doesn't 500. Bug
+        memsys:fed1023c."""
+        mid = uuid4()
+        row = {
+            "id": mid,
+            "content": "x",
+            "type": "note",
+            "tags": ["a"],
+            "metadata": '{"k": "v"}',  # str — what asyncpg actually returns
+            "version": 1,
+            "is_current": True,
+            "supersedes": None,
+            "superseded_by": None,
+            "created_at": datetime.now(tz=UTC),
+            "updated_at": datetime.now(tz=UTC),
+            "deleted_at": None,
+        }
+        conn = AsyncMock()
+        conn.fetchrow.return_value = row
+        _patch_tenant_tx(monkeypatch, conn)
+
+        tool = MemoryGetTool()
+        ctx = _build_ctx()
+        result = await tool(ctx, MemoryGetInput(id=mid))
+        assert isinstance(result, MemoryGetOutput)
+        assert result.memory.metadata == {"k": "v"}
+
+    @pytest.mark.asyncio
+    async def test_handles_empty_metadata_str(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Pre-threading memories have metadata = '' or '{}' as raw str."""
+        mid = uuid4()
+        row = {
+            "id": mid,
+            "content": "x",
+            "type": "note",
+            "tags": [],
+            "metadata": "{}",
+            "version": 1,
+            "is_current": True,
+            "supersedes": None,
+            "superseded_by": None,
+            "created_at": datetime.now(tz=UTC),
+            "updated_at": datetime.now(tz=UTC),
+            "deleted_at": None,
+        }
+        conn = AsyncMock()
+        conn.fetchrow.return_value = row
+        _patch_tenant_tx(monkeypatch, conn)
+        tool = MemoryGetTool()
+        result = await tool(_build_ctx(), MemoryGetInput(id=mid))
+        assert isinstance(result, MemoryGetOutput)
+        assert result.memory.metadata == {}
+
+    @pytest.mark.asyncio
     async def test_include_history_walks_chain(self, monkeypatch: pytest.MonkeyPatch) -> None:
         mid = uuid4()
         row = {
