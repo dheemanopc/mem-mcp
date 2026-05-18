@@ -149,3 +149,43 @@ class SkillVault:
             skill_name,
         )
         return cast(bool, result.endswith(" 1"))
+
+    def encrypt_intent(
+        self,
+        plaintext: bytes,
+        tenant_id: UUID,
+        aad_label: str,
+    ) -> tuple[bytes, dict[str, Any]]:
+        """Encrypt plaintext for a kite_intent row (or similar transient credential).
+
+        Returns (ciphertext, encryption_metadata) where encryption_metadata includes
+        the AAD label for auditing purposes. The ciphertext includes the nonce prepended.
+
+        This is separate from encrypt_creds() which stores in tenant_skill_credentials.
+        """
+        nonce = os.urandom(NONCE_LEN)
+        aad = f"{tenant_id}:{aad_label}".encode()
+        ciphertext_with_tag = self._aesgcm.encrypt(nonce, plaintext, aad)
+        blob = nonce + ciphertext_with_tag
+        metadata = {"aad_label": aad_label, "version": 1}
+        return blob, metadata
+
+    def decrypt_intent(
+        self,
+        blob: bytes,
+        tenant_id: UUID,
+        aad_label: str,
+    ) -> bytes:
+        """Decrypt plaintext from a kite_intent row.
+
+        Raises SkillVaultError if decryption fails (tag mismatch, malformed blob).
+        """
+        if len(blob) < MIN_BLOB_LEN:
+            raise SkillVaultError(f"ciphertext blob too short: got {len(blob)}, min {MIN_BLOB_LEN}")
+        nonce = blob[:NONCE_LEN]
+        ciphertext_with_tag = blob[NONCE_LEN:]
+        aad = f"{tenant_id}:{aad_label}".encode()
+        try:
+            return self._aesgcm.decrypt(nonce, ciphertext_with_tag, aad)
+        except Exception as exc:
+            raise SkillVaultError("intent decryption failed (tag mismatch)") from exc
