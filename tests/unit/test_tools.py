@@ -367,9 +367,7 @@ class TestMemoryGetTool:
         assert result.memory.metadata == {"k": "v"}
 
     @pytest.mark.asyncio
-    async def test_handles_empty_metadata_str(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_handles_empty_metadata_str(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Pre-threading memories have metadata = '' or '{}' as raw str."""
         mid = uuid4()
         row = {
