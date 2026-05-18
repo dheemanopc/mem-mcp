@@ -3,19 +3,13 @@
  * Server component that fetches /api/web/identities.
  */
 
+import { serverApiFetch } from "@/lib/server-api";
 import { IdentityActionsClient } from "./IdentityActionsClient";
 
 async function fetchIdentities() {
-  try {
-    const res = await fetch("http://127.0.0.1:8080/api/web/identities", {
-      cache: "no-store",
-      credentials: "include",
-    });
-    if (!res.ok) return [];
-    return res.json();
-  } catch {
-    return [];
-  }
+  return (await serverApiFetch<any[]>("/api/web/identities", {
+    redirectTo: "/settings/identities",
+  })) ?? [];
 }
 
 export default async function IdentitiesPage() {

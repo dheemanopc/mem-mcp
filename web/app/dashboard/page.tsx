@@ -3,19 +3,7 @@
  * Renders memory counts, usage by type, and quota information.
  */
 
-async function fetchStats() {
-  try {
-    const res = await fetch("http://127.0.0.1:8080/api/web/stats", {
-      cache: "no-store",
-    });
-    if (!res.ok) {
-      return null;
-    }
-    return res.json();
-  } catch {
-    return null;
-  }
-}
+import { serverApiFetch } from "@/lib/server-api";
 
 interface Stats {
   total_memories: number;
@@ -70,14 +58,16 @@ function QuotaBar({
 }
 
 export default async function DashboardPage() {
-  const stats: Stats | null = await fetchStats();
+  const stats = await serverApiFetch<Stats>("/api/web/stats", {
+    redirectTo: "/dashboard",
+  });
 
   if (!stats) {
     return (
       <main className="mx-auto max-w-4xl px-4 py-12">
         <h1 className="text-3xl font-bold">Dashboard</h1>
         <p className="text-red-600 mt-4">
-          Could not load stats. Are you signed in?
+          Could not load stats. The backend may be unavailable; please try again.
         </p>
       </main>
     );

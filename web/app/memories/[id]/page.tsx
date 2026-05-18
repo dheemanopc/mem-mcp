@@ -1,11 +1,31 @@
 import Link from "next/link";
+import { serverApiFetch } from "@/lib/server-api";
 import { MemoryActionsClient } from "./MemoryActionsClient";
+
+interface MemoryDetail {
+  memory: {
+    id: string;
+    type: string;
+    content: string;
+    version: number;
+    tags: string[];
+    created_at: string;
+    updated_at: string;
+    deleted_at?: string;
+  };
+  history: Array<{
+    id: string;
+    version: number;
+    content: string;
+    created_at: string;
+  }>;
+}
 
 async function fetchMemory(id: string, includeHistory: boolean) {
   const qs = includeHistory ? "?history=true" : "";
-  const res = await fetch(`http://127.0.0.1:8080/api/web/memories/${id}${qs}`, { cache: "no-store" });
-  if (!res.ok) return null;
-  return res.json();
+  return serverApiFetch<MemoryDetail>(`/api/web/memories/${id}${qs}`, {
+    redirectTo: `/memories/${id}`,
+  });
 }
 
 export default async function MemoryDetailPage({ params }: { params: Promise<{ id: string }> }) {
