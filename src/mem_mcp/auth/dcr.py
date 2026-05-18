@@ -27,7 +27,7 @@ from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from starlette.responses import JSONResponse
 
-from mem_mcp.auth.well_known import DEFAULT_MCP_SCOPES
+from mem_mcp.auth.well_known import DCR_ALLOWED_SCOPES
 from mem_mcp.db import system_tx
 from mem_mcp.logging_setup import get_logger
 
@@ -527,11 +527,36 @@ def make_dcr_router(
         # FR-6.5.8: sanitize client name
         sanitized_name = _sanitize_client_name(payload.client_name)
 
-        # Ensure all MCP scopes are granted for any client that passed the allowlist.
-        # Clients like ChatGPT may request only a subset of advertised scopes; we
-        # expand to the full MCP set so no tool is blocked by a missing scope.
+        # Scope handling for DCR-registered clients.
+        #
+        # memory.admin and account.manage are intentionally NOT in DCR_ALLOWED_SCOPES;
+        # they require session-cookie auth (web UI) or the future admin console. Reject
+        # any client trying to register with an elevated scope so a misconfigured or
+        # compromised partner cannot escalate during registration.
+        #
+        # Tier-1 (public, require_secret=False) — Claude / ChatGPT / Cursor etc. — get
+        # expanded to the full DCR-allowed set even if they asked for a subset, so no
+        # MCP tool is blocked by a missing scope.
+        #
+        # Tier-2 (confidential, require_secret=True) — algotrade and future partners —
+        # get exactly what they asked for. They opt into each scope they need.
         requested = set(payload.scope.split())
-        effective_scopes = sorted(requested | set(DEFAULT_MCP_SCOPES))
+        unknown = requested - set(DCR_ALLOWED_SCOPES)
+        if unknown:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "invalid_scope",
+                    "error_description": (
+                        f"scopes not allowed for DCR clients: {sorted(unknown)}. "
+                        f"Allowed: {list(DCR_ALLOWED_SCOPES)}"
+                    ),
+                },
+            )
+        if policy.require_secret:
+            effective_scopes = sorted(requested) if requested else list(DCR_ALLOWED_SCOPES)
+        else:
+            effective_scopes = sorted(requested | set(DCR_ALLOWED_SCOPES))
 
         # Create in Cognito
         try:

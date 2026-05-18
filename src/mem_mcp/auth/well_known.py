@@ -19,11 +19,24 @@ from collections.abc import Sequence
 
 from fastapi import APIRouter
 
+# Full scope set advertised in .well-known/oauth-* discovery. These are the
+# scopes Cognito's Resource Server may issue. The web UI (session-cookie
+# auth path) and the future admin console use memory.admin / account.manage
+# internally — they do not flow through DCR.
 DEFAULT_MCP_SCOPES: tuple[str, ...] = (
     "memory.read",
     "memory.write",
     "memory.admin",
     "account.manage",
+)
+
+# Scopes a DCR-registered client may receive. memory.admin and account.manage
+# are intentionally absent: those require session-cookie auth (or a future
+# admin console). DCR validation rejects scope requests outside this set so
+# partners cannot escalate by asking for elevated scopes during registration.
+DCR_ALLOWED_SCOPES: tuple[str, ...] = (
+    "memory.read",
+    "memory.write",
 )
 
 # OIDC-standard scopes that Cognito always supports for federated identity flows

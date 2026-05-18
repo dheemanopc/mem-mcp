@@ -61,6 +61,7 @@ from mem_mcp.auth.middleware import (
     make_bearer_middleware,
 )
 from mem_mcp.auth.well_known import (
+    DCR_ALLOWED_SCOPES,
     DEFAULT_MCP_SCOPES,
     make_well_known_router,
 )
@@ -82,6 +83,7 @@ __all__ = [
     "TenantResolver",
     "TouchSink",
     "make_bearer_middleware",
+    "DCR_ALLOWED_SCOPES",
     "DEFAULT_MCP_SCOPES",
     "make_well_known_router",
     "AllowedSoftwareLookup",
