@@ -156,6 +156,12 @@ systemctl daemon-reload
 systemctl enable --now mem-mcp.service || true
 [[ -f /etc/systemd/system/mem-web.service ]] && systemctl enable --now mem-web.service || true
 
+# Enable all installed mem-mcp-* timer units (cleanup + retention jobs).
+# Idempotent: `enable --now` is a no-op if already enabled.
+for t in /etc/systemd/system/mem-mcp-*.timer; do
+  [[ -e "$t" ]] && systemctl enable --now "$(basename "$t")" || true
+done
+
 #=============================================================================
 # Step 8: Wait for /healthz and emit success metric
 #=============================================================================

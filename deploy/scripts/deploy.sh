@@ -29,6 +29,15 @@ if [[ -d "$REPO_DIR/web" ]]; then
   sudo -u memmcp bash -c "cd web && npm ci && npm run build"
 fi
 
+log "Re-installing systemd units (timers may have been added)"
+for svc in "$REPO_DIR/deploy/systemd/"*.{service,timer}; do
+  [[ -e "$svc" ]] && install -m 0644 "$svc" "/etc/systemd/system/$(basename "$svc")"
+done
+systemctl daemon-reload
+for t in /etc/systemd/system/mem-mcp-*.timer; do
+  [[ -e "$t" ]] && systemctl enable --now "$(basename "$t")" || true
+done
+
 log "Restarting services"
 systemctl restart mem-mcp.service
 [[ -f /etc/systemd/system/mem-web.service ]] && systemctl restart mem-web.service || true
