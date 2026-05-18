@@ -2,6 +2,7 @@
 
 Currently registers:
     cleanup_clients       — DCR client cleanup (T-4.9)
+    cleanup_kite_intents  — hard-delete resolved/expired kite_intents past grace
     retention_memories    — soft + hard-delete memories per retention policy (T-7.14)
     retention_tokens      — purge expired link_state + web_sessions (T-7.14)
     retention_audit       — anonymize + hard-delete audit log (T-7.15)
@@ -19,6 +20,7 @@ from collections.abc import Callable, Coroutine
 from typing import Any
 
 from mem_mcp.jobs.cleanup_clients import main as cleanup_clients_main
+from mem_mcp.jobs.cleanup_kite_intents import main as cleanup_kite_intents_main
 from mem_mcp.jobs.retention_audit import main as retention_audit_main
 from mem_mcp.jobs.retention_deletion import main as retention_deletion_main
 from mem_mcp.jobs.retention_memories import main as retention_memories_main
@@ -28,6 +30,7 @@ _JobMain = Callable[..., Coroutine[Any, Any, int]]
 
 _JOBS: dict[str, _JobMain] = {
     "cleanup_clients": cleanup_clients_main,
+    "cleanup_kite_intents": cleanup_kite_intents_main,
     "retention_audit": retention_audit_main,
     "retention_deletion": retention_deletion_main,
     "retention_memories": retention_memories_main,

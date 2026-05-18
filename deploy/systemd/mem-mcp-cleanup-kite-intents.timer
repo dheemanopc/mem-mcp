@@ -1,0 +1,11 @@
+[Unit]
+Description=Run mem-mcp kite_intents cleanup daily at 03:00 IST
+Requires=mem-mcp-cleanup-kite-intents.service
+
+[Timer]
+OnCalendar=*-*-* 21:30:00 UTC
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target
