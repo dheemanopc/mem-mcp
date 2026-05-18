@@ -1,4 +1,3 @@
-import { redirect } from "next/navigation";
 import { serverApiFetch } from "@/lib/server-api";
 import { KiteConfirmButtons } from "./confirm-buttons";
 

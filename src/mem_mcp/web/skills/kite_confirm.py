@@ -11,7 +11,7 @@ import json
 from datetime import datetime
 from uuid import UUID
 
-import asyncpg
+import asyncpg  # type: ignore[import-untyped]
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 

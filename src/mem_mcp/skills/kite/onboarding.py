@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 from uuid import UUID
 
-import asyncpg
+import asyncpg  # type: ignore[import-untyped]
 
 from mem_mcp.skills.kite.auth import KiteAuthError, login_with_credentials
 from mem_mcp.skills.vault import SkillVault
