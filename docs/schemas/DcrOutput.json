@@ -9,6 +9,18 @@
       "title": "Client Id Issued At",
       "type": "integer"
     },
+    "client_secret": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Client Secret"
+    },
     "client_secret_expires_at": {
       "default": 0,
       "title": "Client Secret Expires At",
