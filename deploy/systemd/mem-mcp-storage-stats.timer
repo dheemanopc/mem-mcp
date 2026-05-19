@@ -1,0 +1,11 @@
+[Unit]
+Description=Run mem-mcp storage_stats daily at 04:00 IST (22:30 UTC)
+Requires=mem-mcp-storage-stats.service
+
+[Timer]
+OnCalendar=*-*-* 22:30:00 UTC
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

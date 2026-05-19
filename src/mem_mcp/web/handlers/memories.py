@@ -151,6 +151,47 @@ def make_memories_router(*, pool: asyncpg.Pool, deps: ToolDeps) -> APIRouter:
 
     # ---- Management endpoints (Phase 1) ---------------------------------
 
+    @router.get("/api/web/memories/management/stats")
+    async def get_stats(
+        mem_session: str | None = Cookie(default=None),
+    ) -> dict[str, Any]:
+        """Per-tenant memory count + total_storage_bytes (raw text bytes).
+
+        memory_count is computed live (cheap COUNT). total_storage_bytes is
+        last-snapshotted by the daily storage_stats job — UI shows the
+        updated_at timestamp so callers know how fresh it is. NULL means
+        the job hasn't run yet for this tenant.
+        """
+        ctx = await _ctx_from_session(pool, mem_session, deps, scopes=frozenset(["memory.read"]))
+        async with tenant_tx(pool, ctx.tenant_id) as conn:
+            count_row = await conn.fetchrow(
+                """
+                SELECT COUNT(*)::bigint AS n
+                FROM memories
+                WHERE tenant_id = $1
+                  AND deleted_at IS NULL
+                  AND is_current = true
+                """,
+                ctx.tenant_id,
+            )
+            tenant_row = await conn.fetchrow(
+                """
+                SELECT total_storage_bytes, storage_bytes_updated_at
+                FROM tenants
+                WHERE id = $1
+                """,
+                ctx.tenant_id,
+            )
+        return {
+            "memory_count": int(count_row["n"]) if count_row else 0,
+            "total_storage_bytes": int(tenant_row["total_storage_bytes"])
+            if tenant_row is not None
+            else 0,
+            "storage_bytes_updated_at": tenant_row["storage_bytes_updated_at"].isoformat()
+            if tenant_row is not None and tenant_row["storage_bytes_updated_at"] is not None
+            else None,
+        }
+
     @router.get("/api/web/memories/management/tags")
     async def list_tags(
         mem_session: str | None = Cookie(default=None),

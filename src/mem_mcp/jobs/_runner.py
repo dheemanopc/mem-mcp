@@ -4,6 +4,7 @@ Currently registers:
     cleanup_clients       — DCR client cleanup (T-4.9)
     cleanup_kite_intents  — hard-delete resolved/expired kite_intents past grace
     cluster_build         — weekly: rebuild near-duplicate clusters per tenant
+    storage_stats         — daily: refresh per-tenant total_storage_bytes
     retention_memories    — soft + hard-delete memories per retention policy (T-7.14)
     retention_tokens      — purge expired link_state + web_sessions (T-7.14)
     retention_audit       — anonymize + hard-delete audit log (T-7.15)
@@ -27,6 +28,7 @@ from mem_mcp.jobs.retention_audit import main as retention_audit_main
 from mem_mcp.jobs.retention_deletion import main as retention_deletion_main
 from mem_mcp.jobs.retention_memories import main as retention_memories_main
 from mem_mcp.jobs.retention_tokens import main as retention_tokens_main
+from mem_mcp.jobs.storage_stats import main as storage_stats_main
 
 _JobMain = Callable[..., Coroutine[Any, Any, int]]
 
@@ -38,6 +40,7 @@ _JOBS: dict[str, _JobMain] = {
     "retention_deletion": retention_deletion_main,
     "retention_memories": retention_memories_main,
     "retention_tokens": retention_tokens_main,
+    "storage_stats": storage_stats_main,
 }
 
 
