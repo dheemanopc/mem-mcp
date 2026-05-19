@@ -13,15 +13,10 @@ from __future__ import annotations
 import argparse
 import asyncio
 from collections import defaultdict
-from typing import TYPE_CHECKING
 
 from mem_mcp.config import get_settings
 from mem_mcp.db.tenant_tx import system_tx
 from mem_mcp.logging_setup import get_logger, setup_logging
-
-if TYPE_CHECKING:
-    import asyncpg  # type: ignore[import-untyped]
-
 
 _log = get_logger("mem_mcp.jobs.expire_transient")
 

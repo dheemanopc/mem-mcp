@@ -1,6 +1,11 @@
 {
   "additionalProperties": false,
   "properties": {
+    "include_expired": {
+      "default": false,
+      "title": "Include Expired",
+      "type": "boolean"
+    },
     "include_history": {
       "default": false,
       "title": "Include History",

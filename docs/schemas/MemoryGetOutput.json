@@ -23,10 +23,26 @@
           ],
           "title": "Deleted At"
         },
+        "expires_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Expires At"
+        },
         "id": {
           "format": "uuid",
           "title": "Id",
           "type": "string"
+        },
+        "indexable": {
+          "title": "Indexable",
+          "type": "boolean"
         },
         "is_current": {
           "title": "Is Current",
@@ -94,7 +110,9 @@
         "superseded_by",
         "created_at",
         "updated_at",
-        "deleted_at"
+        "deleted_at",
+        "expires_at",
+        "indexable"
       ],
       "title": "MemoryRecord",
       "type": "object"

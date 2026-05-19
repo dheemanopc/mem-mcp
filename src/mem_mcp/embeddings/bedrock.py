@@ -166,7 +166,7 @@ class BedrockEmbeddingClient:
                 if _is_throttled(exc):
                     raise EmbeddingError(
                         "throttled",
-                        f"bedrock throttled after retries",
+                        "bedrock throttled after retries",
                         retry_after_seconds=10,
                     ) from exc
                 else:

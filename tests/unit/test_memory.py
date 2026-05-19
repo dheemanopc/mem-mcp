@@ -276,7 +276,7 @@ class TestHybridSearch:
         assert args[8] == 0.8
         assert args[9] == 0.2
         assert args[10] == 15
-        assert args[12] == False  # include_expired
+        assert args[12] is False  # include_expired
 
     @pytest.mark.asyncio
     async def test_default_weights(self) -> None:
