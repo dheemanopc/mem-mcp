@@ -64,6 +64,7 @@ async def find_similar(
         WHERE tenant_id = $2
           AND deleted_at IS NULL
           AND is_current = true
+          AND embedding IS NOT NULL
           AND ($3::uuid IS NULL OR id <> $3)
           AND 1 - (embedding <=> $1::vector) >= $4
         ORDER BY embedding <=> $1::vector
@@ -107,6 +108,7 @@ async def find_neighbor_ids(
         WITH seed AS (
             SELECT embedding FROM memories
             WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND is_current = true
+              AND embedding IS NOT NULL
         )
         SELECT m.id
         FROM memories m, seed
@@ -114,6 +116,7 @@ async def find_neighbor_ids(
           AND m.id <> $1
           AND m.deleted_at IS NULL
           AND m.is_current = true
+          AND m.embedding IS NOT NULL
           AND 1 - (m.embedding <=> seed.embedding) >= $3
         ORDER BY m.embedding <=> seed.embedding
         LIMIT $4

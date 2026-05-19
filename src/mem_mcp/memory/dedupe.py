@@ -60,13 +60,17 @@ async def check_dup(
     if embedding is None:
         return None
 
-    # 2. Cosine similarity (HNSW index; type-scoped to keep search small)
+    # 2. Cosine similarity (HNSW index; type-scoped to keep search small).
+    # Skip rows with NULL embedding — oversize content is stored without
+    # an embedding (see write.py EMBED_MAX_INPUT_CHARS), and the <=> operator
+    # would not produce a meaningful similarity for them.
     row = await conn.fetchrow(
         """
         SELECT id, 1 - (embedding <=> $3::vector) AS sim
         FROM memories
         WHERE tenant_id = $1 AND type = $2
           AND deleted_at IS NULL AND is_current = true
+          AND embedding IS NOT NULL
         ORDER BY embedding <=> $3::vector
         LIMIT 1
         """,

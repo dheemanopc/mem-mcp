@@ -22,11 +22,21 @@ from mem_mcp.memory.versioning import VERSIONED_TYPES
 _TAG_RE = re.compile(r"^[a-zA-Z0-9_:.-]+$")
 MemoryType = Literal["note", "decision", "fact", "snippet", "question"]
 
+# Hard write limit on memory content.
+CONTENT_MAX_CHARS = 200_000
+
+# Above this, we skip the Bedrock embed call entirely — Titan v2 caps at
+# ~8K tokens (~32K chars) and would reject oversize input. NULL embedding
+# is stored; semantic search drops those rows, keyword search still hits
+# them via tsvector. See alembic 0011 (column nullability) and
+# hybrid_query.py (IS NOT NULL guard on the semantic CTE).
+EMBED_MAX_INPUT_CHARS = 32_000
+
 
 class MemoryWriteInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    content: str = Field(..., min_length=1, max_length=32_768)
+    content: str = Field(..., min_length=1, max_length=CONTENT_MAX_CHARS)
     type: MemoryType = "note"
     tags: list[str] = Field(default_factory=list, max_length=32)
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -100,18 +110,29 @@ class MemoryWriteTool(BaseTool):
 
         content_hash = hash_content(inp.content)
 
-        # Embed (Bedrock; can raise EmbeddingError)
-        try:
-            embed = await ctx.deps.embeddings.embed(inp.content)
-        except EmbeddingError as exc:
-            raise JsonRpcError(
-                -32000,
-                "embedding unavailable",
-                data={
-                    "code": "embedding_unavailable",
-                    "retry_after_seconds": exc.retry_after_seconds,
-                },
-            ) from exc
+        # Embed via Bedrock — UNLESS content exceeds the model's input cap.
+        # In that case we store NULL embedding; semantic search will skip the
+        # row (via the IS NOT NULL guards in hybrid_query / similarity),
+        # keyword/tag search still surface it.
+        embedding_vec: list[float] | None
+        embed_tokens: int
+        if len(inp.content) > EMBED_MAX_INPUT_CHARS:
+            embedding_vec = None
+            embed_tokens = 0
+        else:
+            try:
+                embed = await ctx.deps.embeddings.embed(inp.content)
+            except EmbeddingError as exc:
+                raise JsonRpcError(
+                    -32000,
+                    "embedding unavailable",
+                    data={
+                        "code": "embedding_unavailable",
+                        "retry_after_seconds": exc.retry_after_seconds,
+                    },
+                ) from exc
+            embedding_vec = embed.vector
+            embed_tokens = embed.input_tokens
 
         async with tenant_tx(ctx.db_pool, ctx.tenant_id) as conn:
             # Dedupe (unless caller forced new or parent_id set)
@@ -121,7 +142,7 @@ class MemoryWriteTool(BaseTool):
                     conn,
                     ctx.tenant_id,
                     content_hash,
-                    embed.vector,
+                    embedding_vec,
                     inp.type,
                 )
 
@@ -153,7 +174,7 @@ class MemoryWriteTool(BaseTool):
                     request_id=ctx.request_id,
                     details={
                         "kind": existing.kind,
-                        "embed_tokens": embed.input_tokens,
+                        "embed_tokens": embed_tokens,
                     },
                 )
                 return MemoryWriteOutput(
@@ -238,7 +259,7 @@ class MemoryWriteTool(BaseTool):
                     ctx.tenant_id,
                     inp.content,
                     content_hash,
-                    embed.vector,
+                    embedding_vec,
                     ctx.client_id,
                     inp.type,
                     effective_tags,
@@ -259,13 +280,13 @@ class MemoryWriteTool(BaseTool):
                         "parent_id": str(inp.parent_id),
                         "tags": effective_tags,
                         "inherited_tag_count": len(set(parent_tags) - set(inp.tags)),
-                        "embed_tokens": embed.input_tokens,
+                        "embed_tokens": embed_tokens,
                         "content_length": len(inp.content),
                         "type": inp.type,
                         "deduped": False,
                     },
                 )
-                await ctx.deps.quotas.increment_write(ctx.tenant_id, embed.input_tokens)
+                await ctx.deps.quotas.increment_write(ctx.tenant_id, embed_tokens)
                 return MemoryWriteOutput(
                     id=reply_row["id"],
                     version=int(reply_row["version"]),
@@ -334,7 +355,7 @@ class MemoryWriteTool(BaseTool):
                     ctx.tenant_id,
                     inp.content,
                     content_hash,
-                    embed.vector,
+                    embedding_vec,
                     ctx.client_id,
                     inp.type,
                     inp.tags,
@@ -361,10 +382,10 @@ class MemoryWriteTool(BaseTool):
                     request_id=ctx.request_id,
                     details={
                         "old_id": str(inp.supersedes),
-                        "embed_tokens": embed.input_tokens,
+                        "embed_tokens": embed_tokens,
                     },
                 )
-                await ctx.deps.quotas.increment_write(ctx.tenant_id, embed.input_tokens)
+                await ctx.deps.quotas.increment_write(ctx.tenant_id, embed_tokens)
                 return MemoryWriteOutput(
                     id=new_row["id"],
                     version=int(new_row["version"]),
@@ -387,7 +408,7 @@ class MemoryWriteTool(BaseTool):
                 ctx.tenant_id,
                 inp.content,
                 content_hash,
-                embed.vector,
+                embedding_vec,
                 ctx.client_id,
                 inp.type,
                 inp.tags,
@@ -407,11 +428,11 @@ class MemoryWriteTool(BaseTool):
                     "type": inp.type,
                     "tags": list(inp.tags),
                     "deduped": False,
-                    "embed_tokens": embed.input_tokens,
+                    "embed_tokens": embed_tokens,
                     "content_length": len(inp.content),
                 },
             )
-            await ctx.deps.quotas.increment_write(ctx.tenant_id, embed.input_tokens)
+            await ctx.deps.quotas.increment_write(ctx.tenant_id, embed_tokens)
             return MemoryWriteOutput(
                 id=row["id"],
                 version=int(row["version"]),

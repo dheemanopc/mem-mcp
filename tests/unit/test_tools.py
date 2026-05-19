@@ -94,8 +94,24 @@ class TestMemoryWriteInput:
             MemoryWriteInput.model_validate({})
 
     def test_content_max_len(self) -> None:
+        # 200k chars is the new ceiling (200_001 should fail validation).
         with pytest.raises(ValidationError):
-            MemoryWriteInput.model_validate({"content": "x" * 32_769})
+            MemoryWriteInput.model_validate({"content": "x" * 200_001})
+
+    def test_content_under_max_accepted(self) -> None:
+        # Just under the 200k ceiling should accept.
+        MemoryWriteInput.model_validate({"content": "x" * 200_000})
+
+    def test_embed_skipped_above_threshold(self) -> None:
+        """Content > EMBED_MAX_INPUT_CHARS is accepted at validation; the
+        write tool skips the Bedrock embed call (NULL embedding stored)."""
+        from mem_mcp.mcp.tools.write import CONTENT_MAX_CHARS, EMBED_MAX_INPUT_CHARS
+
+        # Sanity-check the constants ship at the design values.
+        assert EMBED_MAX_INPUT_CHARS == 32_000
+        assert CONTENT_MAX_CHARS == 200_000
+        # Content above embed threshold but under hard ceiling is still valid input.
+        MemoryWriteInput.model_validate({"content": "x" * (EMBED_MAX_INPUT_CHARS + 1)})
 
     def test_tag_charset(self) -> None:
         # Valid

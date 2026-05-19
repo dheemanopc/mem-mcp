@@ -61,6 +61,7 @@ WITH semantic AS (
     WHERE tenant_id = $2
       AND deleted_at IS NULL
       AND is_current = true
+      AND embedding IS NOT NULL  -- oversize content stored without embedding
       AND ($3::text IS NULL OR type = $3)
       AND ($4::text[] IS NULL OR tags && $4)
       AND ($5::timestamptz IS NULL OR created_at >= $5)
