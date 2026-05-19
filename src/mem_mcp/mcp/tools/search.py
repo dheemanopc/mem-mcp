@@ -13,6 +13,7 @@ from mem_mcp.embeddings.bedrock import EmbeddingError
 from mem_mcp.mcp.errors import JsonRpcError
 from mem_mcp.mcp.tool_descriptions import TOOL_DESCRIPTIONS
 from mem_mcp.mcp.tools._base import BaseTool, ToolContext
+from mem_mcp.memory.access_tracking import bump_access
 from mem_mcp.memory.hybrid_query import (
     SEARCH_DEFAULT_W_KW,
     SEARCH_DEFAULT_W_SEM,
@@ -139,6 +140,9 @@ class MemorySearchTool(BaseTool):
             )
             for r in results
         ]
+        # Bump access-time for every returned hit (batched, throttled).
+        # Fire-and-forget; never blocks the response.
+        await bump_access(ctx.db_pool, ctx.tenant_id, [r.id for r in results])
         return MemorySearchOutput(
             results=items,
             query_embedding_tokens=qembed.input_tokens,

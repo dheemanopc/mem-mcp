@@ -13,6 +13,7 @@ from mem_mcp.db import tenant_tx
 from mem_mcp.mcp.errors import JsonRpcError
 from mem_mcp.mcp.tool_descriptions import TOOL_DESCRIPTIONS
 from mem_mcp.mcp.tools._base import BaseTool, ToolContext
+from mem_mcp.memory.access_tracking import bump_access
 
 
 class MemoryGetInput(BaseModel):
@@ -134,6 +135,10 @@ class MemoryGetTool(BaseTool):
                     "history_count": len(history),
                 },
             )
+
+        # Bump access-time so the stale-detection UI can find untouched
+        # memories. Fire-and-forget; throttled at 5min per row.
+        await bump_access(ctx.db_pool, ctx.tenant_id, [inp.id])
 
         return MemoryGetOutput(
             memory=MemoryRecord(**dict(row)),
