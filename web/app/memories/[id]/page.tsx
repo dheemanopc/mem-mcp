@@ -35,30 +35,30 @@ export default async function MemoryDetailPage({ params }: { params: Promise<{ i
     return (
       <main className="mx-auto max-w-3xl px-4 py-12">
         <h1 className="text-3xl font-bold">Memory not found</h1>
-        <Link href="/memories" className="text-blue-600 underline">← back</Link>
+        <Link href="/memories" className="text-primary underline">← back</Link>
       </main>
     );
   }
   return (
     <main className="mx-auto max-w-3xl px-4 py-12 space-y-6">
-      <Link href="/memories" className="text-blue-600 underline text-sm">← back to memories</Link>
+      <Link href="/memories" className="text-primary underline text-sm">← back to memories</Link>
       <header className="space-y-2">
         <div className="flex justify-between items-start">
           <h1 className="text-2xl font-bold">{data.memory.type} — version {data.memory.version}</h1>
-          <span className="text-xs font-mono text-gray-400">{data.memory.id}</span>
+          <span className="text-xs font-mono text-ink-faint">{data.memory.id}</span>
         </div>
         <div className="flex flex-wrap gap-1">
           {(data.memory.tags ?? []).map((t: string) => (
-            <span key={t} className="text-xs bg-gray-100 px-2 py-0.5 rounded">{t}</span>
+            <span key={t} className="text-xs bg-surface-subtle px-2 py-0.5 rounded">{t}</span>
           ))}
         </div>
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-ink-muted">
           created {data.memory.created_at} · updated {data.memory.updated_at}
-          {data.memory.deleted_at && <span className="text-red-600"> · DELETED at {data.memory.deleted_at}</span>}
+          {data.memory.deleted_at && <span className="text-danger"> · DELETED at {data.memory.deleted_at}</span>}
         </p>
       </header>
       <article className="prose max-w-none">
-        <pre className="bg-gray-100 rounded p-4 whitespace-pre-wrap font-sans">{data.memory.content}</pre>
+        <pre className="bg-surface-subtle rounded p-4 whitespace-pre-wrap font-sans">{data.memory.content}</pre>
       </article>
       <MemoryActionsClient id={data.memory.id} deleted={!!data.memory.deleted_at} />
       {data.history?.length > 0 && (
@@ -66,8 +66,8 @@ export default async function MemoryDetailPage({ params }: { params: Promise<{ i
           <h2 className="text-xl font-semibold">History</h2>
           <ul className="space-y-2">
             {data.history.map((h: any) => (
-              <li key={h.id} className="border rounded p-3 text-sm bg-gray-50">
-                <div className="flex justify-between text-xs text-gray-500 mb-1">
+              <li key={h.id} className="border rounded p-3 text-sm bg-surface-muted">
+                <div className="flex justify-between text-xs text-ink-muted mb-1">
                   <span>v{h.version}</span>
                   <span>{h.created_at}</span>
                 </div>

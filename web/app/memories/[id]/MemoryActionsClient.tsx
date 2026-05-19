@@ -43,7 +43,7 @@ export function MemoryActionsClient({ id, deleted }: { id: string; deleted: bool
         <button
           onClick={() => { if (confirm("Delete this memory?")) call("DELETE", `/api/web/memories/${id}`); }}
           disabled={busy}
-          className="bg-red-600 text-white rounded px-3 py-1.5 disabled:opacity-50"
+          className="bg-danger text-white rounded px-3 py-1.5 disabled:opacity-50"
         >
           Delete
         </button>
@@ -56,7 +56,7 @@ export function MemoryActionsClient({ id, deleted }: { id: string; deleted: bool
           Undelete
         </button>
       )}
-      {error && <span className="text-red-600 text-sm">{error}</span>}
+      {error && <span className="text-danger text-sm">{error}</span>}
     </div>
   );
 }
