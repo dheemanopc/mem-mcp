@@ -57,6 +57,23 @@ class Settings(BaseSettings):
     bedrock_model_id: str = "amazon.titan-embed-text-v2:0"
     log_level: str = "INFO"
 
+    @property
+    def db_maint_dsn_asyncpg(self) -> str:
+        """asyncpg-compatible form of db_maint_dsn.
+
+        Env carries the SQLAlchemy form (``postgresql+psycopg://...``) so the
+        main app pool, which goes through SQLAlchemy's driver lookup, can pick
+        the psycopg backend. asyncpg uses libpq directly and only accepts
+        ``postgresql://`` or ``postgres://`` — strip the ``+psycopg`` suffix.
+        Used by jobs that create their own asyncpg pools.
+        """
+        return self.db_maint_dsn.replace("postgresql+psycopg://", "postgresql://", 1)
+
+    @property
+    def db_dsn_asyncpg(self) -> str:
+        """asyncpg-compatible form of db_dsn (app role). Same logic as above."""
+        return self.db_dsn.replace("postgresql+psycopg://", "postgresql://", 1)
+
 
 class SsmLoader(Protocol):
     """Boundary for SSM Parameter Store reads.

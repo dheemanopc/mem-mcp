@@ -93,7 +93,7 @@ async def main(dry_run: bool = False, threshold: float = DEFAULT_SIMILARITY_THRE
     import asyncpg
 
     pool = await asyncpg.create_pool(
-        dsn=settings.db_maint_dsn,
+        dsn=settings.db_maint_dsn_asyncpg,
         min_size=1,
         max_size=4,
         command_timeout=600,
