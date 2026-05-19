@@ -1,9 +1,13 @@
 """Memory CRUD + management handlers — wraps memory.list/get/update/delete/undelete tools.
 
 Phase-1 management additions (2026-05-19):
-- GET  /api/web/memories/tags          — distinct tag autocomplete
-- GET  /api/web/memories/stale         — stale-memory discovery (no UI bump)
-- POST /api/web/memories/bulk-delete   — soft-delete a list of IDs in one tx
+- GET  /api/web/memories/management/tags          — distinct tag autocomplete
+- GET  /api/web/memories/management/stale         — stale-memory discovery
+- POST /api/web/memories/management/bulk-delete   — soft-delete a list of IDs in one tx
+
+Phase-2 (2026-05-19):
+- POST /api/web/memories/management/similar       — find similar to seed_id or query text
+- GET  /api/web/memories/management/clusters      — list precomputed near-duplicate clusters
 """
 
 from __future__ import annotations
@@ -222,6 +226,148 @@ def make_memories_router(*, pool: asyncpg.Pool, deps: ToolDeps) -> APIRouter:
                 }
                 for r in rows
             ],
+        }
+
+    class _SimilarBody(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+        seed_id: UUID | None = None
+        query_text: str | None = Field(default=None, min_length=1, max_length=16384)
+        threshold: float = Field(default=0.85, ge=0.0, le=1.0)
+        limit: int = Field(default=20, ge=1, le=100)
+
+    @router.post("/api/web/memories/management/similar")
+    async def find_similar_endpoint(
+        body: _SimilarBody,
+        mem_session: str | None = Cookie(default=None),
+    ) -> dict[str, Any]:
+        """Find memories cosine-similar to a seed (memory_id) or free-text query.
+        Phase-2 Shape A. Uses pgvector HNSW index — typical query <50ms.
+        """
+        from mem_mcp.memory.similarity import find_similar
+
+        if (body.seed_id is None) == (body.query_text is None):
+            raise HTTPException(
+                status_code=400,
+                detail="must provide exactly one of seed_id or query_text",
+            )
+        ctx = await _ctx_from_session(pool, mem_session, deps, scopes=frozenset(["memory.read"]))
+        if ctx.deps is None:
+            raise HTTPException(status_code=500, detail="tool deps not wired")
+
+        # Resolve seed embedding — either fetched from memories table by seed_id
+        # or embedded fresh from query_text via the embeddings provider.
+        async with tenant_tx(pool, ctx.tenant_id) as conn:
+            if body.seed_id is not None:
+                row = await conn.fetchrow(
+                    """
+                    SELECT embedding::text AS emb_text
+                    FROM memories
+                    WHERE tenant_id = $1 AND id = $2
+                      AND deleted_at IS NULL AND is_current = true
+                    """,
+                    ctx.tenant_id,
+                    body.seed_id,
+                )
+                if row is None:
+                    raise HTTPException(status_code=404, detail="seed memory not found")
+                # pgvector returns vectors as text like "[0.1, 0.2, ...]"; parse.
+                import ast
+
+                seed_embedding = list(ast.literal_eval(row["emb_text"]))
+            else:
+                assert body.query_text is not None
+                embed = await ctx.deps.embeddings.embed(body.query_text)
+                seed_embedding = list(embed.vector)
+
+            results = await find_similar(
+                conn,
+                ctx.tenant_id,
+                seed_embedding,
+                exclude_id=body.seed_id,
+                threshold=body.threshold,
+                limit=body.limit,
+            )
+        return {
+            "threshold": body.threshold,
+            "results": [
+                {
+                    "id": str(r.id),
+                    "content": r.content,
+                    "type": r.type,
+                    "tags": r.tags,
+                    "similarity": round(r.similarity, 4),
+                }
+                for r in results
+            ],
+        }
+
+    @router.get("/api/web/memories/management/clusters")
+    async def list_clusters(
+        limit: int = Query(default=50, ge=1, le=200),
+        mem_session: str | None = Cookie(default=None),
+    ) -> dict[str, Any]:
+        """List precomputed near-duplicate clusters for the calling tenant.
+        Built weekly by the cluster_build job; if a tenant has never been
+        through a build cycle, returns an empty list.
+        """
+        ctx = await _ctx_from_session(pool, mem_session, deps, scopes=frozenset(["memory.read"]))
+        async with tenant_tx(pool, ctx.tenant_id) as conn:
+            cluster_rows = await conn.fetch(
+                """
+                SELECT id, member_ids, member_count, similarity_threshold,
+                       seed_memory_id, built_at
+                FROM memory_clusters
+                WHERE tenant_id = $1
+                ORDER BY member_count DESC, built_at DESC
+                LIMIT $2
+                """,
+                ctx.tenant_id,
+                limit,
+            )
+            if not cluster_rows:
+                return {"clusters": [], "built_at": None}
+
+            # One follow-up query for every member's preview row.
+            all_member_ids = sorted({mid for r in cluster_rows for mid in r["member_ids"]}, key=str)
+            member_rows = await conn.fetch(
+                """
+                SELECT id, content, type, tags, updated_at, last_accessed_at
+                FROM memories
+                WHERE tenant_id = $1 AND id = ANY($2::uuid[])
+                  AND deleted_at IS NULL
+                """,
+                ctx.tenant_id,
+                all_member_ids,
+            )
+            by_id = {
+                r["id"]: {
+                    "id": str(r["id"]),
+                    "content": r["content"],
+                    "type": r["type"],
+                    "tags": list(r["tags"] or []),
+                    "updated_at": r["updated_at"].isoformat(),
+                    "last_accessed_at": r["last_accessed_at"].isoformat()
+                    if r["last_accessed_at"] is not None
+                    else None,
+                }
+                for r in member_rows
+            }
+
+        return {
+            "clusters": [
+                {
+                    "cluster_id": str(r["id"]),
+                    "seed_memory_id": str(r["seed_memory_id"]),
+                    "member_count": r["member_count"],
+                    "similarity_threshold": float(r["similarity_threshold"]),
+                    "built_at": r["built_at"].isoformat(),
+                    # Tolerate members that may have been deleted since the
+                    # last build — drop them rather than 404.
+                    "members": [by_id[mid] for mid in r["member_ids"] if mid in by_id],
+                }
+                for r in cluster_rows
+            ],
+            "built_at": cluster_rows[0]["built_at"].isoformat(),
         }
 
     class _BulkDeleteBody(BaseModel):
