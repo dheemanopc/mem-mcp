@@ -344,37 +344,53 @@ class TestDcrEndpointSuccess:
 
 
 class TestDcrScopeAllowlist:
-    """Scope-allowlist enforcement: DCR rejects requests for elevated scopes.
+    """Scope-allowlist behavior at the DCR endpoint.
 
     memory.admin and account.manage are not eligible via DCR; the web UI's
     session-cookie path is the only place those scopes are granted.
+
+    Tier-1 (public, like claude-code): silently downgrade out-of-allowlist
+    scope requests to DCR_ALLOWED_SCOPES. Generic MCP clients read
+    .well-known/oauth-authorization-server (which advertises all four scopes
+    as supported on the resource server) and blindly request the full set —
+    rejecting them would break the standard discovery flow.
+
+    Tier-2 (confidential, like algotrade): strictly reject any out-of-allowlist
+    scope. Confidential clients are deliberate integrations; opt in per scope.
     """
 
-    def test_rejects_memory_admin_scope(self) -> None:
-        client, _ = _build_client()
+    def test_tier1_silently_downgrades_memory_admin(self) -> None:
+        """Public client asking for memory.admin gets registered with only
+        memory.read + memory.write — no 400."""
+        client, deps = _build_client()
         payload = {**_valid_payload(), "scope": "memory.read memory.admin"}
         resp = client.post("/oauth/register", json=payload)
-        assert resp.status_code == 400
-        body = resp.json()
-        assert body["detail"]["error"] == "invalid_scope"
-        assert "memory.admin" in body["detail"]["error_description"]
+        assert resp.status_code == 201
+        cognito_scopes = deps["cognito"].calls[0]["scopes"]
+        assert sorted(cognito_scopes) == ["memory.read", "memory.write"]
+        assert "memory.admin" not in cognito_scopes
 
-    def test_rejects_account_manage_scope(self) -> None:
-        client, _ = _build_client()
+    def test_tier1_silently_downgrades_account_manage(self) -> None:
+        client, deps = _build_client()
         payload = {**_valid_payload(), "scope": "account.manage"}
         resp = client.post("/oauth/register", json=payload)
-        assert resp.status_code == 400
-        assert resp.json()["detail"]["error"] == "invalid_scope"
+        assert resp.status_code == 201
+        cognito_scopes = deps["cognito"].calls[0]["scopes"]
+        assert "account.manage" not in cognito_scopes
 
-    def test_rejects_unknown_scope(self) -> None:
-        client, _ = _build_client()
+    def test_tier1_silently_drops_unknown_scope(self) -> None:
+        """Public client asking for a totally unknown scope still registers;
+        the unknown scope is dropped."""
+        client, deps = _build_client()
         payload = {**_valid_payload(), "scope": "memory.read foo.bar"}
         resp = client.post("/oauth/register", json=payload)
-        assert resp.status_code == 400
-        assert resp.json()["detail"]["error"] == "invalid_scope"
+        assert resp.status_code == 201
+        cognito_scopes = deps["cognito"].calls[0]["scopes"]
+        assert "foo.bar" not in cognito_scopes
+        assert "memory.read" in cognito_scopes
 
-    def test_tier2_also_rejects_admin_scopes(self) -> None:
-        """Tier-2 confidential clients can't escalate via DCR either."""
+    def test_tier2_rejects_admin_scopes(self) -> None:
+        """Tier-2 confidential clients can't escalate via DCR — strict rejection."""
         allowed = FakeAllowed(
             {
                 "algotrade": AllowedSoftwarePolicy(

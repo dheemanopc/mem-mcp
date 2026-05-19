@@ -530,33 +530,37 @@ def make_dcr_router(
         # Scope handling for DCR-registered clients.
         #
         # memory.admin and account.manage are intentionally NOT in DCR_ALLOWED_SCOPES;
-        # they require session-cookie auth (web UI) or the future admin console. Reject
-        # any client trying to register with an elevated scope so a misconfigured or
-        # compromised partner cannot escalate during registration.
+        # they require session-cookie auth (web UI) or the future admin console.
+        # The well-known/oauth-authorization-server endpoint still advertises all four
+        # (they exist on the resource server) which means generic MCP clients —
+        # Claude Code, ChatGPT, Cursor — will read discovery and request the full
+        # set in DCR. That's their correct behavior; ours is to not break them.
         #
-        # Tier-1 (public, require_secret=False) — Claude / ChatGPT / Cursor etc. — get
-        # expanded to the full DCR-allowed set even if they asked for a subset, so no
-        # MCP tool is blocked by a missing scope.
+        # Tier-1 (public, require_secret=False) — be liberal: silently intersect with
+        # DCR_ALLOWED_SCOPES so blind discovery-driven clients still register. They
+        # always get the full DCR-allowed set regardless of what was asked.
         #
         # Tier-2 (confidential, require_secret=True) — algotrade and future partners —
-        # get exactly what they asked for. They opt into each scope they need.
+        # be strict: reject any out-of-allowlist scope with 400 invalid_scope.
+        # Confidential clients are deliberate integrations; opt into each scope.
         requested = set(payload.scope.split())
-        unknown = requested - set(DCR_ALLOWED_SCOPES)
-        if unknown:
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "error": "invalid_scope",
-                    "error_description": (
-                        f"scopes not allowed for DCR clients: {sorted(unknown)}. "
-                        f"Allowed: {list(DCR_ALLOWED_SCOPES)}"
-                    ),
-                },
-            )
         if policy.require_secret:
+            unknown = requested - set(DCR_ALLOWED_SCOPES)
+            if unknown:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "error": "invalid_scope",
+                        "error_description": (
+                            f"scopes not allowed for DCR clients: {sorted(unknown)}. "
+                            f"Allowed: {list(DCR_ALLOWED_SCOPES)}"
+                        ),
+                    },
+                )
             effective_scopes = sorted(requested) if requested else list(DCR_ALLOWED_SCOPES)
         else:
-            effective_scopes = sorted(requested | set(DCR_ALLOWED_SCOPES))
+            # Tier-1: silently downgrade — any out-of-allowlist scope is dropped.
+            effective_scopes = sorted(DCR_ALLOWED_SCOPES)
 
         # Create in Cognito
         try:
