@@ -112,15 +112,13 @@ class MemoryWriteTool(BaseTool):
 
         # Embed via Bedrock — UNLESS content exceeds the model's input cap.
         # In that case we store NULL embedding; semantic search will skip the
-        # row, keyword/tag search still surface it. embed_skipped is included
-        # in the audit details so callers know why semantic isn't covering it.
+        # row (via the IS NOT NULL guards in hybrid_query / similarity),
+        # keyword/tag search still surface it.
         embedding_vec: list[float] | None
         embed_tokens: int
-        embed_skipped: bool
         if len(inp.content) > EMBED_MAX_INPUT_CHARS:
             embedding_vec = None
             embed_tokens = 0
-            embed_skipped = True
         else:
             try:
                 embed = await ctx.deps.embeddings.embed(inp.content)
@@ -135,7 +133,6 @@ class MemoryWriteTool(BaseTool):
                 ) from exc
             embedding_vec = embed.vector
             embed_tokens = embed.input_tokens
-            embed_skipped = False
 
         async with tenant_tx(ctx.db_pool, ctx.tenant_id) as conn:
             # Dedupe (unless caller forced new or parent_id set)
