@@ -54,21 +54,21 @@ export default async function MemoriesPage({
     <main className="mx-auto max-w-6xl px-4 py-10 space-y-6">
       <header>
         <h1 className="text-3xl font-bold">Memories</h1>
-        <p className="text-sm text-gray-500 mt-1">
+        <p className="text-sm text-ink-muted mt-1">
           Browse, filter, and clean up your stored memories.
         </p>
       </header>
       {statsResp && (
-        <div className="rounded border bg-gray-50 px-4 py-3 flex flex-wrap items-baseline gap-x-6 gap-y-1 text-sm">
+        <div className="rounded border bg-surface-muted px-4 py-3 flex flex-wrap items-baseline gap-x-6 gap-y-1 text-sm">
           <span>
             <span className="font-semibold">{statsResp.memory_count.toLocaleString()}</span>
-            <span className="text-gray-500"> memories</span>
+            <span className="text-ink-muted"> memories</span>
           </span>
           <span>
             <span className="font-semibold">{formatBytes(statsResp.total_storage_bytes)}</span>
-            <span className="text-gray-500"> storage</span>
+            <span className="text-ink-muted"> storage</span>
           </span>
-          <span className="text-gray-400 text-xs">
+          <span className="text-ink-faint text-xs">
             storage recomputed {formatRelative(statsResp.storage_bytes_updated_at)}
           </span>
         </div>

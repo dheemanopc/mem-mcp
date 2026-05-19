@@ -121,7 +121,7 @@ function TabButton({
     <button
       onClick={onClick}
       className={`pb-2 -mb-px border-b-2 ${
-        active ? "border-blue-600 text-blue-600 font-medium" : "border-transparent text-gray-600"
+        active ? "border-primary text-primary font-medium" : "border-transparent text-ink-muted"
       }`}
     >
       {children}
@@ -244,9 +244,9 @@ function BrowseTab({
         onBulkDelete={onBulkDelete}
         busy={bulkBusy}
       />
-      {error && <p className="text-red-600 text-sm">{error}</p>}
+      {error && <p className="text-danger text-sm">{error}</p>}
       {loading ? (
-        <p className="text-sm text-gray-500">Loading…</p>
+        <p className="text-sm text-ink-muted">Loading…</p>
       ) : (
         <MemoryList
           rows={results}
@@ -345,9 +345,9 @@ function StaleTab({ onFindSimilar }: { onFindSimilar: (id: string) => void }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-4 items-end p-4 bg-gray-50 rounded">
+      <div className="flex flex-wrap gap-4 items-end p-4 bg-surface-muted rounded">
         <label className="flex flex-col">
-          <span className="text-xs text-gray-600 mb-1">Staleness measure</span>
+          <span className="text-xs text-ink-muted mb-1">Staleness measure</span>
           <select
             value={mode}
             onChange={(e) => setMode(e.target.value as "updated" | "accessed")}
@@ -358,7 +358,7 @@ function StaleTab({ onFindSimilar }: { onFindSimilar: (id: string) => void }) {
           </select>
         </label>
         <label className="flex flex-col">
-          <span className="text-xs text-gray-600 mb-1">Older than</span>
+          <span className="text-xs text-ink-muted mb-1">Older than</span>
           <select
             value={days}
             onChange={(e) => setDays(Number(e.target.value))}
@@ -371,7 +371,7 @@ function StaleTab({ onFindSimilar }: { onFindSimilar: (id: string) => void }) {
           </select>
         </label>
         {mode === "accessed" && (
-          <p className="text-xs text-gray-500 max-w-md">
+          <p className="text-xs text-ink-muted max-w-md">
             Read-tracking started recently. Memories last accessed before tracking shipped show
             as "never accessed" and rank as the stalest.
           </p>
@@ -385,11 +385,11 @@ function StaleTab({ onFindSimilar }: { onFindSimilar: (id: string) => void }) {
         onBulkDelete={onBulkDelete}
         busy={bulkBusy}
       />
-      {error && <p className="text-red-600 text-sm">{error}</p>}
+      {error && <p className="text-danger text-sm">{error}</p>}
       {loading ? (
-        <p className="text-sm text-gray-500">Loading…</p>
+        <p className="text-sm text-ink-muted">Loading…</p>
       ) : results.length === 0 ? (
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-ink-muted">
           Nothing stale — all memories were touched within the last {days} days.
         </p>
       ) : (
@@ -543,9 +543,9 @@ function SimilarTab({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-4 items-end p-4 bg-gray-50 rounded">
+      <div className="flex flex-wrap gap-4 items-end p-4 bg-surface-muted rounded">
         <label className="flex flex-col">
-          <span className="text-xs text-gray-600 mb-1">Mode</span>
+          <span className="text-xs text-ink-muted mb-1">Mode</span>
           <select
             value={mode}
             onChange={(e) => setMode(e.target.value as SimilarMode)}
@@ -559,12 +559,12 @@ function SimilarTab({
           <>
             {seedId ? (
               <div className="flex flex-col">
-                <span className="text-xs text-gray-600 mb-1">Seeded by memory</span>
+                <span className="text-xs text-ink-muted mb-1">Seeded by memory</span>
                 <code className="text-xs bg-white border rounded px-2 py-1">
                   {seedId.slice(0, 8)}…{" "}
                   <button
                     onClick={() => onSeedChange(null)}
-                    className="text-blue-600 ml-2"
+                    className="text-primary ml-2"
                   >
                     clear
                   </button>
@@ -572,7 +572,7 @@ function SimilarTab({
               </div>
             ) : (
               <label className="flex flex-col flex-1 min-w-[320px]">
-                <span className="text-xs text-gray-600 mb-1">Query text</span>
+                <span className="text-xs text-ink-muted mb-1">Query text</span>
                 <input
                   value={queryText}
                   onChange={(e) => setQueryText(e.target.value)}
@@ -582,7 +582,7 @@ function SimilarTab({
               </label>
             )}
             <label className="flex flex-col">
-              <span className="text-xs text-gray-600 mb-1">
+              <span className="text-xs text-ink-muted mb-1">
                 Threshold: {threshold.toFixed(2)}
               </span>
               <input
@@ -598,18 +598,18 @@ function SimilarTab({
           </>
         )}
         {mode === "clusters" && clustersBuiltAt && (
-          <span className="text-xs text-gray-500">
+          <span className="text-xs text-ink-muted">
             Last built: {new Date(clustersBuiltAt).toLocaleString()}
           </span>
         )}
         {mode === "clusters" && !clustersBuiltAt && (
-          <span className="text-xs text-amber-700">
+          <span className="text-xs text-warn">
             No clusters yet. The cluster build job runs weekly; until first run, this is empty.
           </span>
         )}
       </div>
 
-      {error && <p className="text-red-600 text-sm">{error}</p>}
+      {error && <p className="text-danger text-sm">{error}</p>}
       <ResultsToolbar
         count={mode === "find" ? results.length : clusters.length}
         selectedCount={selected.size}
@@ -625,7 +625,7 @@ function SimilarTab({
         busy={bulkBusy}
       />
 
-      {loading && <p className="text-sm text-gray-500">Loading…</p>}
+      {loading && <p className="text-sm text-ink-muted">Loading…</p>}
 
       {!loading && mode === "find" && (
         <SimilarResultsList
@@ -655,7 +655,7 @@ function SimilarResultsList({
   onToggle: (id: string) => void;
 }) {
   if (rows.length === 0) {
-    return <p className="text-sm text-gray-500">No similar memories above threshold.</p>;
+    return <p className="text-sm text-ink-muted">No similar memories above threshold.</p>;
   }
   return (
     <ul className="space-y-2">
@@ -663,7 +663,7 @@ function SimilarResultsList({
         <li
           key={r.id}
           className={`border rounded p-3 flex gap-3 ${
-            selected.has(r.id) ? "bg-blue-50 border-blue-300" : "hover:bg-gray-50"
+            selected.has(r.id) ? "bg-primary-muted border-primary" : "hover:bg-surface-muted"
           }`}
         >
           <input
@@ -674,20 +674,20 @@ function SimilarResultsList({
           />
           <div className="flex-1 min-w-0">
             <div className="flex justify-between items-start mb-1">
-              <span className="text-xs uppercase text-gray-500">
+              <span className="text-xs uppercase text-ink-muted">
                 {r.type} · sim {r.similarity.toFixed(3)}
               </span>
               <Link
                 href={`/memories/${r.id}`}
-                className="text-xs text-blue-600 hover:underline font-mono"
+                className="text-xs text-primary hover:underline font-mono"
               >
                 {r.id.slice(0, 8)}
               </Link>
             </div>
-            <p className="line-clamp-3 text-gray-900 text-sm">{r.content}</p>
+            <p className="line-clamp-3 text-ink text-sm">{r.content}</p>
             <div className="mt-1.5 flex flex-wrap gap-1">
               {r.tags.map((t) => (
-                <span key={t} className="text-xs bg-gray-100 px-1.5 py-0.5 rounded">
+                <span key={t} className="text-xs bg-surface-subtle px-1.5 py-0.5 rounded">
                   {t}
                 </span>
               ))}
@@ -709,7 +709,7 @@ function ClustersList({
   onToggle: (id: string) => void;
 }) {
   if (clusters.length === 0) {
-    return <p className="text-sm text-gray-500">No clusters detected.</p>;
+    return <p className="text-sm text-ink-muted">No clusters detected.</p>;
   }
   return (
     <ul className="space-y-4">
@@ -718,11 +718,11 @@ function ClustersList({
           <div className="flex justify-between items-baseline mb-3">
             <h3 className="text-sm font-medium">
               Cluster of {c.member_count}{" "}
-              <span className="text-gray-500 font-normal">
+              <span className="text-ink-muted font-normal">
                 · threshold {c.similarity_threshold.toFixed(2)}
               </span>
             </h3>
-            <span className="text-xs text-gray-400">
+            <span className="text-xs text-ink-faint">
               built {new Date(c.built_at).toLocaleDateString()}
             </span>
           </div>
@@ -731,8 +731,8 @@ function ClustersList({
               <li
                 key={m.id}
                 className={`flex gap-2 items-start p-2 rounded ${
-                  selected.has(m.id) ? "bg-blue-50" : ""
-                } ${m.id === c.seed_memory_id ? "border-l-2 border-blue-400 pl-2" : ""}`}
+                  selected.has(m.id) ? "bg-primary-muted" : ""
+                } ${m.id === c.seed_memory_id ? "border-l-2 border-primary pl-2" : ""}`}
               >
                 <input
                   type="checkbox"
@@ -742,20 +742,20 @@ function ClustersList({
                 />
                 <div className="flex-1 min-w-0">
                   <div className="flex justify-between items-start">
-                    <span className="text-xs uppercase text-gray-500">
+                    <span className="text-xs uppercase text-ink-muted">
                       {m.type}
                       {m.id === c.seed_memory_id && (
-                        <span className="ml-1 text-blue-600">· seed</span>
+                        <span className="ml-1 text-primary">· seed</span>
                       )}
                     </span>
                     <Link
                       href={`/memories/${m.id}`}
-                      className="text-xs text-blue-600 hover:underline font-mono"
+                      className="text-xs text-primary hover:underline font-mono"
                     >
                       {m.id.slice(0, 8)}
                     </Link>
                   </div>
-                  <p className="line-clamp-2 text-sm text-gray-900 mt-0.5">{m.content}</p>
+                  <p className="line-clamp-2 text-sm text-ink mt-0.5">{m.content}</p>
                 </div>
               </li>
             ))}
@@ -803,10 +803,10 @@ function Filters({
   }, [tagInput, allTags, selectedTags]);
 
   return (
-    <div className="space-y-3 p-4 bg-gray-50 rounded">
+    <div className="space-y-3 p-4 bg-surface-muted rounded">
       <div className="flex flex-wrap gap-3 items-end">
         <label className="flex flex-col">
-          <span className="text-xs text-gray-600 mb-1">Type</span>
+          <span className="text-xs text-ink-muted mb-1">Type</span>
           <select
             value={type}
             onChange={(e) => setType(e.target.value)}
@@ -821,7 +821,7 @@ function Filters({
           </select>
         </label>
         <label className="flex flex-col flex-1 min-w-[240px] relative">
-          <span className="text-xs text-gray-600 mb-1">Tags</span>
+          <span className="text-xs text-ink-muted mb-1">Tags</span>
           <input
             value={tagInput}
             onChange={(e) => setTagInput(e.target.value)}
@@ -840,7 +840,7 @@ function Filters({
                 <li
                   key={s}
                   onClick={() => addTag(s)}
-                  className="px-2 py-1 hover:bg-blue-50 cursor-pointer text-sm"
+                  className="px-2 py-1 hover:bg-primary-muted cursor-pointer text-sm"
                 >
                   {s}
                 </li>
@@ -855,10 +855,10 @@ function Filters({
             <button
               key={t}
               onClick={() => removeTag(t)}
-              className="inline-flex items-center gap-1 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded hover:bg-blue-200"
+              className="inline-flex items-center gap-1 text-xs bg-primary-muted text-primary-hover px-2 py-1 rounded hover:bg-primary-muted"
             >
               {t}
-              <span className="text-blue-500">×</span>
+              <span className="text-primary">×</span>
             </button>
           ))}
         </div>
@@ -884,26 +884,26 @@ function ResultsToolbar({
 }) {
   return (
     <div className="flex justify-between items-center text-sm">
-      <span className="text-gray-500">
+      <span className="text-ink-muted">
         {count} result{count === 1 ? "" : "s"}
         {selectedCount > 0 ? ` · ${selectedCount} selected` : ""}
       </span>
       <div className="flex gap-3">
         {selectedCount > 0 ? (
           <>
-            <button onClick={onClear} className="text-gray-600 hover:underline">
+            <button onClick={onClear} className="text-ink-muted hover:underline">
               Clear
             </button>
             <button
               onClick={onBulkDelete}
               disabled={busy}
-              className="rounded bg-red-600 text-white px-3 py-1 disabled:opacity-50"
+              className="rounded bg-danger text-white px-3 py-1 disabled:opacity-50"
             >
               {busy ? "Deleting…" : `Delete ${selectedCount}`}
             </button>
           </>
         ) : (
-          <button onClick={onSelectAll} disabled={count === 0} className="text-gray-600 hover:underline disabled:opacity-50">
+          <button onClick={onSelectAll} disabled={count === 0} className="text-ink-muted hover:underline disabled:opacity-50">
             Select all
           </button>
         )}
@@ -926,7 +926,7 @@ function MemoryList({
   onFindSimilar?: (id: string) => void;
 }) {
   if (rows.length === 0) {
-    return <p className="text-sm text-gray-500">No memories match.</p>;
+    return <p className="text-sm text-ink-muted">No memories match.</p>;
   }
   return (
     <ul className="space-y-2">
@@ -934,7 +934,7 @@ function MemoryList({
         <li
           key={m.id}
           className={`border rounded p-3 flex gap-3 ${
-            selected.has(m.id) ? "bg-blue-50 border-blue-300" : "hover:bg-gray-50"
+            selected.has(m.id) ? "bg-primary-muted border-primary" : "hover:bg-surface-muted"
           }`}
         >
           <input
@@ -945,12 +945,12 @@ function MemoryList({
           />
           <div className="flex-1 min-w-0">
             <div className="flex justify-between items-start mb-1">
-              <span className="text-xs uppercase text-gray-500">{m.type}</span>
+              <span className="text-xs uppercase text-ink-muted">{m.type}</span>
               <div className="flex items-center gap-2">
                 {onFindSimilar && (
                   <button
                     onClick={() => onFindSimilar(m.id)}
-                    className="text-xs text-blue-600 hover:underline"
+                    className="text-xs text-primary hover:underline"
                     title="Find similar memories"
                   >
                     similar →
@@ -958,22 +958,22 @@ function MemoryList({
                 )}
                 <Link
                   href={`/memories/${m.id}`}
-                  className="text-xs text-blue-600 hover:underline font-mono"
+                  className="text-xs text-primary hover:underline font-mono"
                 >
                   {m.id.slice(0, 8)}
                 </Link>
               </div>
             </div>
-            <p className="line-clamp-3 text-gray-900 text-sm">{m.content}</p>
+            <p className="line-clamp-3 text-ink text-sm">{m.content}</p>
             <div className="mt-1.5 flex flex-wrap gap-1">
               {m.tags.map((t) => (
-                <span key={t} className="text-xs bg-gray-100 px-1.5 py-0.5 rounded">
+                <span key={t} className="text-xs bg-surface-subtle px-1.5 py-0.5 rounded">
                   {t}
                 </span>
               ))}
             </div>
             {showStaleMeta && (
-              <p className="text-xs text-gray-500 mt-1.5">
+              <p className="text-xs text-ink-muted mt-1.5">
                 {showStaleMeta === "updated" ? "Updated" : "Last read"}:{" "}
                 {showStaleMeta === "updated"
                   ? formatDate(m.updated_at)
@@ -981,7 +981,7 @@ function MemoryList({
                   ? formatDate(m.last_accessed_at)
                   : "never"}{" "}
                 {showStaleMeta === "accessed" && m.access_count !== undefined && (
-                  <span className="text-gray-400">· {m.access_count} reads</span>
+                  <span className="text-ink-faint">· {m.access_count} reads</span>
                 )}
               </p>
             )}
