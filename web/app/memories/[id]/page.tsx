@@ -1,82 +1,77 @@
 import Link from "next/link";
 import { serverApiFetch } from "@/lib/server-api";
-import { MemoryActionsClient } from "./MemoryActionsClient";
+import { ThreadView } from "./ThreadView";
 
-interface MemoryDetail {
-  memory: {
-    id: string;
-    type: string;
-    content: string;
-    version: number;
-    tags: string[];
-    created_at: string;
-    updated_at: string;
-    deleted_at?: string;
-  };
-  history: Array<{
-    id: string;
-    version: number;
-    content: string;
-    created_at: string;
-  }>;
+export const dynamic = "force-dynamic";
+
+interface MemoryRecord {
+  id: string;
+  content: string;
+  type: string;
+  tags: string[];
+  version: number;
+  is_current: boolean;
+  parent_id: string | null;
+  supersedes: string | null;
+  superseded_by: string | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
 }
 
-async function fetchMemory(id: string, includeHistory: boolean) {
-  const qs = includeHistory ? "?history=true" : "";
-  return serverApiFetch<MemoryDetail>(`/api/web/memories/${id}${qs}`, {
-    redirectTo: `/memories/${id}`,
-  });
+interface ThreadResponse {
+  root: MemoryRecord;
+  replies: MemoryRecord[];
 }
 
-export default async function MemoryDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function MemoryDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
   const { id } = await params;
-  const data = await fetchMemory(id, true);
+  const data = await serverApiFetch<ThreadResponse>(
+    `/api/web/memories/${id}/thread`,
+    { redirectTo: `/memories/${id}` }
+  );
+
   if (!data) {
+    // thread_get rejects replies — fall back to the single-memory endpoint
+    // so we can offer a link up to the parent.
+    const single = await serverApiFetch<{ memory: MemoryRecord }>(
+      `/api/web/memories/${id}`,
+      { redirectTo: `/memories/${id}` }
+    );
     return (
-      <main className="mx-auto max-w-3xl px-4 py-12">
-        <h1 className="text-3xl font-bold">Memory not found</h1>
-        <Link href="/memories" className="text-primary underline">← back</Link>
+      <main className="mx-auto max-w-3xl px-4 py-12 space-y-4">
+        <Link href="/memories" className="text-primary hover:underline text-sm">
+          ← back to memories
+        </Link>
+        {single ? (
+          <div className="rounded border border-warn bg-warn-muted p-4 text-sm text-ink">
+            This memory is a reply, not a root.{" "}
+            {single.memory.parent_id && (
+              <Link
+                href={`/memories/${single.memory.parent_id}`}
+                className="text-primary hover:underline"
+              >
+                Open its parent thread →
+              </Link>
+            )}
+          </div>
+        ) : (
+          <h1 className="text-3xl font-bold">Memory not found</h1>
+        )}
       </main>
     );
   }
+
   return (
-    <main className="mx-auto max-w-3xl px-4 py-12 space-y-6">
-      <Link href="/memories" className="text-primary underline text-sm">← back to memories</Link>
-      <header className="space-y-2">
-        <div className="flex justify-between items-start">
-          <h1 className="text-2xl font-bold">{data.memory.type} — version {data.memory.version}</h1>
-          <span className="text-xs font-mono text-ink-faint">{data.memory.id}</span>
-        </div>
-        <div className="flex flex-wrap gap-1">
-          {(data.memory.tags ?? []).map((t: string) => (
-            <span key={t} className="text-xs bg-surface-subtle px-2 py-0.5 rounded">{t}</span>
-          ))}
-        </div>
-        <p className="text-xs text-ink-muted">
-          created {data.memory.created_at} · updated {data.memory.updated_at}
-          {data.memory.deleted_at && <span className="text-danger"> · DELETED at {data.memory.deleted_at}</span>}
-        </p>
-      </header>
-      <article className="prose max-w-none">
-        <pre className="bg-surface-subtle rounded p-4 whitespace-pre-wrap font-sans">{data.memory.content}</pre>
-      </article>
-      <MemoryActionsClient id={data.memory.id} deleted={!!data.memory.deleted_at} />
-      {data.history?.length > 0 && (
-        <section className="space-y-3">
-          <h2 className="text-xl font-semibold">History</h2>
-          <ul className="space-y-2">
-            {data.history.map((h: any) => (
-              <li key={h.id} className="border rounded p-3 text-sm bg-surface-muted">
-                <div className="flex justify-between text-xs text-ink-muted mb-1">
-                  <span>v{h.version}</span>
-                  <span>{h.created_at}</span>
-                </div>
-                <pre className="whitespace-pre-wrap font-sans">{h.content}</pre>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+    <main className="mx-auto max-w-3xl px-4 py-10 space-y-4">
+      <Link href="/memories" className="text-primary hover:underline text-sm">
+        ← back to memories
+      </Link>
+      <ThreadView root={data.root} replies={data.replies} />
     </main>
   );
 }

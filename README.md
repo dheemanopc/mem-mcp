@@ -4,6 +4,10 @@ Personal Memory MCP — a multi-tenant memory service for AI clients (Claude Cod
 
 **Status**: closed beta. Spec finalized; implementation in progress.
 
+**Live system**:
+- Web app + `/memories` manager + `/blog`: [memapp.dheemantech.in](https://memapp.dheemantech.in)
+- MCP endpoint (for Claude Code / Claude.ai / etc.): `https://memsys.dheemantech.in/mcp`
+
 ## Documentation
 
 - [`MEMORY_MCP_BUILD_PLAN_V2.md`](./MEMORY_MCP_BUILD_PLAN_V2.md) — canonical HLD/spec
