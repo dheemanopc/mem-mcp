@@ -15,6 +15,14 @@ interface Post {
 
 const POSTS: Post[] = [
   {
+    slug: "when-the-ai-remembered-yesterdays-experiment",
+    title: "When the AI Remembered Yesterday's Experiment and Rewrote Today's Design",
+    date: "2026-05-19",
+    blurb:
+      "Three memories from yesterday rewrote a design we'd just finished agreeing to. The brainstorm provides creativity. The memory provides discipline.",
+    author: "Anand Vaidya",
+  },
+  {
     slug: "the-day-my-backend-talked-to-claude",
     title: "The day my backend talked to Claude",
     date: "2026-05-19",
