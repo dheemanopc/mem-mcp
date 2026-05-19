@@ -1,13 +1,22 @@
-"""Memory CRUD handlers — wraps memory.list/get/update/delete/undelete tools."""
+"""Memory CRUD + management handlers — wraps memory.list/get/update/delete/undelete tools.
+
+Phase-1 management additions (2026-05-19):
+- GET  /api/web/memories/tags          — distinct tag autocomplete
+- GET  /api/web/memories/stale         — stale-memory discovery (no UI bump)
+- POST /api/web/memories/bulk-delete   — soft-delete a list of IDs in one tx
+"""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from datetime import UTC
+from typing import TYPE_CHECKING, Any, Literal
 from uuid import UUID, uuid4
 
 import asyncpg  # type: ignore[import-untyped]
 from fastapi import APIRouter, Body, Cookie, HTTPException, Query
+from pydantic import BaseModel, ConfigDict, Field
 
+from mem_mcp.db import tenant_tx
 from mem_mcp.mcp.errors import JsonRpcError
 from mem_mcp.mcp.tools._base import ToolContext
 from mem_mcp.mcp.tools._deps import ToolDeps
@@ -135,5 +144,116 @@ def make_memories_router(*, pool: asyncpg.Pool, deps: ToolDeps) -> APIRouter:
         except JsonRpcError as e:
             raise _jsonrpc_to_http(e) from e
         return out.model_dump(mode="json")
+
+    # ---- Management endpoints (Phase 1) ---------------------------------
+
+    @router.get("/api/web/memories/management/tags")
+    async def list_tags(
+        mem_session: str | None = Cookie(default=None),
+    ) -> dict[str, list[str]]:
+        """Distinct tag values for the tenant — used by Browse-tab autocomplete."""
+        ctx = await _ctx_from_session(pool, mem_session, deps, scopes=frozenset(["memory.read"]))
+        async with tenant_tx(pool, ctx.tenant_id) as conn:
+            rows = await conn.fetch(
+                """
+                SELECT DISTINCT unnest(tags) AS tag
+                FROM memories
+                WHERE tenant_id = $1
+                  AND deleted_at IS NULL
+                  AND is_current = true
+                ORDER BY tag
+                """,
+                ctx.tenant_id,
+            )
+        return {"tags": [r["tag"] for r in rows]}
+
+    @router.get("/api/web/memories/management/stale")
+    async def stale_memories(
+        mode: Literal["updated", "accessed"] = Query(default="updated"),
+        days: int = Query(default=90, ge=1, le=3650),
+        limit: int = Query(default=50, ge=1, le=200),
+        mem_session: str | None = Cookie(default=None),
+    ) -> dict[str, Any]:
+        """Memories not touched in N days. `mode=updated` uses updated_at (always
+        populated); `mode=accessed` uses last_accessed_at (NULL means never read
+        since the access-tracking column shipped). Reads here do NOT bump
+        access-time — this is a management view, not normal traffic."""
+        ctx = await _ctx_from_session(pool, mem_session, deps, scopes=frozenset(["memory.read"]))
+        column = "updated_at" if mode == "updated" else "last_accessed_at"
+        async with tenant_tx(pool, ctx.tenant_id) as conn:
+            # NULL last_accessed_at means "never accessed since the column shipped",
+            # which is the staleest possible — surface those first when mode=accessed.
+            # Cutoff computed in Python so `days` doesn't have to be interpolated
+            # into the SQL string.
+            from datetime import datetime, timedelta
+
+            cutoff = datetime.now(UTC) - timedelta(days=days)
+            rows = await conn.fetch(
+                f"""
+                SELECT id, content, type, tags, created_at, updated_at,
+                       last_accessed_at, access_count
+                FROM memories
+                WHERE tenant_id = $1
+                  AND deleted_at IS NULL
+                  AND is_current = true
+                  AND ({column} IS NULL OR {column} < $2)
+                ORDER BY {column} ASC NULLS FIRST
+                LIMIT $3
+                """,
+                ctx.tenant_id,
+                cutoff,
+                limit,
+            )
+        return {
+            "mode": mode,
+            "days": days,
+            "results": [
+                {
+                    "id": str(r["id"]),
+                    "content": r["content"],
+                    "type": r["type"],
+                    "tags": list(r["tags"] or []),
+                    "created_at": r["created_at"].isoformat(),
+                    "updated_at": r["updated_at"].isoformat(),
+                    "last_accessed_at": r["last_accessed_at"].isoformat()
+                    if r["last_accessed_at"] is not None
+                    else None,
+                    "access_count": r["access_count"],
+                }
+                for r in rows
+            ],
+        }
+
+    class _BulkDeleteBody(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+        ids: list[UUID] = Field(min_length=1, max_length=500)
+
+    @router.post("/api/web/memories/management/bulk-delete")
+    async def bulk_delete(
+        body: _BulkDeleteBody,
+        mem_session: str | None = Cookie(default=None),
+    ) -> dict[str, Any]:
+        """Soft-delete a list of memories. Uses the same code path as the
+        single-row endpoint (sets deleted_at, hidden from search, recoverable
+        via memory_undelete; retention job hard-deletes after 30 days)."""
+        ctx = await _ctx_from_session(pool, mem_session, deps, scopes=frozenset(["memory.write"]))
+        tool = MemoryDeleteTool()
+        per_id: list[dict[str, Any]] = []
+        success = 0
+        for mid in body.ids:
+            try:
+                await tool(ctx, MemoryDeleteInput(id=mid, cascade=False))
+                per_id.append({"id": str(mid), "status": "deleted"})
+                success += 1
+            except JsonRpcError as exc:
+                per_id.append(
+                    {
+                        "id": str(mid),
+                        "status": "failed",
+                        "error": exc.message,
+                        "code": exc.code,
+                    }
+                )
+        return {"deleted_count": success, "results": per_id}
 
     return router
