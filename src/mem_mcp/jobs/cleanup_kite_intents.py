@@ -70,7 +70,7 @@ async def main(dry_run: bool = False) -> int:
     import asyncpg
 
     pool = await asyncpg.create_pool(
-        dsn=settings.db_maint_dsn,
+        dsn=settings.db_maint_dsn_asyncpg,
         min_size=1,
         max_size=2,
         command_timeout=30,
