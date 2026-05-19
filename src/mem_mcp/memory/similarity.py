@@ -177,5 +177,3 @@ async def build_clusters(
         if len(cluster) >= 2:
             clusters.append(sorted(cluster, key=str))
     return clusters
-
-

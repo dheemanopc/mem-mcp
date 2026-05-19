@@ -54,9 +54,7 @@ class TestFindSimilar:
         conn = AsyncMock()
         conn.fetch.return_value = []
         seed_id = uuid4()
-        await find_similar(
-            conn, uuid4(), [0.0] * 1536, exclude_id=seed_id, threshold=0.5
-        )
+        await find_similar(conn, uuid4(), [0.0] * 1536, exclude_id=seed_id, threshold=0.5)
         # args[0]=SQL, args[1]=vec, args[2]=tenant_id, args[3]=exclude_id,
         # args[4]=threshold, args[5]=limit
         args = conn.fetch.call_args.args
