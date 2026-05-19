@@ -14,5 +14,5 @@ ExecStart=/opt/mem-mcp/deploy/scripts/pg_dump_to_s3.sh
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
-ProtectHome=true
+
 LimitNOFILE=4096

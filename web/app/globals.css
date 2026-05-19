@@ -2,11 +2,18 @@
 @tailwind components;
 @tailwind utilities;
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
+/*
+ * Project-wide CSS lives here. Per-component styling stays in TSX via
+ * Tailwind utility classes — that's the convention. If a pattern repeats
+ * three times across the codebase, promote it to tailwind.config.ts
+ * theme.extend instead of putting raw CSS here.
+ *
+ * The previous `* { margin: 0; padding: 0; }` universal reset was removed
+ * (2026-05-19): it killed the spacing that the prose plugin adds to
+ * <h1>/<p>/<ul> inside /docs and /blog/*, rendering them as walls of text.
+ * Tailwind's @tailwind base preflight already gives us a sensible
+ * cross-browser reset.
+ */
 
 html,
 body {
@@ -14,6 +21,8 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto',
     'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans',
     'Helvetica Neue', sans-serif;
+  color: #1a1a1a;
+  background: #fafafa;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
