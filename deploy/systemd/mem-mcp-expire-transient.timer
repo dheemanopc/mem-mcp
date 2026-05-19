@@ -1,0 +1,11 @@
+[Unit]
+Description=Run mem-mcp transient memory expiry daily at 04:15 IST
+Requires=mem-mcp-expire-transient.service
+
+[Timer]
+OnCalendar=*-*-* 22:45:00 UTC
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

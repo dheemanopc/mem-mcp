@@ -92,6 +92,11 @@ def _is_input_invalid(exc: BaseException) -> bool:
     return code is not None and code in _INPUT_INVALID_CODES
 
 
+def _is_throttled(exc: BaseException) -> bool:
+    code = _aws_error_code(exc)
+    return code == "ThrottlingException"
+
+
 class BedrockEmbeddingClient:
     """Production Bedrock Titan Embed v2 client."""
 
@@ -157,12 +162,19 @@ class BedrockEmbeddingClient:
             if _is_input_invalid(exc):
                 raise EmbeddingError("invalid_input", str(exc)[:200]) from exc
             if _is_retryable(exc):
-                # Final failure after retries
-                raise EmbeddingError(
-                    "unavailable",
-                    f"bedrock unavailable after retries: {_aws_error_code(exc)}",
-                    retry_after_seconds=4,
-                ) from exc
+                # Final failure after retries: distinguish throttling vs other unavailable
+                if _is_throttled(exc):
+                    raise EmbeddingError(
+                        "throttled",
+                        "bedrock throttled after retries",
+                        retry_after_seconds=10,
+                    ) from exc
+                else:
+                    raise EmbeddingError(
+                        "unavailable",
+                        f"bedrock unavailable after retries: {_aws_error_code(exc)}",
+                        retry_after_seconds=4,
+                    ) from exc
             # Unexpected: bubble up as 'unavailable' but preserve message
             raise EmbeddingError(
                 "unavailable",

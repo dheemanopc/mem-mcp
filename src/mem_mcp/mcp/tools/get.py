@@ -36,6 +36,8 @@ class MemoryRecord(BaseModel):
     created_at: datetime
     updated_at: datetime
     deleted_at: datetime | None
+    expires_at: datetime | None
+    indexable: bool
 
     @field_validator("metadata", mode="before")
     @classmethod
@@ -74,7 +76,8 @@ class MemoryGetTool(BaseTool):
             row = await conn.fetchrow(
                 """
                 SELECT id, content, type, tags, metadata, version, is_current,
-                       supersedes, superseded_by, created_at, updated_at, deleted_at
+                       supersedes, superseded_by, created_at, updated_at, deleted_at,
+                       expires_at, indexable
                 FROM memories
                 WHERE id = $1 AND tenant_id = $2
                 """,
@@ -102,13 +105,15 @@ class MemoryGetTool(BaseTool):
                     """
                     WITH RECURSIVE chain AS (
                         SELECT id, content, type, tags, metadata, version, is_current,
-                               supersedes, superseded_by, created_at, updated_at, deleted_at
+                               supersedes, superseded_by, created_at, updated_at, deleted_at,
+                               expires_at, indexable
                         FROM memories
                         WHERE id = $1 AND tenant_id = $2
                         UNION ALL
                         SELECT m.id, m.content, m.type, m.tags, m.metadata, m.version,
                                m.is_current, m.supersedes, m.superseded_by,
-                               m.created_at, m.updated_at, m.deleted_at
+                               m.created_at, m.updated_at, m.deleted_at,
+                               m.expires_at, m.indexable
                         FROM memories m JOIN chain c ON m.id = c.supersedes
                         WHERE m.tenant_id = $2
                     )

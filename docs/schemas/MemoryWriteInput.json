@@ -7,9 +7,27 @@
       "title": "Content",
       "type": "string"
     },
+    "expires_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Expires At"
+    },
     "force_new": {
       "default": false,
       "title": "Force New",
+      "type": "boolean"
+    },
+    "indexable": {
+      "default": true,
+      "title": "Indexable",
       "type": "boolean"
     },
     "metadata": {
@@ -50,6 +68,18 @@
       "maxItems": 32,
       "title": "Tags",
       "type": "array"
+    },
+    "ttl_seconds": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Ttl Seconds"
     },
     "type": {
       "default": "note",
