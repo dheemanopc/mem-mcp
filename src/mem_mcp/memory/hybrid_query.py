@@ -37,6 +37,7 @@ class SearchParams:
     w_sem: float = SEARCH_DEFAULT_W_SEM
     w_kw: float = SEARCH_DEFAULT_W_KW
     parent_id: UUID | None = None
+    include_expired: bool = False
 
 
 @dataclass(frozen=True)
@@ -67,6 +68,7 @@ WITH semantic AS (
       AND ($5::timestamptz IS NULL OR created_at >= $5)
       AND ($6::timestamptz IS NULL OR created_at <= $6)
       AND ($12::uuid IS NULL OR parent_id = $12::uuid)
+      AND ($13::boolean OR expires_at IS NULL OR expires_at > NOW())
     ORDER BY embedding <=> $1::vector
     LIMIT 50
 ),
@@ -82,6 +84,7 @@ keyword AS (
       AND ($5::timestamptz IS NULL OR m.created_at >= $5)
       AND ($6::timestamptz IS NULL OR m.created_at <= $6)
       AND ($12::uuid IS NULL OR m.parent_id = $12::uuid)
+      AND ($13::boolean OR m.expires_at IS NULL OR m.expires_at > NOW())
     ORDER BY kw_score DESC
     LIMIT 50
 ),
@@ -131,6 +134,7 @@ async def hybrid_search(
         params.w_kw,  # $10
         params.limit,  # $11
         params.parent_id,  # $12
+        params.include_expired,  # $13
     )
     return [
         SearchResult(

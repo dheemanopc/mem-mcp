@@ -101,7 +101,7 @@ class TestRetries:
         assert client.invoke_model.call_count == 2
 
     @pytest.mark.asyncio
-    async def test_three_throttles_raises_unavailable(self) -> None:
+    async def test_three_throttles_raises_throttled(self) -> None:
         client = MagicMock()
         client.invoke_model.side_effect = [
             _client_error("ThrottlingException"),
@@ -111,7 +111,7 @@ class TestRetries:
         c = BedrockEmbeddingClient(region="ap-south-1", client=client)
         with pytest.raises(EmbeddingError) as exc_info:
             await c.embed("perpetually-throttled")
-        assert exc_info.value.code == "unavailable"
+        assert exc_info.value.code == "throttled"
         assert exc_info.value.retry_after_seconds > 0
         assert client.invoke_model.call_count == 3
 

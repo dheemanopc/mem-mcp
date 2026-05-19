@@ -6,6 +6,7 @@ system_tx (BYPASSRLS).
 
 Available jobs:
 - cleanup_clients: DCR client cleanup (T-4.9)
+- expire_transient: soft-delete expired transient memories (task #66)
 - retention_memories: soft + hard-delete memories per retention policy (T-7.14)
 - retention_tokens: purge expired link_state + web_sessions (T-7.14)
 - retention_audit: anonymize + hard-delete audit log (T-7.15)

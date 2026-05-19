@@ -33,6 +33,7 @@ class MemorySearchInput(BaseModel):
     type: MemoryType | None = None
     since: datetime | None = None
     until: datetime | None = None
+    include_expired: bool = False
     limit: int = Field(default=10, ge=1, le=50)
     include_history: bool = False
     recency_lambda: float | None = Field(default=None, ge=0.0, le=1.0)
@@ -100,6 +101,7 @@ class MemorySearchTool(BaseTool):
             w_sem=SEARCH_DEFAULT_W_SEM,
             w_kw=SEARCH_DEFAULT_W_KW,
             parent_id=inp.parent_id,
+            include_expired=inp.include_expired,
         )
 
         async with tenant_tx(ctx.db_pool, ctx.tenant_id) as conn:

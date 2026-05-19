@@ -198,15 +198,17 @@ class TestMemoryWriteTool:
         assert result.deduped is False
 
     @pytest.mark.asyncio
-    async def test_embedding_failure_raises_jsonrpc(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        embed = FakeEmbeddings(error=EmbeddingError("unavailable", "down", retry_after_seconds=4))
+    async def test_embedding_validation_failure_raises_jsonrpc(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # invalid_input errors should raise, not gracefully degrade
+        embed = FakeEmbeddings(error=EmbeddingError("invalid_input", "too long", retry_after_seconds=0))
         ctx = _build_ctx(embeddings=embed)
         tool = MemoryWriteTool()
         with pytest.raises(JsonRpcError) as exc_info:
             await tool(ctx, MemoryWriteInput(content="x"))
         assert exc_info.value.code == -32000
         assert exc_info.value.data is not None
-        assert exc_info.value.data["code"] == "embedding_unavailable"
+        assert exc_info.value.data["code"] == "embedding_validation_failed"
+        assert exc_info.value.data["kind"] == "invalid_input"
 
     @pytest.mark.asyncio
     async def test_supersede_validates_target_type(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -326,6 +328,8 @@ class TestMemoryGetTool:
             "created_at": datetime.now(tz=UTC),
             "updated_at": datetime.now(tz=UTC),
             "deleted_at": None,
+            "expires_at": None,
+            "indexable": True,
         }
         conn = AsyncMock()
         conn.fetchrow.return_value = row
@@ -371,6 +375,8 @@ class TestMemoryGetTool:
             "created_at": datetime.now(tz=UTC),
             "updated_at": datetime.now(tz=UTC),
             "deleted_at": None,
+            "expires_at": None,
+            "indexable": True,
         }
         conn = AsyncMock()
         conn.fetchrow.return_value = row
@@ -399,6 +405,8 @@ class TestMemoryGetTool:
             "created_at": datetime.now(tz=UTC),
             "updated_at": datetime.now(tz=UTC),
             "deleted_at": None,
+            "expires_at": None,
+            "indexable": True,
         }
         conn = AsyncMock()
         conn.fetchrow.return_value = row
@@ -424,6 +432,8 @@ class TestMemoryGetTool:
             "created_at": datetime.now(tz=UTC),
             "updated_at": datetime.now(tz=UTC),
             "deleted_at": None,
+            "expires_at": None,
+            "indexable": True,
         }
         conn = AsyncMock()
         conn.fetchrow.return_value = row

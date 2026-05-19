@@ -28,6 +28,7 @@ class MemoryListInput(BaseModel):
     since: datetime | None = None
     until: datetime | None = None
     include_deleted: bool = False
+    include_expired: bool = False
     include_history: bool = False
     order_by: Literal["created_at", "updated_at"] = "created_at"
     order: Literal["asc", "desc"] = "desc"
@@ -47,6 +48,8 @@ class MemoryListItem(BaseModel):
     created_at: datetime
     updated_at: datetime
     deleted_at: datetime | None
+    expires_at: datetime | None
+    indexable: bool
 
 
 class MemoryListOutput(BaseModel):
@@ -110,6 +113,9 @@ class MemoryListTool(BaseTool):
         if not inp.include_deleted:
             where_clauses.append("deleted_at IS NULL")
 
+        if not inp.include_expired:
+            where_clauses.append("(expires_at IS NULL OR expires_at > NOW())")
+
         if not inp.include_history:
             where_clauses.append("is_current = true")
 
@@ -150,7 +156,8 @@ class MemoryListTool(BaseTool):
         # Fetch limit + 1 to detect if there's a next page
         fetch_limit = inp.limit + 1
         query = f"""
-            SELECT id, content, type, tags, version, is_current, created_at, updated_at, deleted_at
+            SELECT id, content, type, tags, version, is_current, created_at, updated_at, deleted_at,
+                   expires_at, indexable
             FROM memories
             WHERE {where_str}
             ORDER BY {order_clause}

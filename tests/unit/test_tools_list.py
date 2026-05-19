@@ -58,6 +58,8 @@ def _memory_row(**overrides: Any) -> dict[str, Any]:
         "created_at": datetime.now(tz=UTC),
         "updated_at": datetime.now(tz=UTC),
         "deleted_at": None,
+        "expires_at": None,
+        "indexable": True,
     }
     base.update(overrides)
     return base

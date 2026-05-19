@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, ClassVar, Literal
 from uuid import UUID
 
@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from mem_mcp.db import tenant_tx
 from mem_mcp.embeddings.bedrock import EmbeddingError
+from mem_mcp.embeddings.embed_or_skip import embed_or_skip
 from mem_mcp.mcp.errors import JsonRpcError
 from mem_mcp.mcp.tool_descriptions import TOOL_DESCRIPTIONS
 from mem_mcp.mcp.tools._base import BaseTool, ToolContext
@@ -43,6 +44,9 @@ class MemoryWriteInput(BaseModel):
     supersedes: UUID | None = None
     parent_id: UUID | None = None
     force_new: bool = False
+    expires_at: datetime | None = None
+    ttl_seconds: int | None = None
+    indexable: bool = True
 
     @field_validator("tags", mode="after")
     @classmethod
@@ -81,6 +85,29 @@ class MemoryWriteInput(BaseModel):
             raise ValueError("parent_id and supersedes cannot be combined in the same call")
         return v
 
+    @field_validator("ttl_seconds", mode="after")
+    @classmethod
+    def _validate_ttl_seconds(cls, v: int | None, info: Any) -> int | None:
+        if v is not None:
+            if not (1 <= v <= 31_536_000):  # 1 second to 1 year
+                raise ValueError("ttl_seconds must be between 1 and 31536000 (1 year)")
+        return v
+
+    @field_validator("expires_at", "ttl_seconds", mode="after")
+    @classmethod
+    def _validate_expiry_conflict(cls, v: Any, info: Any) -> Any:
+        # Check that both expires_at and ttl_seconds aren't set
+        if info.field_name == "expires_at" and v is not None:
+            if info.data.get("ttl_seconds") is not None:
+                raise ValueError("only one of expires_at or ttl_seconds allowed")
+            # Validate expires_at is not in the past
+            if v <= datetime.now(UTC):
+                raise ValueError("expires_at must be in the future")
+        elif info.field_name == "ttl_seconds" and v is not None:
+            if info.data.get("expires_at") is not None:
+                raise ValueError("only one of expires_at or ttl_seconds allowed")
+        return v
+
 
 class MemoryWriteOutput(BaseModel):
     id: UUID
@@ -110,29 +137,33 @@ class MemoryWriteTool(BaseTool):
 
         content_hash = hash_content(inp.content)
 
-        # Embed via Bedrock — UNLESS content exceeds the model's input cap.
-        # In that case we store NULL embedding; semantic search will skip the
-        # row (via the IS NOT NULL guards in hybrid_query / similarity),
-        # keyword/tag search still surface it.
+        # Compute expires_at if ttl_seconds provided
+        expires_at: datetime | None = inp.expires_at
+        if inp.ttl_seconds is not None:
+            expires_at = datetime.now(UTC) + timedelta(seconds=inp.ttl_seconds)
+
+        # Embed via Bedrock with graceful degrade on throttle/unavailable.
+        # Returns (embedding_vec, tokens, skip_reason). Validation errors are re-raised.
         embedding_vec: list[float] | None
         embed_tokens: int
-        if len(inp.content) > EMBED_MAX_INPUT_CHARS:
-            embedding_vec = None
-            embed_tokens = 0
-        else:
-            try:
-                embed = await ctx.deps.embeddings.embed(inp.content)
-            except EmbeddingError as exc:
-                raise JsonRpcError(
-                    -32000,
-                    "embedding unavailable",
-                    data={
-                        "code": "embedding_unavailable",
-                        "retry_after_seconds": exc.retry_after_seconds,
-                    },
-                ) from exc
-            embedding_vec = embed.vector
-            embed_tokens = embed.input_tokens
+        try:
+            embedding_vec, embed_tokens, embed_skip_reason = await embed_or_skip(
+                inp.content,
+                inp.indexable,
+                ctx.deps.embeddings,
+                memory_id_for_log=None,  # ID not yet generated
+            )
+        except EmbeddingError as exc:
+            # Only invalid_input should reach here (other errors are gracefully degraded)
+            raise JsonRpcError(
+                -32000,
+                "embedding validation failed",
+                data={
+                    "code": "embedding_validation_failed",
+                    "kind": exc.code,
+                    "message": str(exc)[:200],
+                },
+            ) from exc
 
         async with tenant_tx(ctx.db_pool, ctx.tenant_id) as conn:
             # Dedupe (unless caller forced new or parent_id set)
@@ -252,8 +283,9 @@ class MemoryWriteTool(BaseTool):
                     INSERT INTO memories (
                         tenant_id, content, content_hash, embedding,
                         source_client_id, source_kind,
-                        type, tags, metadata, version, is_current, parent_id
-                    ) VALUES ($1, $2, $3, $4::vector, $5, 'api', $6, $7, $8::jsonb, 1, true, $9)
+                        type, tags, metadata, version, is_current, parent_id,
+                        expires_at, indexable
+                    ) VALUES ($1, $2, $3, $4::vector, $5, 'api', $6, $7, $8::jsonb, 1, true, $9, $10, $11)
                     RETURNING id, version, created_at
                     """,
                     ctx.tenant_id,
@@ -265,6 +297,8 @@ class MemoryWriteTool(BaseTool):
                     effective_tags,
                     json.dumps(inp.metadata),
                     inp.parent_id,
+                    expires_at,
+                    inp.indexable,
                 )
                 await ctx.deps.audit.audit(
                     conn,
@@ -348,8 +382,9 @@ class MemoryWriteTool(BaseTool):
                         tenant_id, content, content_hash, embedding,
                         source_client_id, source_kind,
                         type, tags, metadata,
-                        version, supersedes, is_current
-                    ) VALUES ($1, $2, $3, $4::vector, $5, 'api', $6, $7, $8::jsonb, $9, $10, true)
+                        version, supersedes, is_current,
+                        expires_at, indexable
+                    ) VALUES ($1, $2, $3, $4::vector, $5, 'api', $6, $7, $8::jsonb, $9, $10, true, $11, $12)
                     RETURNING id, version, created_at
                     """,
                     ctx.tenant_id,
@@ -362,6 +397,8 @@ class MemoryWriteTool(BaseTool):
                     json.dumps(inp.metadata),
                     int(old["version"]) + 1,
                     inp.supersedes,
+                    expires_at,
+                    inp.indexable,
                 )
                 # Mark old as superseded
                 await conn.execute(
@@ -401,8 +438,9 @@ class MemoryWriteTool(BaseTool):
                 INSERT INTO memories (
                     tenant_id, content, content_hash, embedding,
                     source_client_id, source_kind,
-                    type, tags, metadata, version, is_current
-                ) VALUES ($1, $2, $3, $4::vector, $5, 'api', $6, $7, $8::jsonb, 1, true)
+                    type, tags, metadata, version, is_current,
+                    expires_at, indexable
+                ) VALUES ($1, $2, $3, $4::vector, $5, 'api', $6, $7, $8::jsonb, 1, true, $9, $10)
                 RETURNING id, version, created_at
                 """,
                 ctx.tenant_id,
@@ -413,6 +451,8 @@ class MemoryWriteTool(BaseTool):
                 inp.type,
                 inp.tags,
                 json.dumps(inp.metadata),
+                expires_at,
+                inp.indexable,
             )
             await ctx.deps.audit.audit(
                 conn,
