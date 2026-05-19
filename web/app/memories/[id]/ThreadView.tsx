@@ -77,22 +77,25 @@ export function ThreadView({
 
   return (
     <div className="space-y-4">
-      <MemoryCard
-        memory={rootMem}
-        isRoot={true}
-        onUpdate={(patch) => updateMemory(rootMem.id, patch)}
-        onReplyCreated={addReply}
-      />
+      <div id={rootMem.id}>
+        <MemoryCard
+          memory={rootMem}
+          isRoot={true}
+          onUpdate={(patch) => updateMemory(rootMem.id, patch)}
+          onReplyCreated={addReply}
+        />
+      </div>
       {replyMems.length > 0 && (
         <div className="ml-6 border-l-2 border-border space-y-3 pl-4">
           {replyMems.map((reply) => (
-            <MemoryCard
-              key={reply.id}
-              memory={reply}
-              isRoot={false}
-              onUpdate={(patch) => updateMemory(reply.id, patch)}
-              onReplyCreated={addReply}
-            />
+            <div key={reply.id} id={reply.id}>
+              <MemoryCard
+                memory={reply}
+                isRoot={false}
+                onUpdate={(patch) => updateMemory(reply.id, patch)}
+                onReplyCreated={addReply}
+              />
+            </div>
           ))}
         </div>
       )}
