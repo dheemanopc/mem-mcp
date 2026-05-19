@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { MarkdownContent } from "@/components/ui/MarkdownContent";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -684,7 +685,7 @@ function SimilarResultsList({
                 {r.id.slice(0, 8)}
               </Link>
             </div>
-            <p className="line-clamp-3 text-ink text-sm">{r.content}</p>
+            <MarkdownContent content={r.content} variant="preview" />
             <div className="mt-1.5 flex flex-wrap gap-1">
               {r.tags.map((t) => (
                 <span key={t} className="text-xs bg-surface-subtle px-1.5 py-0.5 rounded">
@@ -755,7 +756,9 @@ function ClustersList({
                       {m.id.slice(0, 8)}
                     </Link>
                   </div>
-                  <p className="line-clamp-2 text-sm text-ink mt-0.5">{m.content}</p>
+                  <div className="mt-0.5">
+                    <MarkdownContent content={m.content} variant="preview" />
+                  </div>
                 </div>
               </li>
             ))}
@@ -964,7 +967,7 @@ function MemoryList({
                 </Link>
               </div>
             </div>
-            <p className="line-clamp-3 text-ink text-sm">{m.content}</p>
+            <MarkdownContent content={m.content} variant="preview" />
             <div className="mt-1.5 flex flex-wrap gap-1">
               {m.tags.map((t) => (
                 <span key={t} className="text-xs bg-surface-subtle px-1.5 py-0.5 rounded">

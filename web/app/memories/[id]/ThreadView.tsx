@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Card } from "@/components/ui/Card";
+import { MarkdownContent } from "@/components/ui/MarkdownContent";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -197,11 +198,7 @@ function CardHeader({ memory, isRoot }: { memory: MemoryRecord; isRoot: boolean 
 }
 
 function CardBody({ content }: { content: string }) {
-  return (
-    <div className="whitespace-pre-wrap text-ink text-[15px] leading-relaxed break-words">
-      {content}
-    </div>
-  );
+  return <MarkdownContent content={content} variant="full" />;
 }
 
 function CardFooter({
