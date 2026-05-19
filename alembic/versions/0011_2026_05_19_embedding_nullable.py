@@ -69,9 +69,7 @@ def downgrade() -> None:
     # choice of placeholder is policy.
     op.execute(sa.text("ALTER TABLE memories ALTER COLUMN embedding SET NOT NULL"))
     op.execute(
-        sa.text(
-            "ALTER TABLE memories DROP CONSTRAINT IF EXISTS memories_content_length_check"
-        )
+        sa.text("ALTER TABLE memories DROP CONSTRAINT IF EXISTS memories_content_length_check")
     )
     op.execute(
         sa.text(
