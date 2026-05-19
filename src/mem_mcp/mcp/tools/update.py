@@ -33,8 +33,8 @@ class MemoryUpdateInput(BaseModel):
     @field_validator("content", mode="after")
     @classmethod
     def _validate_content(cls, v: str | None) -> str | None:
-        if v is not None and not (1 <= len(v) <= 32_768):
-            raise ValueError("content length out of range: must be 1..32768")
+        if v is not None and not (1 <= len(v) <= 200_000):
+            raise ValueError("content length out of range: must be 1..200000")
         return v
 
     @field_validator("tags", mode="after")
@@ -135,8 +135,16 @@ class MemoryUpdateTool(BaseTool):
                 # Check quota before embedding
                 await ctx.deps.quotas.check_write(ctx.tenant_id, len(new_content))
 
-                # Re-embed
-                embed = await ctx.deps.embeddings.embed(new_content)
+                # Re-embed UNLESS oversize — same skip-policy as write.py.
+                from mem_mcp.mcp.tools.write import EMBED_MAX_INPUT_CHARS
+
+                if len(new_content) > EMBED_MAX_INPUT_CHARS:
+                    new_embedding_vec: list[float] | None = None
+                    new_embed_tokens = 0
+                else:
+                    embed = await ctx.deps.embeddings.embed(new_content)
+                    new_embedding_vec = embed.vector
+                    new_embed_tokens = embed.input_tokens
 
                 # Compute hash
                 content_hash = hash_content(new_content)
@@ -158,7 +166,7 @@ class MemoryUpdateTool(BaseTool):
                     ctx.tenant_id,
                     new_content,
                     content_hash,
-                    embed.vector,
+                    new_embedding_vec,
                     ctx.client_id,
                     new_type,
                     final_tags,
@@ -198,7 +206,7 @@ class MemoryUpdateTool(BaseTool):
                 )
 
                 # Quota
-                await ctx.deps.quotas.increment_write(ctx.tenant_id, embed.input_tokens)
+                await ctx.deps.quotas.increment_write(ctx.tenant_id, new_embed_tokens)
 
                 return MemoryUpdateOutput(
                     id=new_row["id"],
@@ -224,13 +232,21 @@ class MemoryUpdateTool(BaseTool):
 
                 # Only re-embed if content changed
                 embed_tokens = 0
+                inplace_embedding_vec: list[float] | None = None
                 if content_changed and inp.content is not None:
                     # Quota check
                     await ctx.deps.quotas.check_write(ctx.tenant_id, len(inp.content))
 
-                    # Re-embed
-                    embed = await ctx.deps.embeddings.embed(inp.content)
-                    embed_tokens = embed.input_tokens
+                    # Re-embed UNLESS oversize.
+                    from mem_mcp.mcp.tools.write import EMBED_MAX_INPUT_CHARS
+
+                    if len(inp.content) > EMBED_MAX_INPUT_CHARS:
+                        inplace_embedding_vec = None
+                        embed_tokens = 0
+                    else:
+                        embed = await ctx.deps.embeddings.embed(inp.content)
+                        inplace_embedding_vec = embed.vector
+                        embed_tokens = embed.input_tokens
 
                     # Compute hash
                     content_hash = hash_content(inp.content)
@@ -246,7 +262,7 @@ class MemoryUpdateTool(BaseTool):
                         """,
                         inp.content,
                         content_hash,
-                        embed.vector,
+                        inplace_embedding_vec,
                         new_type,
                         final_tags,
                         json.dumps(new_metadata),
