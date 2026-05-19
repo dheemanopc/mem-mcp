@@ -27,8 +27,10 @@ from mem_mcp.mcp.tools._deps import ToolDeps
 from mem_mcp.mcp.tools.delete import MemoryDeleteInput, MemoryDeleteTool
 from mem_mcp.mcp.tools.get import MemoryGetInput, MemoryGetTool
 from mem_mcp.mcp.tools.list import MemoryListInput, MemoryListTool
+from mem_mcp.mcp.tools.thread_get import MemoryThreadGetInput, MemoryThreadGetTool
 from mem_mcp.mcp.tools.undelete import MemoryUndeleteInput, MemoryUndeleteTool
 from mem_mcp.mcp.tools.update import MemoryUpdateInput, MemoryUpdateTool
+from mem_mcp.mcp.tools.write import MemoryWriteInput, MemoryWriteTool
 from mem_mcp.web.sessions import lookup_session
 
 if TYPE_CHECKING:
@@ -107,6 +109,35 @@ def make_memories_router(*, pool: asyncpg.Pool, deps: ToolDeps) -> APIRouter:
         ctx = await _ctx_from_session(pool, mem_session, deps, scopes=frozenset(["memory.read"]))
         try:
             out = await MemoryGetTool()(ctx, MemoryGetInput(id=memory_id, include_history=history))
+        except JsonRpcError as e:
+            raise _jsonrpc_to_http(e) from e
+        return out.model_dump(mode="json")
+
+    @router.get("/api/web/memories/{memory_id}/thread")
+    async def get_thread(
+        memory_id: UUID,
+        mem_session: str | None = Cookie(default=None),
+    ) -> dict[str, Any]:
+        """Fetch the root memory + all its replies in chronological order.
+        Backs the Reddit-like thread view at /memories/[id]."""
+        ctx = await _ctx_from_session(pool, mem_session, deps, scopes=frozenset(["memory.read"]))
+        try:
+            out = await MemoryThreadGetTool()(ctx, MemoryThreadGetInput(root_id=memory_id))
+        except JsonRpcError as e:
+            raise _jsonrpc_to_http(e) from e
+        return out.model_dump(mode="json")
+
+    @router.post("/api/web/memories")
+    async def write_memory(
+        body: dict[str, Any] = Body(...),  # noqa: B008
+        mem_session: str | None = Cookie(default=None),
+    ) -> dict[str, Any]:
+        """Create a new memory or a threaded reply. Used by the inline composer
+        in the Reddit-like thread view at /memories/[id]."""
+        ctx = await _ctx_from_session(pool, mem_session, deps, scopes=frozenset(["memory.write"]))
+        try:
+            inp = MemoryWriteInput(**body)
+            out = await MemoryWriteTool()(ctx, inp)
         except JsonRpcError as e:
             raise _jsonrpc_to_http(e) from e
         return out.model_dump(mode="json")
