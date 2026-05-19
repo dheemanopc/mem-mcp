@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import pandas as pd
 
@@ -63,7 +63,10 @@ def parse_kite_candles(candles: list[list[Any]]) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
     df.set_index("timestamp", inplace=True)
-    df.index = df.index.tz_localize("UTC") if df.index.tz is None else df.index
+    # Ensure the index is timezone-aware (UTC)
+    idx = cast(pd.DatetimeIndex, df.index)
+    if idx.tz is None:
+        df.index = idx.tz_localize("UTC")
     return df
 
 
@@ -107,7 +110,7 @@ async def paginated_fetch(
     # Estimate bar duration and walk backwards
     bar_duration_sec = BAR_DURATIONS.get(interval, 60)
     total_bars_needed = target_bars
-    all_dfs = []
+    all_dfs: list[pd.DataFrame] = []
 
     # Walk backwards in chunks
     current_to = to_dt

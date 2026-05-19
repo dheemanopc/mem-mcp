@@ -35,6 +35,7 @@ hypothesis = "^6.115"
 types-python-jose = "^3.3"
 cfn-lint = "^1.18"
 locust = "^2.27"
+pandas-stubs = "*"
 
 [tool.ruff]
 line-length = 100

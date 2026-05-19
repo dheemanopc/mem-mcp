@@ -10,7 +10,7 @@ import logging
 import threading
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 import pandas as pd
@@ -72,14 +72,14 @@ class SessionEntry:
         """Return ISO-formatted timestamp of first bar."""
         if self.df.empty:
             return ""
-        return self.df.index[0].isoformat()
+        return cast(str, self.df.index[0].isoformat())
 
     @property
     def last_bar_ts(self) -> str:
         """Return ISO-formatted timestamp of last bar."""
         if self.df.empty:
             return ""
-        return self.df.index[-1].isoformat()
+        return cast(str, self.df.index[-1].isoformat())
 
     @property
     def last_close(self) -> float:

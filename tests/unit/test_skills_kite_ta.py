@@ -275,7 +275,7 @@ class TestIndicatorCompute:
         unknown_result = next((r for r in result.results if r.name == "unknown_indicator"), None)
         assert unknown_result is not None
         assert unknown_result.ok is False
-        assert "unknown indicator" in unknown_result.error
+        assert unknown_result.error is not None and "unknown indicator" in unknown_result.error
 
         rsi_result = next((r for r in result.results if r.name == "rsi"), None)
         assert rsi_result is not None
@@ -347,6 +347,7 @@ class TestSeriesFetch:
         )
         compute_result = await ta_indicator_compute(client, ctx, compute_args)
         series_key = compute_result.results[0].series_key
+        assert series_key is not None
 
         # Fetch series
         fetch_args = TASeriesFetchInput(

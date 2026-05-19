@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field
@@ -143,11 +143,11 @@ def _snapshot_ts(ts: str | None) -> datetime | None:
     if ts is None:
         return None
     try:
-        dt = pd.to_datetime(ts)
-        if dt.tz is None:
-            dt = dt.replace(tzinfo=UTC)
+        dt_parsed = pd.to_datetime(ts)
+        if hasattr(dt_parsed, "tz") and dt_parsed.tz is None:
+            dt = cast(datetime, dt_parsed.replace(tzinfo=UTC))
         else:
-            dt = dt.astimezone(UTC)
+            dt = cast(datetime, dt_parsed.astimezone(UTC))
         return dt
     except Exception:
         return None
@@ -198,7 +198,7 @@ async def ta_session_open(
     if not hasattr(ctx, "instrument_token"):
         raise SkillError("instrument_token not available (would be looked up from symbol)")
 
-    instrument_token = ctx.instrument_token  # type: ignore[attr-defined]
+    instrument_token = ctx.instrument_token
 
     # Determine lookback bars
     if args.lookback_bars == "max":
@@ -277,7 +277,7 @@ async def ta_indicator_compute(
     access_token = creds["access_token"]
     if not hasattr(ctx, "instrument_token"):
         raise SkillError("instrument_token not available")
-    instrument_token = ctx.instrument_token  # type: ignore[attr-defined]
+    instrument_token = ctx.instrument_token
 
     df_refreshed, was_refreshed = await lazy_trailing_refresh(
         client,
@@ -376,14 +376,14 @@ async def ta_indicator_compute(
 
                 if is_multi:
                     # Multi-component indicator
-                    summary_multi = {}
-                    series_multi = {}
+                    summary_by_component: dict[str, dict[str, float | None]] = {}
+                    series_multi: dict[str, list[Any]] = {}
                     csv_lines = ["timestamp,"]
                     csv_lines[0] += ",".join(f"{k}" for k in indicator_output.keys())
                     csv_lines.append("")
 
                     for component_name, series in indicator_output.items():
-                        summary_multi[component_name] = get_indicator_summary(
+                        summary_by_component[component_name] = get_indicator_summary(
                             series, req.lookback or 20
                         )
                         series_multi[component_name] = series.tolist()
@@ -398,7 +398,7 @@ async def ta_indicator_compute(
                                 name=req.name,
                                 params=actual_params,
                                 ok=True,
-                                summary=summary_multi,
+                                summary=summary_by_component,
                                 series_key=f"{args.session_id}:{req.name}",
                             )
                         )
@@ -572,7 +572,7 @@ async def ta_ohlc_fetch(
         for ts, row in df.iterrows():
             data.append(
                 [
-                    ts.isoformat(),
+                    cast(datetime, ts).isoformat(),
                     float(row["open"]),
                     float(row["high"]),
                     float(row["low"]),
@@ -605,9 +605,11 @@ async def ta_session_status(
     now = datetime.now(UTC)
     age_s = int((now - entry.opened_at).total_seconds())
 
-    last_bar_ts = entry.df.index[-1] if not entry.df.empty else now
-    if last_bar_ts.tz is None:
-        last_bar_ts = last_bar_ts.replace(tzinfo=UTC)
+    last_bar_ts_raw = cast(datetime, entry.df.index[-1]) if not entry.df.empty else now
+    if hasattr(last_bar_ts_raw, "tz") and last_bar_ts_raw.tz is None:
+        last_bar_ts = last_bar_ts_raw.replace(tzinfo=UTC)
+    else:
+        last_bar_ts = last_bar_ts_raw
 
     trailing_stale_s = int((now - last_bar_ts).total_seconds())
 
@@ -637,7 +639,7 @@ async def ta_session_refresh(
     access_token = creds["access_token"]
     if not hasattr(ctx, "instrument_token"):
         raise SkillError("instrument_token not available")
-    instrument_token = ctx.instrument_token  # type: ignore[attr-defined]
+    instrument_token = ctx.instrument_token
 
     if args.mode == "trailing":
         df_new, was_refreshed = await lazy_trailing_refresh(

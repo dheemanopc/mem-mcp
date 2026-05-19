@@ -1989,6 +1989,20 @@ test = ["hypothesis (>=6.46.1)", "pytest (>=7.3.2)", "pytest-xdist (>=2.2.0)"]
 xml = ["lxml (>=4.9.2)"]
 
 [[package]]
+name = "pandas-stubs"
+version = "3.0.0.260204"
+description = "Type annotations for pandas"
+optional = false
+python-versions = ">=3.11"
+files = [
+    {file = "pandas_stubs-3.0.0.260204-py3-none-any.whl", hash = "sha256:5ab9e4d55a6e2752e9720828564af40d48c4f709e6a2c69b743014a6fcb6c241"},
+    {file = "pandas_stubs-3.0.0.260204.tar.gz", hash = "sha256:bf9294b76352effcffa9cb85edf0bed1339a7ec0c30b8e1ac3d66b4228f1fbc3"},
+]
+
+[package.dependencies]
+numpy = ">=1.23.5"
+
+[[package]]
 name = "pandas-ta"
 version = "0.4.71b0"
 description = "A Comprehensive Python 3 Technical Analysis Library with Pandas Dataframe Extension for Quantitative Researchers, Traders, and Investors."
@@ -3794,4 +3808,4 @@ testing = ["coverage[toml]", "zope.event", "zope.testing"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.12"
-content-hash = "4a473a2f2cf19cd5d7cdfb232912fb5583dddcf8fd007d14213718142da77352"
+content-hash = "070221c0ec068719d61936de0cd948c81da95b44da2c11f80a848007ea93ada6"

@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import os
 from functools import lru_cache
-from typing import Protocol
+from typing import Any, Protocol
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -155,7 +155,7 @@ def get_settings(loader: SsmLoader | None = None) -> Settings:
     # Pydantic BaseSettings reads env vars itself; we'd have to either set them
     # all in os.environ (mutates global state — bad) OR pass them as init kwargs
     # by stripping the prefix and lowercasing. The latter:
-    init_kwargs: dict[str, str] = {}
+    init_kwargs: dict[str, Any] = {}
     for env_key, value in merged.items():
         if env_key.startswith("MEM_MCP_"):
             init_kwargs[env_key[len("MEM_MCP_") :].lower()] = value

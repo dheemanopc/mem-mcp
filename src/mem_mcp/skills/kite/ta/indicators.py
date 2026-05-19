@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import pandas as pd
-import pandas_ta  # type: ignore[import-untyped]
+import pandas_ta
 
 
 def compute_rsi(df: pd.DataFrame, period: int = 14) -> pd.Series:
@@ -62,7 +62,7 @@ def compute_bollinger(
 
     Returns dict with keys 'upper', 'middle', 'lower'.
     """
-    bb_result = pandas_ta.bbands(df["close"], length=period, std=stddev)
+    bb_result = pandas_ta.bbands(df["close"], length=period, lower_std=stddev, upper_std=stddev)
     result = {}
     if len(bb_result.columns) >= 3:
         result["upper"] = bb_result.iloc[:, 0]
@@ -239,7 +239,7 @@ INDICATORS: dict[str, dict[str, Any]] = {
 }
 
 
-def get_indicator_summary(series: pd.Series, lookback: int = 20) -> dict[str, float]:
+def get_indicator_summary(series: pd.Series, lookback: int = 20) -> dict[str, float | None]:
     """Compute summary stats for a single series.
 
     Returns: {last, prev, min_N, max_N} where N=lookback.
