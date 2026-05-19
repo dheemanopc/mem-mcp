@@ -356,7 +356,7 @@ class TestKiteSkill:
 
         skill = KiteSkill()
         tools = skill.list_tools()
-        assert len(tools) == 8
+        assert len(tools) == 14  # 8 Phase 1 + 6 Phase 2 TA tools
         names = {t.name for t in tools}
         assert names == {
             "get_holdings",
@@ -367,6 +367,12 @@ class TestKiteSkill:
             "get_orders",
             "place_order",
             "cancel_order",
+            "ta_session_open",
+            "ta_indicator_compute",
+            "ta_series_fetch",
+            "ta_ohlc_fetch",
+            "ta_session_status",
+            "ta_session_refresh",
         }
 
     def test_list_tools_read_only_split(self) -> None:

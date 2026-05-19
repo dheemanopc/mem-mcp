@@ -56,6 +56,9 @@ class Settings(BaseSettings):
     enabled_skills: str = ""
     bedrock_model_id: str = "amazon.titan-embed-text-v2:0"
     log_level: str = "INFO"
+    # TA session cache configuration
+    ta_cache_max_sessions: int = 50
+    ta_max_sessions_per_tenant: int = 10
 
     @property
     def db_maint_dsn_asyncpg(self) -> str:

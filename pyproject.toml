@@ -22,6 +22,9 @@ tenacity = "^9.0"
 alembic = "^1.14"
 psycopg = { version = "^3.2", extras = ["binary"] }
 sqlalchemy = "^2.0"
+pandas = "^2.1"
+pandas-ta = "^0.4"
+numpy = "^2.2"
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.7"

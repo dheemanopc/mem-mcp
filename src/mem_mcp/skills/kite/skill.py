@@ -23,6 +23,26 @@ from mem_mcp.skills.base import (
 )
 from mem_mcp.skills.kite.auth import KiteCredentialsError, login_with_credentials
 from mem_mcp.skills.kite.client import KiteApiError, KiteClient
+from mem_mcp.skills.kite.ta import (
+    TAIndicatorComputeInput,
+    TAIndicatorComputeOutput,
+    TAOhlcFetchInput,
+    TAOhlcFetchOutput,
+    TASessionOpenInput,
+    TASessionOpenOutput,
+    TASessionRefreshInput,
+    TASessionRefreshOutput,
+    TASessionStatusInput,
+    TASessionStatusOutput,
+    TASeriesFetchInput,
+    TASeriesFetchOutput,
+    ta_indicator_compute,
+    ta_ohlc_fetch,
+    ta_session_open,
+    ta_session_refresh,
+    ta_session_status,
+    ta_series_fetch,
+)
 
 # --------------------------------------------------------------------------
 # Pydantic models — input/output shapes per tool
@@ -262,6 +282,49 @@ class KiteSkill(NativeSkill):
                 OutputModel=CancelOrderOutput,
                 read_only=False,
             ),
+            # Phase 2: TA session tools
+            ToolDef(
+                name="ta_session_open",
+                description=TOOL_DESCRIPTIONS["kite_ta_session_open"],
+                InputModel=TASessionOpenInput,
+                OutputModel=TASessionOpenOutput,
+                read_only=True,
+            ),
+            ToolDef(
+                name="ta_indicator_compute",
+                description=TOOL_DESCRIPTIONS["kite_ta_indicator_compute"],
+                InputModel=TAIndicatorComputeInput,
+                OutputModel=TAIndicatorComputeOutput,
+                read_only=True,
+            ),
+            ToolDef(
+                name="ta_series_fetch",
+                description=TOOL_DESCRIPTIONS["kite_ta_series_fetch"],
+                InputModel=TASeriesFetchInput,
+                OutputModel=TASeriesFetchOutput,
+                read_only=True,
+            ),
+            ToolDef(
+                name="ta_ohlc_fetch",
+                description=TOOL_DESCRIPTIONS["kite_ta_ohlc_fetch"],
+                InputModel=TAOhlcFetchInput,
+                OutputModel=TAOhlcFetchOutput,
+                read_only=True,
+            ),
+            ToolDef(
+                name="ta_session_status",
+                description=TOOL_DESCRIPTIONS["kite_ta_session_status"],
+                InputModel=TASessionStatusInput,
+                OutputModel=TASessionStatusOutput,
+                read_only=True,
+            ),
+            ToolDef(
+                name="ta_session_refresh",
+                description=TOOL_DESCRIPTIONS["kite_ta_session_refresh"],
+                InputModel=TASessionRefreshInput,
+                OutputModel=TASessionRefreshOutput,
+                read_only=True,
+            ),
         ]
 
     async def call_tool(self, tool_name: str, args: BaseModel, ctx: SkillCallContext) -> BaseModel:
@@ -381,6 +444,31 @@ class KiteSkill(NativeSkill):
                 return CancelOrderOutput(
                     order_id=str((cancel_order_data or {}).get("order_id", args.order_id))
                 )
+
+            # Phase 2: TA session tools
+            if tool_name == "ta_session_open":
+                assert isinstance(args, TASessionOpenInput)
+                return await ta_session_open(self._client, ctx, args)
+
+            if tool_name == "ta_indicator_compute":
+                assert isinstance(args, TAIndicatorComputeInput)
+                return await ta_indicator_compute(self._client, ctx, args)
+
+            if tool_name == "ta_series_fetch":
+                assert isinstance(args, TASeriesFetchInput)
+                return await ta_series_fetch(self._client, ctx, args)
+
+            if tool_name == "ta_ohlc_fetch":
+                assert isinstance(args, TAOhlcFetchInput)
+                return await ta_ohlc_fetch(self._client, ctx, args)
+
+            if tool_name == "ta_session_status":
+                assert isinstance(args, TASessionStatusInput)
+                return await ta_session_status(self._client, ctx, args)
+
+            if tool_name == "ta_session_refresh":
+                assert isinstance(args, TASessionRefreshInput)
+                return await ta_session_refresh(self._client, ctx, args)
 
             raise SkillToolNotFoundError(f"kite skill has no tool named {tool_name!r}")
 

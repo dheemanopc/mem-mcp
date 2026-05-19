@@ -196,4 +196,70 @@ Inputs: variety ("regular","amo","co","iceberg","auction"), tradingsymbol, excha
 Output: order_id (string).
 
 Examples: User: "Buy 10 RELIANCE at 2500 limit MIS" → kite_place_order(variety="regular", tradingsymbol="RELIANCE", exchange="NSE", transaction_type="BUY", quantity=10, product="MIS", order_type="LIMIT", price=2500).""",
+    "kite_ta_session_open": """Open a technical analysis session for historical OHLCV data and indicator compute.
+
+Call when: user wants to analyze a specific symbol+timeframe over a date range; prep for indicator calculations; batch indicator compute across multiple timeframes; building a TA dashboard or screening workflow.
+
+Do not call for: single-bar quote snapshots (use kite_get_quote). Do not call without explicit symbol and timeframe. Do not call repeatedly for the same analysis — reuse the session_id returned.
+
+Inputs: symbol (e.g., "RELIANCE"), timeframe (minute|3minute|5minute|15minute|30minute|60minute|day|week), lookback_bars (default "max" per timeframe), optional ttl_seconds override.
+
+Output: session_id (UUID), bars_loaded (int), first_bar_ts, last_bar_ts, last_close, expires_at (ISO), replaced_session_id if evicted due to per-tenant cap.
+
+Examples: "Analyze WIPRO on 15-minute bars for the last 100 days" → ta_session_open(symbol="WIPRO", timeframe="15minute", lookback_bars=100). "Open a daily RSI session for RELIANCE" → ta_session_open(symbol="RELIANCE", timeframe="day").""",
+    "kite_ta_indicator_compute": """Compute technical indicators in batch against a TA session.
+
+Call when: user asks "what's the RSI", "compute MACD + Bollinger Bands", "run 5 indicators at once"; batch requests for multiple indicators with different parameters; fetch indicator series for visualization or export.
+
+Do not call for: indicators not in the catalog (rsi, ema, sma, macd, atr, bollinger, stoch, adx, supertrend, vwap, obv, mfi, cci, williams_r). Do not call without an active session_id. Do not call expecting per-bar signals (that's Phase 2.5).
+
+Inputs: session_id (from ta_session_open), requests (list of name+params+format), default_format ("summary"|"series"|"csv"). Per-request: optional at_timestamp (floor-snap to that bar), lookback (last N bars).
+
+Output: results (list, one per request), each with ok flag, summary (last/prev/min/max), series (values), csv (text), error (if not ok).
+
+Examples: "RSI(14) + EMA(20)" → requests=[{name:"rsi",params:{period:14}}, {name:"ema",params:{period:20}}]. "Bollinger Bands at 2026-05-19T10:00:00Z" → at_timestamp="2026-05-19T10:00:00Z". "Last 50 MACD bars as CSV" → format="csv", lookback=50.""",
+    "kite_ta_series_fetch": """Fetch cached series data by key from a completed indicator compute.
+
+Call when: user wants to export or visualize the full series from a prior compute; fetch series for further processing or external tools.
+
+Do not call for: fresh indicator computes (use ta_indicator_compute). Do not call without a series_key from a prior compute result.
+
+Inputs: session_id, series_key (from prior ta_indicator_compute), last_n (default 100), format ("json"|"csv").
+
+Output: raw series values, last N rows.
+
+Examples: "Export the RSI series as CSV" → ta_series_fetch(series_key=<key>, format="csv"). "Last 50 values of that MACD line" → ta_series_fetch(series_key=<key>, last_n=50).""",
+    "kite_ta_ohlc_fetch": """Fetch OHLCV bars from the cache of an active TA session.
+
+Call when: user wants the underlying OHLC data for charting or external analysis; export bars for backtesting; verify bar timestamps/prices in a session.
+
+Do not call for: fresh historical fetches (use kite_get_historical_data). Do not call without an active session_id.
+
+Inputs: session_id, last_n (default 50), format ("json"|"csv").
+
+Output: OHLCV rows, timestamp + open/high/low/close/volume.
+
+Examples: "Show me the last 20 bars from the WIPRO session" → ta_ohlc_fetch(session_id=<id>, last_n=20). "Export RELIANCE bars as CSV for Excel" → ta_ohlc_fetch(session_id=<id>, format="csv").""",
+    "kite_ta_session_status": """Check the status of an active TA session (alive, TTL, computed indicators, cache state).
+
+Call when: user asks "is my session still active", "how long until expiry", "what have I computed"; debugging session lifecycle; monitoring session age or staleness.
+
+Do not call for: creating sessions (use ta_session_open). Do not call repeatedly in a tight loop (once per user question is fine).
+
+Inputs: session_id.
+
+Output: alive (bool), expires_at (ISO), age_s (seconds since open), trailing_bar_stale_s (seconds since last bar), indicators_computed (list), cache_status ("warm"|"rehydrating"|"evicted").
+
+Examples: "Is my session still good?" → ta_session_status(session_id=<id>). "When does this session expire?" → ta_session_status, check expires_at.""",
+    "kite_ta_session_refresh": """Refresh the data in a TA session (trailing bars or full rescan).
+
+Call when: user needs fresh data after market hours pass; ensures session data is current before computing new indicators; mode="full" for bulk rescan.
+
+Do not call for: automatic refresh (sessions auto-refresh on compute). Do not call excessively (refresh once per analysis cycle is typical).
+
+Inputs: session_id, mode ("trailing"|"full", default "trailing").
+
+Output: bars_refetched (int), new_last_bar_ts (ISO).
+
+Examples: "Refresh my session" → ta_session_refresh(session_id=<id>, mode="trailing"). "Rescan all 100 days" → ta_session_refresh(session_id=<id>, mode="full").""",
 }
