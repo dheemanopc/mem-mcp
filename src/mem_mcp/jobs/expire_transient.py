@@ -26,7 +26,7 @@ async def main(dry_run: bool = False) -> int:
     setup_logging(get_settings().log_level)
     settings = get_settings()
 
-    import asyncpg
+    import asyncpg  # type: ignore[import-untyped]
 
     pool = await asyncpg.create_pool(
         dsn=settings.db_maint_dsn_asyncpg,
