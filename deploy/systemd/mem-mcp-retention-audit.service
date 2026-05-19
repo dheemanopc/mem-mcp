@@ -14,5 +14,5 @@ ExecStart=/home/memmcp/.local/bin/poetry run python -m mem_mcp.jobs retention_au
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
-ProtectHome=true
+
 LimitNOFILE=4096
