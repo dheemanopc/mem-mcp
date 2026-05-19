@@ -29,7 +29,33 @@ interface StaleResponse {
   results: MemoryRow[];
 }
 
-type Tab = "browse" | "stale";
+type Tab = "browse" | "stale" | "similar";
+
+interface SimilarResult {
+  id: string;
+  content: string;
+  type: string;
+  tags: string[];
+  similarity: number;
+}
+
+interface ClusterMember {
+  id: string;
+  content: string;
+  type: string;
+  tags: string[];
+  updated_at: string;
+  last_accessed_at: string | null;
+}
+
+interface Cluster {
+  cluster_id: string;
+  seed_memory_id: string;
+  member_count: number;
+  similarity_threshold: number;
+  built_at: string;
+  members: ClusterMember[];
+}
 
 // ---------------------------------------------------------------------------
 // View
@@ -47,6 +73,13 @@ export function MemoriesView({
   initialTag?: string;
 }) {
   const [tab, setTab] = useState<Tab>(initialTab);
+  // Set when user clicks "Find similar" on a row — pre-fills the Similar tab.
+  const [similarSeedId, setSimilarSeedId] = useState<string | null>(null);
+
+  const openSimilarFor = (seedId: string) => {
+    setSimilarSeedId(seedId);
+    setTab("similar");
+  };
 
   return (
     <div className="space-y-4">
@@ -57,11 +90,20 @@ export function MemoriesView({
         <TabButton active={tab === "stale"} onClick={() => setTab("stale")}>
           Stale
         </TabButton>
+        <TabButton active={tab === "similar"} onClick={() => setTab("similar")}>
+          Similar
+        </TabButton>
       </div>
       {tab === "browse" && (
-        <BrowseTab allTags={allTags} initialType={initialType} initialTag={initialTag} />
+        <BrowseTab
+          allTags={allTags}
+          initialType={initialType}
+          initialTag={initialTag}
+          onFindSimilar={openSimilarFor}
+        />
       )}
-      {tab === "stale" && <StaleTab />}
+      {tab === "stale" && <StaleTab onFindSimilar={openSimilarFor} />}
+      {tab === "similar" && <SimilarTab seedId={similarSeedId} onSeedChange={setSimilarSeedId} />}
     </div>
   );
 }
@@ -95,10 +137,12 @@ function BrowseTab({
   allTags,
   initialType,
   initialTag,
+  onFindSimilar,
 }: {
   allTags: string[];
   initialType?: string;
   initialTag?: string;
+  onFindSimilar: (id: string) => void;
 }) {
   const [selectedTags, setSelectedTags] = useState<string[]>(
     initialTag ? initialTag.split(",").map((t) => t.trim()).filter(Boolean) : []
@@ -204,7 +248,12 @@ function BrowseTab({
       {loading ? (
         <p className="text-sm text-gray-500">Loading…</p>
       ) : (
-        <MemoryList rows={results} selected={selected} onToggle={toggleSelected} />
+        <MemoryList
+          rows={results}
+          selected={selected}
+          onToggle={toggleSelected}
+          onFindSimilar={onFindSimilar}
+        />
       )}
     </div>
   );
@@ -214,7 +263,7 @@ function BrowseTab({
 // Stale tab
 // ---------------------------------------------------------------------------
 
-function StaleTab() {
+function StaleTab({ onFindSimilar }: { onFindSimilar: (id: string) => void }) {
   const [mode, setMode] = useState<"updated" | "accessed">("updated");
   const [days, setDays] = useState(90);
   const [results, setResults] = useState<MemoryRow[]>([]);
@@ -344,9 +393,376 @@ function StaleTab() {
           Nothing stale — all memories were touched within the last {days} days.
         </p>
       ) : (
-        <MemoryList rows={results} selected={selected} onToggle={toggleSelected} showStaleMeta={mode} />
+        <MemoryList
+          rows={results}
+          selected={selected}
+          onToggle={toggleSelected}
+          showStaleMeta={mode}
+          onFindSimilar={onFindSimilar}
+        />
       )}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Similar tab (Phase 2 — Shape A find_similar + Shape B precomputed clusters)
+// ---------------------------------------------------------------------------
+
+function SimilarTab({
+  seedId,
+  onSeedChange,
+}: {
+  seedId: string | null;
+  onSeedChange: (id: string | null) => void;
+}) {
+  type SimilarMode = "find" | "clusters";
+  const [mode, setMode] = useState<SimilarMode>(seedId ? "find" : "clusters");
+  const [queryText, setQueryText] = useState("");
+  const [threshold, setThreshold] = useState(0.85);
+  const [results, setResults] = useState<SimilarResult[]>([]);
+  const [clusters, setClusters] = useState<Cluster[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [clustersBuiltAt, setClustersBuiltAt] = useState<string | null>(null);
+
+  const fetchSimilar = useCallback(async () => {
+    if (mode !== "find") return;
+    if (!seedId && !queryText.trim()) {
+      setResults([]);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const body: {
+        seed_id?: string;
+        query_text?: string;
+        threshold: number;
+        limit: number;
+      } = { threshold, limit: 50 };
+      if (seedId) body.seed_id = seedId;
+      else body.query_text = queryText;
+      const res = await fetch("/api/web/memories/management/similar", {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const detail = await res.json().catch(() => ({}));
+        setError(detail.detail?.message ?? detail.detail ?? `Failed (${res.status})`);
+        setResults([]);
+        return;
+      }
+      const data = await res.json();
+      setResults(data.results ?? []);
+    } catch (e) {
+      setError(String(e));
+      setResults([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [mode, seedId, queryText, threshold]);
+
+  const fetchClusters = useCallback(async () => {
+    if (mode !== "clusters") return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/web/memories/management/clusters?limit=50", {
+        credentials: "include",
+      });
+      if (!res.ok) {
+        setError(`Failed (${res.status})`);
+        setClusters([]);
+        return;
+      }
+      const data = await res.json();
+      setClusters(data.clusters ?? []);
+      setClustersBuiltAt(data.built_at ?? null);
+    } catch (e) {
+      setError(String(e));
+      setClusters([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [mode]);
+
+  useEffect(() => {
+    void fetchSimilar();
+  }, [fetchSimilar]);
+  useEffect(() => {
+    void fetchClusters();
+  }, [fetchClusters]);
+
+  const toggleSelected = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const onBulkDelete = async () => {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    if (!confirm(`Soft-delete ${ids.length} memor${ids.length === 1 ? "y" : "ies"}? Recoverable for 30 days.`)) return;
+    setBulkBusy(true);
+    try {
+      const res = await fetch("/api/web/memories/management/bulk-delete", {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      if (!res.ok) {
+        alert(`Failed (${res.status})`);
+        return;
+      }
+      const data = await res.json();
+      const deletedIds = new Set(
+        (data.results ?? [])
+          .filter((r: { status: string }) => r.status === "deleted")
+          .map((r: { id: string }) => r.id)
+      );
+      setResults((prev) => prev.filter((m) => !deletedIds.has(m.id)));
+      setClusters((prev) =>
+        prev
+          .map((c) => ({ ...c, members: c.members.filter((m) => !deletedIds.has(m.id)) }))
+          .filter((c) => c.members.length >= 2)
+      );
+      setSelected(new Set());
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-4 items-end p-4 bg-gray-50 rounded">
+        <label className="flex flex-col">
+          <span className="text-xs text-gray-600 mb-1">Mode</span>
+          <select
+            value={mode}
+            onChange={(e) => setMode(e.target.value as SimilarMode)}
+            className="border rounded px-2 py-1 bg-white"
+          >
+            <option value="find">Find similar to…</option>
+            <option value="clusters">Browse clusters</option>
+          </select>
+        </label>
+        {mode === "find" && (
+          <>
+            {seedId ? (
+              <div className="flex flex-col">
+                <span className="text-xs text-gray-600 mb-1">Seeded by memory</span>
+                <code className="text-xs bg-white border rounded px-2 py-1">
+                  {seedId.slice(0, 8)}…{" "}
+                  <button
+                    onClick={() => onSeedChange(null)}
+                    className="text-blue-600 ml-2"
+                  >
+                    clear
+                  </button>
+                </code>
+              </div>
+            ) : (
+              <label className="flex flex-col flex-1 min-w-[320px]">
+                <span className="text-xs text-gray-600 mb-1">Query text</span>
+                <input
+                  value={queryText}
+                  onChange={(e) => setQueryText(e.target.value)}
+                  placeholder="paste any text — we'll find memories like it"
+                  className="border rounded px-2 py-1 bg-white"
+                />
+              </label>
+            )}
+            <label className="flex flex-col">
+              <span className="text-xs text-gray-600 mb-1">
+                Threshold: {threshold.toFixed(2)}
+              </span>
+              <input
+                type="range"
+                min="0.5"
+                max="0.99"
+                step="0.01"
+                value={threshold}
+                onChange={(e) => setThreshold(parseFloat(e.target.value))}
+                className="w-48"
+              />
+            </label>
+          </>
+        )}
+        {mode === "clusters" && clustersBuiltAt && (
+          <span className="text-xs text-gray-500">
+            Last built: {new Date(clustersBuiltAt).toLocaleString()}
+          </span>
+        )}
+        {mode === "clusters" && !clustersBuiltAt && (
+          <span className="text-xs text-amber-700">
+            No clusters yet. The cluster build job runs weekly; until first run, this is empty.
+          </span>
+        )}
+      </div>
+
+      {error && <p className="text-red-600 text-sm">{error}</p>}
+      <ResultsToolbar
+        count={mode === "find" ? results.length : clusters.length}
+        selectedCount={selected.size}
+        onSelectAll={() => {
+          const ids =
+            mode === "find"
+              ? results.map((r) => r.id)
+              : clusters.flatMap((c) => c.members.map((m) => m.id));
+          setSelected(new Set(ids));
+        }}
+        onClear={() => setSelected(new Set())}
+        onBulkDelete={onBulkDelete}
+        busy={bulkBusy}
+      />
+
+      {loading && <p className="text-sm text-gray-500">Loading…</p>}
+
+      {!loading && mode === "find" && (
+        <SimilarResultsList
+          rows={results}
+          selected={selected}
+          onToggle={toggleSelected}
+        />
+      )}
+      {!loading && mode === "clusters" && (
+        <ClustersList
+          clusters={clusters}
+          selected={selected}
+          onToggle={toggleSelected}
+        />
+      )}
+    </div>
+  );
+}
+
+function SimilarResultsList({
+  rows,
+  selected,
+  onToggle,
+}: {
+  rows: SimilarResult[];
+  selected: Set<string>;
+  onToggle: (id: string) => void;
+}) {
+  if (rows.length === 0) {
+    return <p className="text-sm text-gray-500">No similar memories above threshold.</p>;
+  }
+  return (
+    <ul className="space-y-2">
+      {rows.map((r) => (
+        <li
+          key={r.id}
+          className={`border rounded p-3 flex gap-3 ${
+            selected.has(r.id) ? "bg-blue-50 border-blue-300" : "hover:bg-gray-50"
+          }`}
+        >
+          <input
+            type="checkbox"
+            checked={selected.has(r.id)}
+            onChange={() => onToggle(r.id)}
+            className="mt-1 shrink-0"
+          />
+          <div className="flex-1 min-w-0">
+            <div className="flex justify-between items-start mb-1">
+              <span className="text-xs uppercase text-gray-500">
+                {r.type} · sim {r.similarity.toFixed(3)}
+              </span>
+              <Link
+                href={`/memories/${r.id}`}
+                className="text-xs text-blue-600 hover:underline font-mono"
+              >
+                {r.id.slice(0, 8)}
+              </Link>
+            </div>
+            <p className="line-clamp-3 text-gray-900 text-sm">{r.content}</p>
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {r.tags.map((t) => (
+                <span key={t} className="text-xs bg-gray-100 px-1.5 py-0.5 rounded">
+                  {t}
+                </span>
+              ))}
+            </div>
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function ClustersList({
+  clusters,
+  selected,
+  onToggle,
+}: {
+  clusters: Cluster[];
+  selected: Set<string>;
+  onToggle: (id: string) => void;
+}) {
+  if (clusters.length === 0) {
+    return <p className="text-sm text-gray-500">No clusters detected.</p>;
+  }
+  return (
+    <ul className="space-y-4">
+      {clusters.map((c) => (
+        <li key={c.cluster_id} className="border rounded p-4 bg-white">
+          <div className="flex justify-between items-baseline mb-3">
+            <h3 className="text-sm font-medium">
+              Cluster of {c.member_count}{" "}
+              <span className="text-gray-500 font-normal">
+                · threshold {c.similarity_threshold.toFixed(2)}
+              </span>
+            </h3>
+            <span className="text-xs text-gray-400">
+              built {new Date(c.built_at).toLocaleDateString()}
+            </span>
+          </div>
+          <ul className="space-y-2">
+            {c.members.map((m) => (
+              <li
+                key={m.id}
+                className={`flex gap-2 items-start p-2 rounded ${
+                  selected.has(m.id) ? "bg-blue-50" : ""
+                } ${m.id === c.seed_memory_id ? "border-l-2 border-blue-400 pl-2" : ""}`}
+              >
+                <input
+                  type="checkbox"
+                  checked={selected.has(m.id)}
+                  onChange={() => onToggle(m.id)}
+                  className="mt-1 shrink-0"
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="flex justify-between items-start">
+                    <span className="text-xs uppercase text-gray-500">
+                      {m.type}
+                      {m.id === c.seed_memory_id && (
+                        <span className="ml-1 text-blue-600">· seed</span>
+                      )}
+                    </span>
+                    <Link
+                      href={`/memories/${m.id}`}
+                      className="text-xs text-blue-600 hover:underline font-mono"
+                    >
+                      {m.id.slice(0, 8)}
+                    </Link>
+                  </div>
+                  <p className="line-clamp-2 text-sm text-gray-900 mt-0.5">{m.content}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -501,11 +917,13 @@ function MemoryList({
   selected,
   onToggle,
   showStaleMeta,
+  onFindSimilar,
 }: {
   rows: MemoryRow[];
   selected: Set<string>;
   onToggle: (id: string) => void;
   showStaleMeta?: "updated" | "accessed";
+  onFindSimilar?: (id: string) => void;
 }) {
   if (rows.length === 0) {
     return <p className="text-sm text-gray-500">No memories match.</p>;
@@ -528,9 +946,23 @@ function MemoryList({
           <div className="flex-1 min-w-0">
             <div className="flex justify-between items-start mb-1">
               <span className="text-xs uppercase text-gray-500">{m.type}</span>
-              <Link href={`/memories/${m.id}`} className="text-xs text-blue-600 hover:underline font-mono">
-                {m.id.slice(0, 8)}
-              </Link>
+              <div className="flex items-center gap-2">
+                {onFindSimilar && (
+                  <button
+                    onClick={() => onFindSimilar(m.id)}
+                    className="text-xs text-blue-600 hover:underline"
+                    title="Find similar memories"
+                  >
+                    similar →
+                  </button>
+                )}
+                <Link
+                  href={`/memories/${m.id}`}
+                  className="text-xs text-blue-600 hover:underline font-mono"
+                >
+                  {m.id.slice(0, 8)}
+                </Link>
+              </div>
             </div>
             <p className="line-clamp-3 text-gray-900 text-sm">{m.content}</p>
             <div className="mt-1.5 flex flex-wrap gap-1">
