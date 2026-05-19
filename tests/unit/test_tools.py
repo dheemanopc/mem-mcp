@@ -198,9 +198,13 @@ class TestMemoryWriteTool:
         assert result.deduped is False
 
     @pytest.mark.asyncio
-    async def test_embedding_validation_failure_raises_jsonrpc(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_embedding_validation_failure_raises_jsonrpc(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         # invalid_input errors should raise, not gracefully degrade
-        embed = FakeEmbeddings(error=EmbeddingError("invalid_input", "too long", retry_after_seconds=0))
+        embed = FakeEmbeddings(
+            error=EmbeddingError("invalid_input", "too long", retry_after_seconds=0)
+        )
         ctx = _build_ctx(embeddings=embed)
         tool = MemoryWriteTool()
         with pytest.raises(JsonRpcError) as exc_info:
