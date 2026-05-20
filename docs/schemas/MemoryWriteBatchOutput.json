@@ -1,0 +1,122 @@
+{
+  "$defs": {
+    "_BatchEntryResult": {
+      "description": "Per-entry result. Mirrors MemoryWriteOutput on success, error on failure.",
+      "properties": {
+        "created_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Created At"
+        },
+        "deduped": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Deduped"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "merged_into": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Merged Into"
+        },
+        "ok": {
+          "title": "Ok",
+          "type": "boolean"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version"
+        }
+      },
+      "required": [
+        "ok"
+      ],
+      "title": "_BatchEntryResult",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "failed_count": {
+      "title": "Failed Count",
+      "type": "integer"
+    },
+    "request_id": {
+      "title": "Request Id",
+      "type": "string"
+    },
+    "results": {
+      "items": {
+        "$ref": "#/$defs/_BatchEntryResult"
+      },
+      "title": "Results",
+      "type": "array"
+    },
+    "written_count": {
+      "title": "Written Count",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "results",
+    "written_count",
+    "failed_count",
+    "request_id"
+  ],
+  "title": "MemoryWriteBatchOutput",
+  "type": "object"
+}

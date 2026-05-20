@@ -1,0 +1,132 @@
+{
+  "$defs": {
+    "MemoryWriteInput": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "maxLength": 200000,
+          "minLength": 1,
+          "title": "Content",
+          "type": "string"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expires At"
+        },
+        "force_new": {
+          "default": false,
+          "title": "Force New",
+          "type": "boolean"
+        },
+        "indexable": {
+          "default": true,
+          "title": "Indexable",
+          "type": "boolean"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "title": "Metadata",
+          "type": "object"
+        },
+        "parent_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent Id"
+        },
+        "supersedes": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Supersedes"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Tags",
+          "type": "array"
+        },
+        "ttl_seconds": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ttl Seconds"
+        },
+        "type": {
+          "default": "note",
+          "enum": [
+            "note",
+            "decision",
+            "fact",
+            "snippet",
+            "question"
+          ],
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "content"
+      ],
+      "title": "MemoryWriteInput",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "memories": {
+      "items": {
+        "$ref": "#/$defs/MemoryWriteInput"
+      },
+      "maxItems": 200,
+      "minItems": 1,
+      "title": "Memories",
+      "type": "array"
+    },
+    "on_error": {
+      "default": "continue",
+      "enum": [
+        "fail_all",
+        "continue"
+      ],
+      "title": "On Error",
+      "type": "string"
+    }
+  },
+  "required": [
+    "memories"
+  ],
+  "title": "MemoryWriteBatchInput",
+  "type": "object"
+}

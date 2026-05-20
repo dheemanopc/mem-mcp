@@ -1,10 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-
-function getCsrfToken(): string {
-  return document.cookie.split("; ").find((c) => c.startsWith("csrf_token="))?.split("=")[1] ?? "";
-}
+import { getCsrfToken } from "@/lib/csrf";
 
 interface Props {
   mode?: "confirm" | "cancel";
