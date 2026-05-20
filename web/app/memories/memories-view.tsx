@@ -198,6 +198,13 @@ function BrowseTab({
   const selectAllVisible = () => setSelected(new Set(results.map((r) => r.id)));
   const clearSelection = () => setSelected(new Set());
 
+  const addTag = (t: string) => {
+    const trimmed = t.trim();
+    if (!trimmed) return;
+    if (selectedTags.includes(trimmed)) return;
+    setSelectedTags([...selectedTags, trimmed]);
+  };
+
   const onBulkDelete = async () => {
     const ids = Array.from(selected);
     if (ids.length === 0) return;
@@ -255,6 +262,7 @@ function BrowseTab({
           selected={selected}
           onToggle={toggleSelected}
           onFindSimilar={onFindSimilar}
+          onAddTag={addTag}
         />
       )}
     </div>
@@ -922,12 +930,14 @@ function MemoryList({
   onToggle,
   showStaleMeta,
   onFindSimilar,
+  onAddTag,
 }: {
   rows: MemoryRow[];
   selected: Set<string>;
   onToggle: (id: string) => void;
   showStaleMeta?: "updated" | "accessed";
   onFindSimilar?: (id: string) => void;
+  onAddTag?: (tag: string) => void;
 }) {
   if (rows.length === 0) {
     return <p className="text-sm text-ink-muted">No memories match.</p>;
@@ -971,9 +981,19 @@ function MemoryList({
             <MarkdownContent content={m.content} variant="preview" />
             <div className="mt-1.5 flex flex-wrap gap-1">
               {m.tags.map((t) => (
-                <span key={t} className="text-xs bg-surface-subtle px-1.5 py-0.5 rounded">
+                <button
+                  key={t}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onAddTag?.(t);
+                  }}
+                  type="button"
+                  className="text-xs bg-surface-subtle hover:bg-surface-strong px-1.5 py-0.5 rounded cursor-pointer transition-colors"
+                  title="Add this tag to filter"
+                >
                   {t}
-                </span>
+                </button>
               ))}
             </div>
             {showStaleMeta && (
