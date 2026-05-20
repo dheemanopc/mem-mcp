@@ -160,6 +160,30 @@ Three layers (per LLD/spec §5.2): app-level tenant resolver, RLS, explicit `WHE
 
 ---
 
+## 6.7 Embedding status lifecycle
+
+Every `memory` row includes `embedding_status: TEXT` to track the state of Bedrock embedding attempts. All 7 states are documented below; they control retry eligibility and inform the backfill worker.
+
+| Status | Meaning | Next Action | Retryable? |
+|---|---|---|---|
+| `ok` | Embedding succeeded; vector is stored | None — indexed for search | No |
+| `skipped_opt_out` | User set `indexable=false` | None — keyword search only | No |
+| `skipped_oversize` | Content > 32 KB | None — keyword search only | No |
+| `failed_throttled` | Bedrock returned 429 (rate limit) | Retry in backfill worker | Yes |
+| `failed_unavailable` | Bedrock returned 503+ or internal error | Retry in backfill worker | Yes |
+| `failed_validation` | Invalid input (malformed UTF-8, encoding issues) | **Do not retry** — indicates bad input | No |
+| `failed_unknown` | Unexpected error | Retry in backfill worker | Yes |
+
+**Behavior change in v1.2**: `bedrock_validation_failed` (invalid input) now propagates as an error to the caller instead of gracefully degrading. This is intentional — malformed input indicates a client-side bug that should be fixed, not silently stored with NULL embedding.
+
+**Backfill worker** (`embedding_backfill` systemd timer, runs hourly): selects candidates with status IN (`failed_throttled`, `failed_unavailable`, `failed_unknown`), attempts re-embedding with bounded concurrency (10 by default), and updates `embedding_status='ok'` on success. Throttle/unavailable failures are left unchanged and retried next pass. Validation errors (if encountered during backfill) are marked `failed_validation` and skipped.
+
+**Configuration** (via env var, checked on each backfill run):
+- `MEM_MCP_EMBEDDING_BACKFILL_BATCH_SIZE=50` — candidates fetched per run
+- `MEM_MCP_EMBEDDING_BACKFILL_CONCURRENCY=10` — max in-flight embeddings
+
+---
+
 ## 7. What we deliberately don't do
 
 These are tempting but rejected for v1:
