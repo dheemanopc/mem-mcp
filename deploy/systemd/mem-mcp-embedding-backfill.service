@@ -1,0 +1,11 @@
+[Unit]
+Description=Embedding Backfill Worker
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=mem-mcp
+WorkingDirectory=/opt/mem-mcp
+EnvironmentFile=/etc/mem-mcp/env
+ExecStart=/opt/mem-mcp/venv/bin/mem-mcp-embedding-backfill
+TimeoutStartSec=3600

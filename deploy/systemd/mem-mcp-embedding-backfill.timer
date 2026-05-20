@@ -1,0 +1,11 @@
+[Unit]
+Description=Trigger Embedding Backfill Hourly
+
+[Timer]
+OnCalendar=hourly
+OnCalendar=*-*-* *:15:00
+RandomizedDelaySec=300
+Unit=mem-mcp-embedding-backfill.service
+
+[Install]
+WantedBy=timers.target
