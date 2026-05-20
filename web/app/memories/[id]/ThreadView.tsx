@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import { MarkdownContent } from "@/components/ui/MarkdownContent";
 
@@ -227,9 +228,14 @@ function CardFooter({
     <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-border text-xs">
       <div className="flex flex-wrap gap-1">
         {memory.tags.map((t) => (
-          <span key={t} className="bg-surface-subtle px-2 py-0.5 rounded text-ink-muted">
+          <Link
+            key={t}
+            href={`/memories?tag=${encodeURIComponent(t)}`}
+            className="bg-surface-subtle hover:bg-surface-strong px-2 py-0.5 rounded text-ink-muted hover:text-ink transition-colors cursor-pointer"
+            title="Filter by this tag"
+          >
             {t}
-          </span>
+          </Link>
         ))}
       </div>
       <div className="flex items-center gap-3">
