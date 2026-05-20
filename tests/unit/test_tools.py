@@ -268,6 +268,7 @@ class TestMemorySearchTool:
                     kw_score=0.5,
                     recency_factor=0.95,
                     score=0.8,
+                    indexable=True,
                     embedding_status="ok",
                 )
             ]
