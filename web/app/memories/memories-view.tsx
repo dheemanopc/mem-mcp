@@ -669,42 +669,54 @@ function SimilarResultsList({
   }
   return (
     <ul className="space-y-2">
-      {rows.map((r) => (
-        <li
-          key={r.id}
-          className={`border rounded p-3 flex gap-3 ${
-            selected.has(r.id) ? "bg-primary-muted border-primary" : "hover:bg-surface-muted"
-          }`}
-        >
-          <input
-            type="checkbox"
-            checked={selected.has(r.id)}
-            onChange={() => onToggle(r.id)}
-            className="mt-1 shrink-0"
-          />
-          <div className="flex-1 min-w-0">
-            <div className="flex justify-between items-start mb-1">
-              <span className="text-xs uppercase text-ink-muted">
-                {r.type} · sim {r.similarity.toFixed(3)}
-              </span>
+      {rows.map((r) => {
+        const { title, body } = extractTitleAndBody(r.content, {
+          type: r.type,
+          id: r.id,
+        });
+        return (
+          <li
+            key={r.id}
+            className={`border rounded p-3 flex gap-3 ${
+              selected.has(r.id) ? "bg-primary-muted border-primary" : "hover:bg-surface-muted"
+            }`}
+          >
+            <input
+              type="checkbox"
+              checked={selected.has(r.id)}
+              onChange={() => onToggle(r.id)}
+              className="mt-1 shrink-0"
+            />
+            <div className="flex-1 min-w-0">
+              <div className="flex justify-between items-start mb-1">
+                <span className="text-xs uppercase text-ink-muted">
+                  {r.type} · sim {r.similarity.toFixed(3)}
+                </span>
+                <Link
+                  href={`/memories/${r.id}`}
+                  className="text-xs text-primary hover:underline font-mono"
+                >
+                  {r.id.slice(0, 8)}
+                </Link>
+              </div>
               <Link
                 href={`/memories/${r.id}`}
-                className="text-xs text-primary hover:underline font-mono"
+                className="block text-lg font-semibold text-ink hover:text-primary"
               >
-                {r.id.slice(0, 8)}
+                {title}
               </Link>
+              {body && <MarkdownContent content={body} variant="preview" />}
+              <div className="mt-1.5 flex flex-wrap gap-1">
+                {r.tags.map((t) => (
+                  <span key={t} className="text-xs bg-surface-subtle px-1.5 py-0.5 rounded">
+                    {t}
+                  </span>
+                ))}
+              </div>
             </div>
-            <MarkdownContent content={r.content} variant="preview" />
-            <div className="mt-1.5 flex flex-wrap gap-1">
-              {r.tags.map((t) => (
-                <span key={t} className="text-xs bg-surface-subtle px-1.5 py-0.5 rounded">
-                  {t}
-                </span>
-              ))}
-            </div>
-          </div>
-        </li>
-      ))}
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -737,40 +749,50 @@ function ClustersList({
             </span>
           </div>
           <ul className="space-y-2">
-            {c.members.map((m) => (
-              <li
-                key={m.id}
-                className={`flex gap-2 items-start p-2 rounded ${
-                  selected.has(m.id) ? "bg-primary-muted" : ""
-                } ${m.id === c.seed_memory_id ? "border-l-2 border-primary pl-2" : ""}`}
-              >
-                <input
-                  type="checkbox"
-                  checked={selected.has(m.id)}
-                  onChange={() => onToggle(m.id)}
-                  className="mt-1 shrink-0"
-                />
-                <div className="flex-1 min-w-0">
-                  <div className="flex justify-between items-start">
-                    <span className="text-xs uppercase text-ink-muted">
-                      {m.type}
-                      {m.id === c.seed_memory_id && (
-                        <span className="ml-1 text-primary">· seed</span>
-                      )}
-                    </span>
+            {c.members.map((m) => {
+              const { title, body } = extractTitleAndBody(m.content, {
+                type: m.type,
+                id: m.id,
+              });
+              return (
+                <li
+                  key={m.id}
+                  className={`flex gap-2 items-start p-2 rounded ${
+                    selected.has(m.id) ? "bg-primary-muted" : ""
+                  } ${m.id === c.seed_memory_id ? "border-l-2 border-primary pl-2" : ""}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected.has(m.id)}
+                    onChange={() => onToggle(m.id)}
+                    className="mt-1 shrink-0"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-start">
+                      <span className="text-xs uppercase text-ink-muted">
+                        {m.type}
+                        {m.id === c.seed_memory_id && (
+                          <span className="ml-1 text-primary">· seed</span>
+                        )}
+                      </span>
+                      <Link
+                        href={`/memories/${m.id}`}
+                        className="text-xs text-primary hover:underline font-mono"
+                      >
+                        {m.id.slice(0, 8)}
+                      </Link>
+                    </div>
                     <Link
                       href={`/memories/${m.id}`}
-                      className="text-xs text-primary hover:underline font-mono"
+                      className="block text-lg font-semibold text-ink hover:text-primary mt-0.5"
                     >
-                      {m.id.slice(0, 8)}
+                      {title}
                     </Link>
+                    {body && <MarkdownContent content={body} variant="preview" />}
                   </div>
-                  <div className="mt-0.5">
-                    <MarkdownContent content={m.content} variant="preview" />
-                  </div>
-                </div>
-              </li>
-            ))}
+                </li>
+              );
+            })}
           </ul>
         </li>
       ))}
@@ -781,6 +803,30 @@ function ClustersList({
 // ---------------------------------------------------------------------------
 // Shared bits
 // ---------------------------------------------------------------------------
+
+function extractTitleAndBody(
+  content: string,
+  fallback: { type: string; id: string }
+): { title: string; body: string } {
+  const trimmed = content?.trim() ?? "";
+  if (!trimmed) {
+    return {
+      title: `${fallback.type} · ${fallback.id.slice(0, 8)}`,
+      body: "",
+    };
+  }
+  const h1 = trimmed.match(/^# (.+?)$/m);
+  if (h1) {
+    // Strip ONLY the first h1 line from the body.
+    const body = trimmed.replace(/^# (.+?)$\n?/m, "").trim();
+    return { title: h1[1].trim(), body };
+  }
+  // Fallback: first non-empty line, truncated.
+  const firstLine = trimmed.split("\n").find((l) => l.trim().length > 0) ?? "";
+  const title =
+    firstLine.length > 120 ? firstLine.slice(0, 117) + "…" : firstLine;
+  return { title, body: trimmed.slice(firstLine.length).trim() };
+}
 
 function Filters({
   allTags,
@@ -944,74 +990,86 @@ function MemoryList({
   }
   return (
     <ul className="space-y-2">
-      {rows.map((m) => (
-        <li
-          key={m.id}
-          className={`border rounded p-3 flex gap-3 ${
-            selected.has(m.id) ? "bg-primary-muted border-primary" : "hover:bg-surface-muted"
-          }`}
-        >
-          <input
-            type="checkbox"
-            checked={selected.has(m.id)}
-            onChange={() => onToggle(m.id)}
-            className="mt-1 shrink-0"
-          />
-          <div className="flex-1 min-w-0">
-            <div className="flex justify-between items-start mb-1">
-              <span className="text-xs uppercase text-ink-muted">{m.type}</span>
-              <div className="flex items-center gap-2">
-                {onFindSimilar && (
-                  <button
-                    onClick={() => onFindSimilar(m.id)}
-                    className="text-xs text-primary hover:underline"
-                    title="Find similar memories"
+      {rows.map((m) => {
+        const { title, body } = extractTitleAndBody(m.content, {
+          type: m.type,
+          id: m.id,
+        });
+        return (
+          <li
+            key={m.id}
+            className={`border rounded p-3 flex gap-3 ${
+              selected.has(m.id) ? "bg-primary-muted border-primary" : "hover:bg-surface-muted"
+            }`}
+          >
+            <input
+              type="checkbox"
+              checked={selected.has(m.id)}
+              onChange={() => onToggle(m.id)}
+              className="mt-1 shrink-0"
+            />
+            <div className="flex-1 min-w-0">
+              <div className="flex justify-between items-start mb-1">
+                <span className="text-xs uppercase text-ink-muted">{m.type}</span>
+                <div className="flex items-center gap-2">
+                  {onFindSimilar && (
+                    <button
+                      onClick={() => onFindSimilar(m.id)}
+                      className="text-xs text-primary hover:underline"
+                      title="Find similar memories"
+                    >
+                      similar →
+                    </button>
+                  )}
+                  <Link
+                    href={`/memories/${m.id}`}
+                    className="text-xs text-primary hover:underline font-mono"
                   >
-                    similar →
-                  </button>
-                )}
-                <Link
-                  href={`/memories/${m.id}`}
-                  className="text-xs text-primary hover:underline font-mono"
-                >
-                  {m.id.slice(0, 8)}
-                </Link>
+                    {m.id.slice(0, 8)}
+                  </Link>
+                </div>
               </div>
+              <Link
+                href={`/memories/${m.id}`}
+                className="block text-lg font-semibold text-ink hover:text-primary"
+              >
+                {title}
+              </Link>
+              {body && <MarkdownContent content={body} variant="preview" />}
+              <div className="mt-1.5 flex flex-wrap gap-1">
+                {m.tags.map((t) => (
+                  <button
+                    key={t}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onAddTag?.(t);
+                    }}
+                    type="button"
+                    className="text-xs bg-surface-subtle hover:bg-surface-strong px-1.5 py-0.5 rounded cursor-pointer transition-colors"
+                    title="Add this tag to filter"
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+              {showStaleMeta && (
+                <p className="text-xs text-ink-muted mt-1.5">
+                  {showStaleMeta === "updated" ? "Updated" : "Last read"}:{" "}
+                  {showStaleMeta === "updated"
+                    ? formatDate(m.updated_at)
+                    : m.last_accessed_at
+                    ? formatDate(m.last_accessed_at)
+                    : "never"}{" "}
+                  {showStaleMeta === "accessed" && m.access_count !== undefined && (
+                    <span className="text-ink-faint">· {m.access_count} reads</span>
+                  )}
+                </p>
+              )}
             </div>
-            <MarkdownContent content={m.content} variant="preview" />
-            <div className="mt-1.5 flex flex-wrap gap-1">
-              {m.tags.map((t) => (
-                <button
-                  key={t}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    onAddTag?.(t);
-                  }}
-                  type="button"
-                  className="text-xs bg-surface-subtle hover:bg-surface-strong px-1.5 py-0.5 rounded cursor-pointer transition-colors"
-                  title="Add this tag to filter"
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
-            {showStaleMeta && (
-              <p className="text-xs text-ink-muted mt-1.5">
-                {showStaleMeta === "updated" ? "Updated" : "Last read"}:{" "}
-                {showStaleMeta === "updated"
-                  ? formatDate(m.updated_at)
-                  : m.last_accessed_at
-                  ? formatDate(m.last_accessed_at)
-                  : "never"}{" "}
-                {showStaleMeta === "accessed" && m.access_count !== undefined && (
-                  <span className="text-ink-faint">· {m.access_count} reads</span>
-                )}
-              </p>
-            )}
-          </div>
-        </li>
-      ))}
+          </li>
+        );
+      })}
     </ul>
   );
 }
