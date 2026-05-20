@@ -35,6 +35,8 @@ class ThreadMemoryRecord(BaseModel):
     created_at: datetime
     updated_at: datetime
     deleted_at: datetime | None
+    expires_at: datetime | None
+    indexable: bool
     embedding_status: str
 
     @field_validator("metadata", mode="before")
@@ -71,7 +73,8 @@ class MemoryThreadGetTool(BaseTool):
                 """
                 SELECT id, content, type, tags, metadata, version, is_current,
                        parent_id, supersedes, superseded_by,
-                       created_at, updated_at, deleted_at, embedding_status
+                       created_at, updated_at, deleted_at,
+                       expires_at, indexable, embedding_status
                 FROM memories
                 WHERE id = $1 AND tenant_id = $2
                 """,
@@ -124,7 +127,8 @@ class MemoryThreadGetTool(BaseTool):
                 """
                 SELECT id, content, type, tags, metadata, version, is_current,
                        parent_id, supersedes, superseded_by,
-                       created_at, updated_at, deleted_at, embedding_status
+                       created_at, updated_at, deleted_at,
+                       expires_at, indexable, embedding_status
                 FROM memories
                 WHERE parent_id = $1 AND tenant_id = $2 AND deleted_at IS NULL
                 ORDER BY created_at ASC

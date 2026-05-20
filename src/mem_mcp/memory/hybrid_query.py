@@ -53,6 +53,7 @@ class SearchResult:
     kw_score: float
     recency_factor: float
     score: float
+    indexable: bool
     embedding_status: str
 
 
@@ -108,7 +109,7 @@ SELECT m.id, m.content, m.type, m.tags, m.version,
            $9::float * c.sem_score
          + $10::float * (c.kw_score / GREATEST((SELECT MAX(kw_score) FROM keyword), 0.0001))
        ) * exp(-$8::float * c.age_days) AS score,
-       m.embedding_status
+       m.indexable, m.embedding_status
 FROM combined c
 JOIN memories m ON m.id = c.id
 ORDER BY score DESC
@@ -151,6 +152,7 @@ async def hybrid_search(
             kw_score=float(r["kw_score"]),
             recency_factor=float(r["recency_factor"]),
             score=float(r["score"]),
+            indexable=bool(r["indexable"]),
             embedding_status=r["embedding_status"],
         )
         for r in rows

@@ -102,6 +102,8 @@ class TestMemoryWriteToolReply:
                 "parent_id": None,
                 "deleted_at": None,
                 "embedding_status": "ok",
+                "expires_at": None,
+                "indexable": True,
             },
             {"id": reply_id, "version": 1, "created_at": datetime.now(tz=UTC)},
         ]
@@ -168,6 +170,8 @@ class TestMemoryWriteToolReply:
                 "parent_id": uuid4(),  # parent IS itself a reply
                 "deleted_at": None,
                 "embedding_status": "ok",
+                "expires_at": None,
+                "indexable": True,
             }
         ]
         _patch_tx(monkeypatch, conn)
@@ -238,6 +242,8 @@ class TestMemoryThreadGetTool:
                 "created_at": now,
                 "updated_at": now,
                 "deleted_at": None,
+                "expires_at": None,
+                "indexable": True,
                 "embedding_status": "ok",
             }
         ]
@@ -256,6 +262,8 @@ class TestMemoryThreadGetTool:
                 "created_at": now,
                 "updated_at": now,
                 "deleted_at": None,
+                "expires_at": None,
+                "indexable": True,
                 "embedding_status": "ok",
             },
             {
@@ -272,6 +280,8 @@ class TestMemoryThreadGetTool:
                 "created_at": now,
                 "updated_at": now,
                 "deleted_at": None,
+                "expires_at": None,
+                "indexable": True,
                 "embedding_status": "ok",
             },
         ]
@@ -316,6 +326,9 @@ class TestMemoryThreadGetTool:
                 "created_at": datetime.now(tz=UTC),
                 "updated_at": datetime.now(tz=UTC),
                 "deleted_at": datetime.now(tz=UTC),
+                "expires_at": None,
+                "indexable": True,
+                "embedding_status": "ok",
             }
         ]
         _patch_tx(monkeypatch, conn)
@@ -345,6 +358,8 @@ class TestMemoryThreadGetTool:
                 "created_at": datetime.now(tz=UTC),
                 "updated_at": datetime.now(tz=UTC),
                 "deleted_at": None,
+                "expires_at": None,
+                "indexable": True,
                 "embedding_status": "ok",
             }
         ]
@@ -378,6 +393,8 @@ class TestMemoryThreadGetTool:
                 "created_at": now,
                 "updated_at": now,
                 "deleted_at": None,
+                "expires_at": None,
+                "indexable": True,
                 "embedding_status": "ok",
             }
         ]
@@ -408,6 +425,8 @@ class TestDeleteReplyCascade:
                 "is_current": True,
                 "deleted_at": None,
                 "embedding_status": "ok",
+                "expires_at": None,
+                "indexable": True,
                 "parent_id": None,
             }
         ]
@@ -435,6 +454,8 @@ class TestDeleteReplyCascade:
                 "is_current": True,
                 "deleted_at": None,
                 "embedding_status": "ok",
+                "expires_at": None,
+                "indexable": True,
                 "parent_id": parent_id,  # target is a reply
             }
         ]

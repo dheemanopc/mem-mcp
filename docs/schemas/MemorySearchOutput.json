@@ -20,6 +20,10 @@
           "title": "Id",
           "type": "string"
         },
+        "indexable": {
+          "title": "Indexable",
+          "type": "boolean"
+        },
         "score": {
           "title": "Score",
           "type": "number"
@@ -62,6 +66,7 @@
         "updated_at",
         "score",
         "scores_breakdown",
+        "indexable",
         "embedding_status"
       ],
       "title": "SearchResultItem",

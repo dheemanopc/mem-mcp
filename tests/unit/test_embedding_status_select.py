@@ -149,3 +149,29 @@ def test_memory_list_item_requires_embedding_status() -> None:
     except Exception as e:
         # Should be a validation error
         assert "embedding_status" in str(e).lower() or "field required" in str(e).lower()
+
+
+def test_thread_get_select_includes_indexable() -> None:
+    """thread_get.py SELECTs must include `indexable` to populate the response field."""
+    tool = MemoryThreadGetTool()
+    source = inspect.getsource(tool.__call__)
+    # Check that indexable appears at least twice (root + replies)
+    indexable_count = source.count("indexable")
+    assert (
+        indexable_count >= 2
+    ), f"thread_get.py must include indexable in at least 2 SELECTs (found {indexable_count})"
+
+
+def test_search_select_includes_indexable() -> None:
+    """search.py SELECTs must include `indexable`."""
+    # The search uses hybrid_query.py, check that module
+    from mem_mcp.memory.hybrid_query import _HYBRID_SQL
+
+    assert "indexable" in _HYBRID_SQL, "hybrid_query.py SELECT must include indexable column"
+
+
+def test_list_select_includes_indexable() -> None:
+    """list.py SELECT must include `indexable`."""
+    tool = MemoryListTool()
+    source = inspect.getsource(tool.__call__)
+    assert "indexable" in source, "list.py must SELECT indexable"
