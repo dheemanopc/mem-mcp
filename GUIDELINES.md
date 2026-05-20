@@ -160,7 +160,21 @@ Three layers (per LLD/spec §5.2): app-level tenant resolver, RLS, explicit `WHE
 
 ---
 
-## 6.7 Embedding status lifecycle
+## 6.7 Memory list endpoint: content truncation
+
+The `memory.list` endpoint returns paginated results. For performance, the `content` field in list results is truncated to the first 2000 characters; the UI renders `MarkdownContent variant="preview"` (4 clamped lines) which never requires full content.
+
+**Why:** Full `content` (up to 200 KB per memory) × 100-row pages = ~20 MB wire payload. Postgres's TOAST detoasting only pulls the truncated prefix, eliminating unnecessary I/O.
+
+**Key facts:**
+- `memory.list` returns `LEFT(content, 2000) AS content`
+- Schema unchanged; `MemoryListItem` model accepts truncated strings transparently
+- To retrieve full content, call `memory.get(id=...)` explicitly
+- This is a list-endpoint-only optimization; all write/get/thread endpoints return full content
+
+---
+
+## 6.8 Embedding status lifecycle
 
 Every `memory` row includes `embedding_status: TEXT` to track the state of Bedrock embedding attempts. All 7 states are documented below; they control retry eligibility and inform the backfill worker.
 

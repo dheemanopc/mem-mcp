@@ -157,7 +157,7 @@ class MemoryListTool(BaseTool):
         # Fetch limit + 1 to detect if there's a next page
         fetch_limit = inp.limit + 1
         query = f"""
-            SELECT id, content, type, tags, version, is_current, created_at, updated_at, deleted_at,
+            SELECT id, LEFT(content, 2000) AS content, type, tags, version, is_current, created_at, updated_at, deleted_at,
                    expires_at, indexable, embedding_status
             FROM memories
             WHERE {where_str}
