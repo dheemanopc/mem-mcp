@@ -68,6 +68,7 @@ from mem_mcp.mcp.tools.thread_get import MemoryThreadGetTool
 from mem_mcp.mcp.tools.undelete import MemoryUndeleteTool
 from mem_mcp.mcp.tools.update import MemoryUpdateTool
 from mem_mcp.mcp.tools.write import MemoryWriteTool
+from mem_mcp.mcp.tools.write_batch import MemoryWriteBatchTool
 from mem_mcp.mcp.transport import make_mcp_router
 from mem_mcp.quotas.enforcer import QuotaEnforcer
 from mem_mcp.skills.kite.enable_tool import MemsysEnableKiteTool
@@ -319,6 +320,7 @@ def _wire_routers(app: FastAPI) -> None:
     registry = ToolRegistry()
     tools_list: list = [
         MemoryWriteTool,
+        MemoryWriteBatchTool,
         MemorySearchTool,
         MemoryGetTool,
         MemoryListTool,

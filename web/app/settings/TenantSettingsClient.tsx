@@ -4,6 +4,7 @@
 "use client";
 
 import { useState } from "react";
+import { csrfHeaders } from "@/lib/csrf";
 
 interface TenantSettingsClientProps {
   initialRetentionDays: number;
@@ -23,17 +24,9 @@ export function TenantSettingsClient({
     setErrorMsg("");
 
     try {
-      const csrfToken = document.cookie
-        .split("; ")
-        .find((c) => c.startsWith("csrf_token="))
-        ?.split("=")[1];
-
       const res = await fetch("/api/web/tenant", {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
-        },
+        headers: csrfHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ retention_days: retentionDays }),
         credentials: "same-origin",
       });

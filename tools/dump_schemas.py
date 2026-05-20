@@ -28,6 +28,8 @@ MODELS: list[tuple[str, str]] = [
     ("mem_mcp.embeddings.bedrock", "EmbedResult"),
     ("mem_mcp.mcp.tools.write", "MemoryWriteInput"),
     ("mem_mcp.mcp.tools.write", "MemoryWriteOutput"),
+    ("mem_mcp.mcp.tools.write_batch", "MemoryWriteBatchInput"),
+    ("mem_mcp.mcp.tools.write_batch", "MemoryWriteBatchOutput"),
     ("mem_mcp.mcp.tools.search", "MemorySearchInput"),
     ("mem_mcp.mcp.tools.search", "MemorySearchOutput"),
     ("mem_mcp.mcp.tools.get", "MemoryGetInput"),

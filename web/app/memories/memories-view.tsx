@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { MarkdownContent } from "@/components/ui/MarkdownContent";
+import { csrfHeaders } from "@/lib/csrf";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -206,7 +207,7 @@ function BrowseTab({
       const res = await fetch("/api/web/memories/management/bulk-delete", {
         method: "POST",
         credentials: "include",
-        headers: { "content-type": "application/json" },
+        headers: csrfHeaders({ "content-type": "application/json" }),
         body: JSON.stringify({ ids }),
       });
       if (!res.ok) {
@@ -324,7 +325,7 @@ function StaleTab({ onFindSimilar }: { onFindSimilar: (id: string) => void }) {
       const res = await fetch("/api/web/memories/management/bulk-delete", {
         method: "POST",
         credentials: "include",
-        headers: { "content-type": "application/json" },
+        headers: csrfHeaders({ "content-type": "application/json" }),
         body: JSON.stringify({ ids }),
       });
       if (!res.ok) {
@@ -517,7 +518,7 @@ function SimilarTab({
       const res = await fetch("/api/web/memories/management/bulk-delete", {
         method: "POST",
         credentials: "include",
-        headers: { "content-type": "application/json" },
+        headers: csrfHeaders({ "content-type": "application/json" }),
         body: JSON.stringify({ ids }),
       });
       if (!res.ok) {

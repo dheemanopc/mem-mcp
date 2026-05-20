@@ -4,6 +4,7 @@
 "use client";
 
 import { useState } from "react";
+import { getCsrfToken } from "@/lib/csrf";
 
 interface Identity {
   id: string;
@@ -33,10 +34,7 @@ export function IdentityActionsClient({
     setErrorMsg("");
 
     try {
-      const csrfToken = document.cookie
-        .split("; ")
-        .find((c) => c.startsWith("csrf_token="))
-        ?.split("=")[1];
+      const csrfToken = getCsrfToken();
 
       const res = await fetch(`/api/web/identities/${identityId}`, {
         method: "DELETE",
