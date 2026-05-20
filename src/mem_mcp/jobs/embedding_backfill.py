@@ -13,11 +13,11 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import text
 
-from mem_mcp.db import create_pool
+from mem_mcp.db import init_pool
 from mem_mcp.embeddings.bedrock import BedrockEmbeddingClient, EmbeddingError
 from mem_mcp.logging_setup import get_logger
 
@@ -31,9 +31,7 @@ BATCH_SIZE = int(os.getenv("MEM_MCP_EMBEDDING_BACKFILL_BATCH_SIZE", "50"))
 MAX_CONCURRENCY = int(os.getenv("MEM_MCP_EMBEDDING_BACKFILL_CONCURRENCY", "10"))
 
 
-async def fetch_candidates(
-    conn: asyncpg.Connection, batch_size: int
-) -> list[dict[str, str]]:
+async def fetch_candidates(conn: asyncpg.Connection, batch_size: int) -> list[dict[str, str]]:
     """Fetch up to batch_size candidate rows for embedding retry.
 
     Only selects:
@@ -77,9 +75,7 @@ async def update_row_success(
     )
 
 
-async def update_row_status(
-    conn: asyncpg.Connection, memory_id: str, status: str
-) -> None:
+async def update_row_status(conn: asyncpg.Connection, memory_id: str, status: str) -> None:
     """Update row: set embedding_status (for failed_validation, etc)."""
     await conn.execute(
         text("""
@@ -93,11 +89,11 @@ async def update_row_status(
 
 async def run_backfill(
     pool: asyncpg.Pool,
-    embedder,
+    embedder: Any,
     *,
     batch_size: int = BATCH_SIZE,
     max_concurrency: int = MAX_CONCURRENCY,
-) -> dict:
+) -> dict[str, int]:
     """Run one-shot backfill pass.
 
     Fetches candidates, embeds with bounded concurrency, updates rows.
@@ -118,7 +114,7 @@ async def run_backfill(
 
     sem = asyncio.Semaphore(max_concurrency)
 
-    async def _embed_one(row: dict) -> str:
+    async def _embed_one(row: dict[str, Any]) -> str:
         """Embed one row, return result status."""
         async with sem:
             try:
@@ -142,9 +138,7 @@ async def run_backfill(
                 )
                 return "failed_unknown"
 
-    results = await asyncio.gather(
-        *[_embed_one(r) for r in candidates], return_exceptions=True
-    )
+    results = await asyncio.gather(*[_embed_one(r) for r in candidates], return_exceptions=True)
 
     # Tally results
     for result in results:
@@ -165,10 +159,11 @@ async def main() -> int:
         _log.error("DATABASE_URL not set")
         return 1
 
-    pool = await create_pool(dsn)
+    pool = await init_pool(dsn)
 
     try:
-        embedder = BedrockEmbeddingClient()
+        region = os.getenv("AWS_REGION", "ap-south-1")
+        embedder = BedrockEmbeddingClient(region=region)
         result = await run_backfill(pool, embedder)
         _log.info("backfill_result", extra=result)
         return 0

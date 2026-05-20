@@ -89,9 +89,7 @@ class TestEmbeddingBackfill:
 
         # Mock embedder
         embedder = AsyncMock()
-        embedder.embed.return_value = EmbedResult(
-            vector=[0.1, 0.2], input_tokens=10
-        )
+        embedder.embed.return_value = EmbedResult(vector=[0.1, 0.2], input_tokens=10)
 
         result = await run_backfill(pool, embedder, batch_size=50)
 
@@ -167,17 +165,12 @@ class TestEmbeddingBackfill:
         pool.acquire.return_value = acquire_ctx
 
         # Many candidates
-        candidates = [
-            {"id": str(uuid4()), "content": f"content {i}"}
-            for i in range(100)
-        ]
+        candidates = [{"id": str(uuid4()), "content": f"content {i}"} for i in range(100)]
         conn.fetch.return_value = candidates
 
         # Fast embedder
         embedder = AsyncMock()
-        embedder.embed.return_value = EmbedResult(
-            vector=[0.1], input_tokens=1
-        )
+        embedder.embed.return_value = EmbedResult(vector=[0.1], input_tokens=1)
 
         result = await run_backfill(pool, embedder, max_concurrency=10)
 

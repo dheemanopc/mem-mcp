@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from unittest.mock import AsyncMock
-from uuid import uuid4
 
 import pytest
 
@@ -19,9 +17,7 @@ class TestEmbedOrSkip:
     async def test_returns_ok_on_bedrock_success(self) -> None:
         """embed_or_skip returns (vector, tokens, 'ok') on successful embedding."""
         embedder = AsyncMock()
-        embedder.embed.return_value = EmbedResult(
-            vector=[0.1, 0.2, 0.3], input_tokens=42
-        )
+        embedder.embed.return_value = EmbedResult(vector=[0.1, 0.2, 0.3], input_tokens=42)
 
         vec, tokens, status = await embed_or_skip(
             content="hello world",
@@ -88,9 +84,7 @@ class TestEmbedOrSkip:
     async def test_returns_failed_unavailable_on_bedrock_unavailable(self) -> None:
         """embed_or_skip returns (None, 0, 'failed_unavailable') on 503."""
         embedder = AsyncMock()
-        embedder.embed.side_effect = EmbeddingError(
-            "unavailable", "service unavailable"
-        )
+        embedder.embed.side_effect = EmbeddingError("unavailable", "service unavailable")
 
         vec, tokens, status = await embed_or_skip(
             content="hello",
@@ -106,9 +100,7 @@ class TestEmbedOrSkip:
     async def test_raises_on_invalid_input(self) -> None:
         """embed_or_skip RAISES EmbeddingError on invalid_input (behavior change)."""
         embedder = AsyncMock()
-        embedder.embed.side_effect = EmbeddingError(
-            "invalid_input", "malformed UTF-8"
-        )
+        embedder.embed.side_effect = EmbeddingError("invalid_input", "malformed UTF-8")
 
         with pytest.raises(EmbeddingError) as exc_info:
             await embed_or_skip(
