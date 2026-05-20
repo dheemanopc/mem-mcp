@@ -268,6 +268,7 @@ class TestMemorySearchTool:
                     kw_score=0.5,
                     recency_factor=0.95,
                     score=0.8,
+                    embedding_status="ok",
                 )
             ]
 
@@ -334,6 +335,7 @@ class TestMemoryGetTool:
             "deleted_at": None,
             "expires_at": None,
             "indexable": True,
+            "embedding_status": "ok",
         }
         conn = AsyncMock()
         conn.fetchrow.return_value = row
@@ -381,6 +383,7 @@ class TestMemoryGetTool:
             "deleted_at": None,
             "expires_at": None,
             "indexable": True,
+            "embedding_status": "ok",
         }
         conn = AsyncMock()
         conn.fetchrow.return_value = row
@@ -411,6 +414,7 @@ class TestMemoryGetTool:
             "deleted_at": None,
             "expires_at": None,
             "indexable": True,
+            "embedding_status": "ok",
         }
         conn = AsyncMock()
         conn.fetchrow.return_value = row
@@ -438,6 +442,7 @@ class TestMemoryGetTool:
             "deleted_at": None,
             "expires_at": None,
             "indexable": True,
+            "embedding_status": "ok",
         }
         conn = AsyncMock()
         conn.fetchrow.return_value = row

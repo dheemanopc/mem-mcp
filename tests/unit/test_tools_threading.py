@@ -101,6 +101,7 @@ class TestMemoryWriteToolReply:
                 "tags": ["alpha", "beta"],
                 "parent_id": None,
                 "deleted_at": None,
+                "embedding_status": "ok",
             },
             {"id": reply_id, "version": 1, "created_at": datetime.now(tz=UTC)},
         ]
@@ -166,6 +167,7 @@ class TestMemoryWriteToolReply:
                 "tags": [],
                 "parent_id": uuid4(),  # parent IS itself a reply
                 "deleted_at": None,
+                "embedding_status": "ok",
             }
         ]
         _patch_tx(monkeypatch, conn)
@@ -236,6 +238,7 @@ class TestMemoryThreadGetTool:
                 "created_at": now,
                 "updated_at": now,
                 "deleted_at": None,
+                "embedding_status": "ok",
             }
         ]
         conn.fetch.return_value = [
@@ -253,6 +256,7 @@ class TestMemoryThreadGetTool:
                 "created_at": now,
                 "updated_at": now,
                 "deleted_at": None,
+                "embedding_status": "ok",
             },
             {
                 "id": r2,
@@ -268,6 +272,7 @@ class TestMemoryThreadGetTool:
                 "created_at": now,
                 "updated_at": now,
                 "deleted_at": None,
+                "embedding_status": "ok",
             },
         ]
         _patch_tx(monkeypatch, conn)
@@ -340,6 +345,7 @@ class TestMemoryThreadGetTool:
                 "created_at": datetime.now(tz=UTC),
                 "updated_at": datetime.now(tz=UTC),
                 "deleted_at": None,
+                "embedding_status": "ok",
             }
         ]
         _patch_tx(monkeypatch, conn)
@@ -372,6 +378,7 @@ class TestMemoryThreadGetTool:
                 "created_at": now,
                 "updated_at": now,
                 "deleted_at": None,
+                "embedding_status": "ok",
             }
         ]
         conn.fetch.return_value = []
@@ -400,6 +407,7 @@ class TestDeleteReplyCascade:
                 "supersedes": None,
                 "is_current": True,
                 "deleted_at": None,
+                "embedding_status": "ok",
                 "parent_id": None,
             }
         ]
@@ -426,6 +434,7 @@ class TestDeleteReplyCascade:
                 "supersedes": None,
                 "is_current": True,
                 "deleted_at": None,
+                "embedding_status": "ok",
                 "parent_id": parent_id,  # target is a reply
             }
         ]

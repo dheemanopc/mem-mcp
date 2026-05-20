@@ -5,6 +5,7 @@
 "use client";
 
 import { useState } from "react";
+import { csrfHeaders } from "@/lib/csrf";
 
 export default function FeedbackPage() {
   const [text, setText] = useState("");
@@ -21,18 +22,9 @@ export default function FeedbackPage() {
     setErrorMsg("");
 
     try {
-      // Extract CSRF token from cookie
-      const csrfToken = document.cookie
-        .split("; ")
-        .find((c) => c.startsWith("csrf_token="))
-        ?.split("=")[1];
-
       const res = await fetch("/api/web/feedback", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
-        },
+        headers: csrfHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ text, metadata: {} }),
         credentials: "same-origin",
       });

@@ -116,6 +116,7 @@ class MemoryWriteOutput(BaseModel):
     merged_into: UUID | None
     created_at: datetime
     request_id: str
+    embedding_status: str
 
 
 class MemoryWriteTool(BaseTool):
@@ -143,11 +144,13 @@ class MemoryWriteTool(BaseTool):
             expires_at = datetime.now(UTC) + timedelta(seconds=inp.ttl_seconds)
 
         # Embed via Bedrock with graceful degrade on throttle/unavailable.
-        # Returns (embedding_vec, tokens, skip_reason). Validation errors are re-raised.
+        # Returns (embedding_vec, tokens, embedding_status).
+        # Note: invalid_input errors are now raised (no longer gracefully degraded).
         embedding_vec: list[float] | None
         embed_tokens: int
+        embedding_status: str
         try:
-            embedding_vec, embed_tokens, embed_skip_reason = await embed_or_skip(
+            embedding_vec, embed_tokens, embedding_status = await embed_or_skip(
                 inp.content,
                 inp.indexable,
                 ctx.deps.embeddings,
@@ -215,6 +218,7 @@ class MemoryWriteTool(BaseTool):
                     merged_into=existing.existing_id,
                     created_at=row["created_at"],
                     request_id=ctx.request_id,
+                    embedding_status=embedding_status,
                 )
 
             # parent_id branch: write a reply
@@ -284,8 +288,8 @@ class MemoryWriteTool(BaseTool):
                         tenant_id, content, content_hash, embedding,
                         source_client_id, source_kind,
                         type, tags, metadata, version, is_current, parent_id,
-                        expires_at, indexable
-                    ) VALUES ($1, $2, $3, $4::vector, $5, 'api', $6, $7, $8::jsonb, 1, true, $9, $10, $11)
+                        expires_at, indexable, embedding_status
+                    ) VALUES ($1, $2, $3, $4::vector, $5, 'api', $6, $7, $8::jsonb, 1, true, $9, $10, $11, $12)
                     RETURNING id, version, created_at
                     """,
                     ctx.tenant_id,
@@ -299,6 +303,7 @@ class MemoryWriteTool(BaseTool):
                     inp.parent_id,
                     expires_at,
                     inp.indexable,
+                    embedding_status,
                 )
                 await ctx.deps.audit.audit(
                     conn,
@@ -328,6 +333,7 @@ class MemoryWriteTool(BaseTool):
                     merged_into=None,
                     created_at=reply_row["created_at"],
                     request_id=ctx.request_id,
+                    embedding_status=embedding_status,
                 )
 
             # supersede branch (versioned types only)
@@ -383,8 +389,8 @@ class MemoryWriteTool(BaseTool):
                         source_client_id, source_kind,
                         type, tags, metadata,
                         version, supersedes, is_current,
-                        expires_at, indexable
-                    ) VALUES ($1, $2, $3, $4::vector, $5, 'api', $6, $7, $8::jsonb, $9, $10, true, $11, $12)
+                        expires_at, indexable, embedding_status
+                    ) VALUES ($1, $2, $3, $4::vector, $5, 'api', $6, $7, $8::jsonb, $9, $10, true, $11, $12, $13)
                     RETURNING id, version, created_at
                     """,
                     ctx.tenant_id,
@@ -399,6 +405,7 @@ class MemoryWriteTool(BaseTool):
                     inp.supersedes,
                     expires_at,
                     inp.indexable,
+                    embedding_status,
                 )
                 # Mark old as superseded
                 await conn.execute(
@@ -430,6 +437,7 @@ class MemoryWriteTool(BaseTool):
                     merged_into=None,
                     created_at=new_row["created_at"],
                     request_id=ctx.request_id,
+                    embedding_status=embedding_status,
                 )
 
             # Plain INSERT
@@ -439,8 +447,8 @@ class MemoryWriteTool(BaseTool):
                     tenant_id, content, content_hash, embedding,
                     source_client_id, source_kind,
                     type, tags, metadata, version, is_current,
-                    expires_at, indexable
-                ) VALUES ($1, $2, $3, $4::vector, $5, 'api', $6, $7, $8::jsonb, 1, true, $9, $10)
+                    expires_at, indexable, embedding_status
+                ) VALUES ($1, $2, $3, $4::vector, $5, 'api', $6, $7, $8::jsonb, 1, true, $9, $10, $11)
                 RETURNING id, version, created_at
                 """,
                 ctx.tenant_id,
@@ -453,6 +461,7 @@ class MemoryWriteTool(BaseTool):
                 json.dumps(inp.metadata),
                 expires_at,
                 inp.indexable,
+                embedding_status,
             )
             await ctx.deps.audit.audit(
                 conn,
@@ -480,4 +489,5 @@ class MemoryWriteTool(BaseTool):
                 merged_into=None,
                 created_at=row["created_at"],
                 request_id=ctx.request_id,
+                embedding_status=embedding_status,
             )

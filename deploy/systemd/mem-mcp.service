@@ -12,7 +12,7 @@ EnvironmentFile=/etc/mem-mcp/env
 ExecStart=/home/memmcp/.local/bin/poetry run uvicorn mem_mcp.main:app \
     --host 127.0.0.1 --port 8080 \
     --proxy-headers --forwarded-allow-ips '127.0.0.1' \
-    --workers 2
+    --workers 6
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=15

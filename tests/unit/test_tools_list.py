@@ -60,6 +60,7 @@ def _memory_row(**overrides: Any) -> dict[str, Any]:
         "deleted_at": None,
         "expires_at": None,
         "indexable": True,
+        "embedding_status": "ok",
     }
     base.update(overrides)
     return base

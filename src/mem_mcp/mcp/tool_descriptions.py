@@ -118,6 +118,15 @@ Optional: orders_enabled=true to allow kite_place_order and kite_cancel_order (d
 Output: status (enabled / stored_but_smoke_failed), mode (manual / request_token_exchange / auto_login), user_id (Zerodha user_id if known), smoke_test_result.
 
 Examples: 'Set up Kite with auto-login for trader@example.com (totp ABCDEF, pwd xxx)' → mode auto_login. 'Refresh my Kite access_token: NEW_ATOK' → mode manual. 'Enable Kite trading' → include orders_enabled=true.""",
+    "memory_write_batch": """Store multiple memories in a single request, avoiding N round-trips — call this when partners need to atomically write a batch of memories, avoiding per-write JSON-RPC envelope overhead.
+
+Call when: user/partner says "write 50 memories at once", "batch insert these", "upload all my notes"; a client workflow fires 50+ memory_write calls in a loop and needs to reduce latency; you need to preserve quota semantics per-entry (each counts individually against writes_per_minute and embed_tokens_daily).
+
+Do not call when only one memory is being written — use memory_write directly. Do not call to "merge" memories that should be one — use memory_write deduplication instead. Do not bypass per-entry error handling by pretending all-or-nothing is required; on_error=continue is the default (process all, report per-entry status).
+
+Behavior: iterates each entry, calls memory_write internally (same code path, no duplication), reports per-entry success/failure. Each entry is its OWN transaction. Quota: each entry counts individually toward writes_per_minute and embed_tokens_daily — if mid-batch quota is exceeded, remaining entries fail with quota_exceeded (correct behavior). on_error=fail_all stops at first error and marks remaining as skipped; on_error=continue (default) processes all and returns full results.
+
+Examples: "Write 141 memories from FNO batch" → memories=[{...}, {...}, ...], on_error=continue. Partner API call: batch all pending journals at once → MemoryWriteBatchInput(memories=[...], on_error=fail_all) if atomicity required.""",
     "kite_cancel_order": """Cancel a pending or trigger-pending order on Zerodha — call this when the user wants to abort an order that hasn't yet fully executed.
 
 Call when: user explicitly says "cancel that order", "abort the buy on RELIANCE", "kill my SL"; orchestrator detects that a placed order's premise has been invalidated and needs to retract; cleanup before market close.
