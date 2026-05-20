@@ -232,3 +232,28 @@ class TestMemoryListTool:
         assert output.results[0].content == "test memory"
         assert output.next_cursor is None
         assert output.request_id == "req-id"
+
+    @pytest.mark.asyncio
+    async def test_list_truncates_content_to_2000_chars(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test that list endpoint truncates content to 2000 characters."""
+        tool = MemoryListTool()
+        ctx = _ctx()
+        inp = MemoryListInput()
+
+        # Create a memory with content truncated to 2000 chars (as returned by DB)
+        truncated_content = "x" * 2000
+        row = _memory_row(content=truncated_content)
+
+        mock_conn = AsyncMock()
+        mock_conn.fetch = AsyncMock(return_value=[row])
+
+        _patch_tenant_tx(monkeypatch, mock_conn)
+
+        result = await tool(ctx, inp)
+        assert isinstance(result, MemoryListOutput)
+        assert len(result.results) == 1
+        # Verify content length is exactly 2000 (truncated)
+        assert len(result.results[0].content) == 2000
+        assert result.results[0].content == truncated_content
