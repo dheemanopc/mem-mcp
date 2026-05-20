@@ -11,6 +11,10 @@
           "title": "Created At",
           "type": "string"
         },
+        "embedding_status": {
+          "title": "Embedding Status",
+          "type": "string"
+        },
         "id": {
           "format": "uuid",
           "title": "Id",
@@ -57,7 +61,8 @@
         "created_at",
         "updated_at",
         "score",
-        "scores_breakdown"
+        "scores_breakdown",
+        "embedding_status"
       ],
       "title": "SearchResultItem",
       "type": "object"

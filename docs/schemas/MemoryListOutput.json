@@ -24,6 +24,10 @@
           ],
           "title": "Deleted At"
         },
+        "embedding_status": {
+          "title": "Embedding Status",
+          "type": "string"
+        },
         "expires_at": {
           "anyOf": [
             {
@@ -81,7 +85,8 @@
         "updated_at",
         "deleted_at",
         "expires_at",
-        "indexable"
+        "indexable",
+        "embedding_status"
       ],
       "title": "MemoryListItem",
       "type": "object"

@@ -27,6 +27,18 @@
           "default": null,
           "title": "Deduped"
         },
+        "embedding_status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Embedding Status"
+        },
         "error": {
           "anyOf": [
             {

@@ -9,6 +9,10 @@
       "title": "Deduped",
       "type": "boolean"
     },
+    "embedding_status": {
+      "title": "Embedding Status",
+      "type": "string"
+    },
     "id": {
       "format": "uuid",
       "title": "Id",
@@ -41,7 +45,8 @@
     "deduped",
     "merged_into",
     "created_at",
-    "request_id"
+    "request_id",
+    "embedding_status"
   ],
   "title": "MemoryWriteOutput",
   "type": "object"
