@@ -50,6 +50,7 @@ class MemoryListItem(BaseModel):
     deleted_at: datetime | None
     expires_at: datetime | None
     indexable: bool
+    embedding_status: str
 
 
 class MemoryListOutput(BaseModel):

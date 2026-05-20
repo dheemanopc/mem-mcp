@@ -22,6 +22,7 @@ class _BatchEntryResult(BaseModel):
     deduped: bool | None = None
     merged_into: UUID | None = None
     created_at: str | None = None  # ISO 8601 datetime string
+    embedding_status: str | None = None
     error: dict[str, Any] | None = None  # {"code": "...", "message": "...", "data": {...}}
 
 
@@ -68,6 +69,7 @@ class MemoryWriteBatchTool(BaseTool):
                         deduped=output.deduped,
                         merged_into=output.merged_into,
                         created_at=output.created_at.isoformat(),
+                        embedding_status=output.embedding_status,
                     )
                 )
             except JsonRpcError as exc:

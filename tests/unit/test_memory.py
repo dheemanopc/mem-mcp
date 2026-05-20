@@ -222,6 +222,7 @@ def _row(score: float = 0.5, **overrides: Any) -> dict[str, Any]:
         "kw_score": 0.5,
         "recency_factor": 1.0,
         "score": score,
+        "embedding_status": "ok",
     }
     base.update(overrides)
     return base

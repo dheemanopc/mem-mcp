@@ -38,6 +38,7 @@ class MemoryRecord(BaseModel):
     deleted_at: datetime | None
     expires_at: datetime | None
     indexable: bool
+    embedding_status: str
 
     @field_validator("metadata", mode="before")
     @classmethod

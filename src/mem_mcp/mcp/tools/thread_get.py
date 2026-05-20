@@ -35,6 +35,7 @@ class ThreadMemoryRecord(BaseModel):
     created_at: datetime
     updated_at: datetime
     deleted_at: datetime | None
+    embedding_status: str
 
     @field_validator("metadata", mode="before")
     @classmethod

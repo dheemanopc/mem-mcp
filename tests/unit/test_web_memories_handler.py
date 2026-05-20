@@ -105,6 +105,7 @@ async def test_list_memories_happy_path(
                         deleted_at=None,
                         expires_at=None,
                         indexable=True,
+                        embedding_status="ok",
                     )
                 ],
                 next_cursor=None,
@@ -214,6 +215,7 @@ async def test_get_memory_happy_path(
                     deleted_at=None,
                     expires_at=None,
                     indexable=True,
+                    embedding_status="ok",
                 ),
                 history=[],
             )

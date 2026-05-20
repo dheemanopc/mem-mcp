@@ -50,6 +50,7 @@ class SearchResultItem(BaseModel):
     updated_at: datetime
     score: float
     scores_breakdown: dict[str, float]
+    embedding_status: str
 
 
 class MemorySearchOutput(BaseModel):
@@ -139,6 +140,7 @@ class MemorySearchTool(BaseTool):
                     "keyword": r.kw_score,
                     "recency_factor": r.recency_factor,
                 },
+                embedding_status=r.embedding_status,
             )
             for r in results
         ]
