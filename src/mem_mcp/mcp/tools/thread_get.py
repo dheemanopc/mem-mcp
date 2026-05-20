@@ -71,7 +71,7 @@ class MemoryThreadGetTool(BaseTool):
                 """
                 SELECT id, content, type, tags, metadata, version, is_current,
                        parent_id, supersedes, superseded_by,
-                       created_at, updated_at, deleted_at
+                       created_at, updated_at, deleted_at, embedding_status
                 FROM memories
                 WHERE id = $1 AND tenant_id = $2
                 """,
@@ -124,7 +124,7 @@ class MemoryThreadGetTool(BaseTool):
                 """
                 SELECT id, content, type, tags, metadata, version, is_current,
                        parent_id, supersedes, superseded_by,
-                       created_at, updated_at, deleted_at
+                       created_at, updated_at, deleted_at, embedding_status
                 FROM memories
                 WHERE parent_id = $1 AND tenant_id = $2 AND deleted_at IS NULL
                 ORDER BY created_at ASC

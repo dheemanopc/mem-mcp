@@ -158,7 +158,7 @@ class MemoryListTool(BaseTool):
         fetch_limit = inp.limit + 1
         query = f"""
             SELECT id, content, type, tags, version, is_current, created_at, updated_at, deleted_at,
-                   expires_at, indexable
+                   expires_at, indexable, embedding_status
             FROM memories
             WHERE {where_str}
             ORDER BY {order_clause}
