@@ -77,6 +77,16 @@
       "default": null,
       "title": "Skill Vault Master Key"
     },
+    "ta_cache_max_sessions": {
+      "default": 50,
+      "title": "Ta Cache Max Sessions",
+      "type": "integer"
+    },
+    "ta_max_sessions_per_tenant": {
+      "default": 10,
+      "title": "Ta Max Sessions Per Tenant",
+      "type": "integer"
+    },
     "web_client_id": {
       "title": "Web Client Id",
       "type": "string"
