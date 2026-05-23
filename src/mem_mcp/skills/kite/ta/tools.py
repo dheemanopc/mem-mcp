@@ -10,6 +10,7 @@ import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field
 
 from mem_mcp.skills.base import SkillError
+from mem_mcp.skills.kite.instruments_cache import get_instruments_cache
 from mem_mcp.skills.kite.ta.indicators import INDICATORS, get_indicator_summary
 from mem_mcp.skills.kite.ta.refresh import (
     lazy_trailing_refresh,
@@ -193,12 +194,15 @@ async def ta_session_open(
     api_key = creds["api_key"]
     access_token = creds["access_token"]
 
-    # For demo/testing, we'd need instrument_token. For now, reject if not provided.
-    # In production, symbol would be looked up to get instrument_token.
-    if not hasattr(ctx, "instrument_token"):
-        raise SkillError("instrument_token not available (would be looked up from symbol)")
-
-    instrument_token = ctx.instrument_token
+    # Look up instrument_token from symbol
+    ic = get_instruments_cache()
+    instrument_token = await ic.get_token(
+        tenant_id=tenant_id,
+        symbol=args.symbol,
+        client=client,
+        api_key=api_key,
+        access_token=access_token,
+    )
 
     # Determine lookback bars
     if args.lookback_bars == "max":
@@ -230,6 +234,7 @@ async def ta_session_open(
         symbol=args.symbol,
         timeframe=args.timeframe,
         tenant_id=tenant_id,
+        instrument_token=instrument_token,
         df=df,
         ttl_seconds=args.ttl_seconds,
     )
@@ -275,9 +280,7 @@ async def ta_indicator_compute(
     creds = ctx.credentials
     api_key = creds["api_key"]
     access_token = creds["access_token"]
-    if not hasattr(ctx, "instrument_token"):
-        raise SkillError("instrument_token not available")
-    instrument_token = ctx.instrument_token
+    instrument_token = entry.instrument_token
 
     df_refreshed, was_refreshed = await lazy_trailing_refresh(
         client,
@@ -637,9 +640,7 @@ async def ta_session_refresh(
     creds = ctx.credentials
     api_key = creds["api_key"]
     access_token = creds["access_token"]
-    if not hasattr(ctx, "instrument_token"):
-        raise SkillError("instrument_token not available")
-    instrument_token = ctx.instrument_token
+    instrument_token = entry.instrument_token
 
     if args.mode == "trailing":
         df_new, was_refreshed = await lazy_trailing_refresh(

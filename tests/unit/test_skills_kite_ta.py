@@ -85,6 +85,46 @@ def _build_sample_candles(num_bars: int = 50) -> list[list[Any]]:
     return candles
 
 
+def _build_instruments_csv(symbols: list[str] | None = None) -> str:
+    """Build sample instruments CSV for testing."""
+    if symbols is None:
+        symbols = ["WIPRO", "RELIANCE", "STOCK0", "STOCK1", "STOCK2", "STOCK3"]
+
+    lines = [
+        "instrument_token,exchange_token,tradingsymbol,name,last_price,expiry,strike,tick_size,lot_size,instrument_type,segment,exchange"
+    ]
+    for i, symbol in enumerate(symbols):
+        token = 123456 + i
+        lines.append(f"{token},0,{symbol},{symbol} LTD,100.0,,0,0.05,1,CE,EQUITY,NSE")
+
+    return "\n".join(lines)
+
+
+def _make_standard_handler(extra_handler: Any = None) -> Any:
+    """Create a handler that handles /instruments/{exchange} and /instruments/historical."""
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        from typing import cast
+
+        if "/instruments/NSE" in req.url.path:
+            # Return CSV for instruments master
+            return httpx.Response(200, text=_build_instruments_csv())
+        elif "/instruments/historical/" in req.url.path:
+            # Try extra_handler first for custom candles
+            if extra_handler:
+                result = cast(httpx.Response, extra_handler(req))
+                if result.status_code != 404:
+                    return result
+            # Default: return sample candles
+            candles = _build_sample_candles(50)
+            return httpx.Response(200, json={"status": "success", "data": candles})
+        elif extra_handler:
+            return cast(httpx.Response, extra_handler(req))
+        return httpx.Response(404)
+
+    return handler
+
+
 # ==========================================================================
 # Tests
 # ==========================================================================
@@ -98,17 +138,8 @@ class TestTASessionLifecycle:
         """Test opening a TA session."""
         reset_cache_for_tests()
 
-        candles = _build_sample_candles(50)
-
-        def handler(req: httpx.Request) -> httpx.Response:
-            if "/instruments/historical/" in req.url.path:
-                return httpx.Response(200, json={"status": "success", "data": candles})
-            return httpx.Response(404)
-
-        client = KiteClient(http=_make_mock_client(handler))
+        client = KiteClient(http=_make_mock_client(_make_standard_handler()))
         ctx = _build_skill_ctx()
-        # Inject instrument_token into ctx
-        ctx.instrument_token = 123456  # type: ignore[attr-defined]
 
         args = TASessionOpenInput(symbol="WIPRO", timeframe="15minute", lookback_bars=50)
         result = await ta_session_open(client, ctx, args)
@@ -129,16 +160,8 @@ class TestTASessionLifecycle:
         """Test checking session status."""
         reset_cache_for_tests()
 
-        candles = _build_sample_candles(30)
-
-        def handler(req: httpx.Request) -> httpx.Response:
-            if "/instruments/historical/" in req.url.path:
-                return httpx.Response(200, json={"status": "success", "data": candles})
-            return httpx.Response(404)
-
-        client = KiteClient(http=_make_mock_client(handler))
+        client = KiteClient(http=_make_mock_client(_make_standard_handler()))
         ctx = _build_skill_ctx()
-        ctx.instrument_token = 123456  # type: ignore[attr-defined]
 
         # Open session
         open_args = TASessionOpenInput(symbol="WIPRO", timeframe="15minute")
@@ -160,16 +183,8 @@ class TestTASessionLifecycle:
         """Test that expired sessions are marked as evicted."""
         reset_cache_for_tests()
 
-        candles = _build_sample_candles(30)
-
-        def handler(req: httpx.Request) -> httpx.Response:
-            if "/instruments/historical/" in req.url.path:
-                return httpx.Response(200, json={"status": "success", "data": candles})
-            return httpx.Response(404)
-
-        client = KiteClient(http=_make_mock_client(handler))
+        client = KiteClient(http=_make_mock_client(_make_standard_handler()))
         ctx = _build_skill_ctx()
-        ctx.instrument_token = 123456  # type: ignore[attr-defined]
 
         # Open with small TTL (1 second)
         open_args = TASessionOpenInput(symbol="WIPRO", timeframe="15minute", ttl_seconds=1)
@@ -201,16 +216,8 @@ class TestIndicatorCompute:
         """Test computing multiple indicators in batch."""
         reset_cache_for_tests()
 
-        candles = _build_sample_candles(100)
-
-        def handler(req: httpx.Request) -> httpx.Response:
-            if "/instruments/historical/" in req.url.path:
-                return httpx.Response(200, json={"status": "success", "data": candles})
-            return httpx.Response(404)
-
-        client = KiteClient(http=_make_mock_client(handler))
+        client = KiteClient(http=_make_mock_client(_make_standard_handler()))
         ctx = _build_skill_ctx()
-        ctx.instrument_token = 123456  # type: ignore[attr-defined]
 
         # Open session
         open_args = TASessionOpenInput(symbol="WIPRO", timeframe="15minute", lookback_bars=100)
@@ -244,16 +251,8 @@ class TestIndicatorCompute:
         """Test that unknown indicators are handled gracefully."""
         reset_cache_for_tests()
 
-        candles = _build_sample_candles(100)
-
-        def handler(req: httpx.Request) -> httpx.Response:
-            if "/instruments/historical/" in req.url.path:
-                return httpx.Response(200, json={"status": "success", "data": candles})
-            return httpx.Response(404)
-
-        client = KiteClient(http=_make_mock_client(handler))
+        client = KiteClient(http=_make_mock_client(_make_standard_handler()))
         ctx = _build_skill_ctx()
-        ctx.instrument_token = 123456  # type: ignore[attr-defined]
 
         # Open session
         open_args = TASessionOpenInput(symbol="WIPRO", timeframe="15minute")
@@ -290,16 +289,8 @@ class TestOhlcFetch:
         """Test fetching OHLCV as CSV."""
         reset_cache_for_tests()
 
-        candles = _build_sample_candles(50)
-
-        def handler(req: httpx.Request) -> httpx.Response:
-            if "/instruments/historical/" in req.url.path:
-                return httpx.Response(200, json={"status": "success", "data": candles})
-            return httpx.Response(404)
-
-        client = KiteClient(http=_make_mock_client(handler))
+        client = KiteClient(http=_make_mock_client(_make_standard_handler()))
         ctx = _build_skill_ctx()
-        ctx.instrument_token = 123456  # type: ignore[attr-defined]
 
         # Open session
         open_args = TASessionOpenInput(symbol="WIPRO", timeframe="15minute")
@@ -324,16 +315,8 @@ class TestSeriesFetch:
         """Test fetching series as JSON."""
         reset_cache_for_tests()
 
-        candles = _build_sample_candles(100)
-
-        def handler(req: httpx.Request) -> httpx.Response:
-            if "/instruments/historical/" in req.url.path:
-                return httpx.Response(200, json={"status": "success", "data": candles})
-            return httpx.Response(404)
-
-        client = KiteClient(http=_make_mock_client(handler))
+        client = KiteClient(http=_make_mock_client(_make_standard_handler()))
         ctx = _build_skill_ctx()
-        ctx.instrument_token = 123456  # type: ignore[attr-defined]
 
         # Open session
         open_args = TASessionOpenInput(symbol="WIPRO", timeframe="15minute")
@@ -377,14 +360,7 @@ class TestPerTenantCap:
 
         cache_mod._global_cache = cache
 
-        candles = _build_sample_candles(30)
-
-        def handler(req: httpx.Request) -> httpx.Response:
-            if "/instruments/historical/" in req.url.path:
-                return httpx.Response(200, json={"status": "success", "data": candles})
-            return httpx.Response(404)
-
-        client = KiteClient(http=_make_mock_client(handler))
+        client = KiteClient(http=_make_mock_client(_make_standard_handler()))
         tenant_id = uuid4()
         ctx = SkillCallContext(
             tenant_id=tenant_id,
@@ -394,7 +370,6 @@ class TestPerTenantCap:
             credentials={"api_key": "AKEY", "api_secret": "ASEC", "access_token": "ATOK"},
             tool_call_id=uuid4(),
         )
-        ctx.instrument_token = 123456  # type: ignore[attr-defined]
 
         # Open 3 sessions (at cap)
         session_ids = []
@@ -434,14 +409,13 @@ class TestFloorSnapping:
             close_p = open_p + 0.5
             candles.append([ts.isoformat(), open_p, open_p + 1, open_p - 1, close_p, 1000000])
 
-        def handler(req: httpx.Request) -> httpx.Response:
+        def custom_handler(req: httpx.Request) -> httpx.Response:
             if "/instruments/historical/" in req.url.path:
                 return httpx.Response(200, json={"status": "success", "data": candles})
             return httpx.Response(404)
 
-        client = KiteClient(http=_make_mock_client(handler))
+        client = KiteClient(http=_make_mock_client(_make_standard_handler(custom_handler)))
         ctx = _build_skill_ctx()
-        ctx.instrument_token = 123456  # type: ignore[attr-defined]
 
         # Open session
         open_args = TASessionOpenInput(symbol="WIPRO", timeframe="15minute")
