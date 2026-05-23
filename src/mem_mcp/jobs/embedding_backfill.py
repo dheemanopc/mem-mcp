@@ -17,9 +17,9 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import text
 
-from mem_mcp.db import init_pool
+from mem_mcp.config import get_settings
 from mem_mcp.embeddings.bedrock import BedrockEmbeddingClient, EmbeddingError
-from mem_mcp.logging_setup import get_logger
+from mem_mcp.logging_setup import get_logger, setup_logging
 
 if TYPE_CHECKING:
     import asyncpg  # type: ignore[import-untyped]
@@ -154,12 +154,18 @@ async def run_backfill(
 
 async def main(dry_run: bool = False) -> int:
     """Entry point: connect to DB, run backfill, exit."""
-    dsn = os.getenv("DATABASE_URL")
-    if not dsn:
-        _log.error("DATABASE_URL not set")
-        return 1
+    setup_logging(get_settings().log_level)
+    settings = get_settings()
 
-    pool = await init_pool(dsn)
+    import asyncpg
+
+    pool = await asyncpg.create_pool(
+        dsn=settings.db_maint_dsn_asyncpg,
+        min_size=1,
+        max_size=2,
+        command_timeout=60,
+        server_settings={"application_name": "mem-mcp-embedding-backfill"},
+    )
 
     try:
         region = os.getenv("AWS_REGION", "ap-south-1")
