@@ -104,20 +104,22 @@ def _make_standard_handler(extra_handler: Any = None) -> Any:
     """Create a handler that handles /instruments/{exchange} and /instruments/historical."""
 
     def handler(req: httpx.Request) -> httpx.Response:
+        from typing import cast
+
         if "/instruments/NSE" in req.url.path:
             # Return CSV for instruments master
             return httpx.Response(200, text=_build_instruments_csv())
         elif "/instruments/historical/" in req.url.path:
             # Try extra_handler first for custom candles
             if extra_handler:
-                result = extra_handler(req)
+                result = cast(httpx.Response, extra_handler(req))
                 if result.status_code != 404:
                     return result
             # Default: return sample candles
             candles = _build_sample_candles(50)
             return httpx.Response(200, json={"status": "success", "data": candles})
         elif extra_handler:
-            return extra_handler(req)
+            return cast(httpx.Response, extra_handler(req))
         return httpx.Response(404)
 
     return handler

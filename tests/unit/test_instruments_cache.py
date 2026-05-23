@@ -238,12 +238,9 @@ class TestConcurrency:
             return httpx.Response(404)
 
         # Create client with async handler (need to patch)
-        class SlowMockTransport(httpx.BaseTransport):
+        class SlowMockTransport(httpx.AsyncBaseTransport):
             async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
                 return await slow_handler(request)
-
-            def handle_request(self, request: httpx.Request) -> httpx.Response:
-                raise NotImplementedError("use async")
 
         client = KiteClient(http=httpx.AsyncClient(transport=SlowMockTransport()))
 
@@ -272,8 +269,8 @@ class TestConcurrency:
             ),
         )
 
-        # All should succeed
-        assert results == [100000, 100001, 100002]
+        # All should succeed (asyncio.gather returns list)
+        assert list(results) == [100000, 100001, 100002]
         # Only one fetch due to lock
         assert call_count["value"] == 1
 

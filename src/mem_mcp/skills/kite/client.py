@@ -218,8 +218,6 @@ class KiteClient:
         reader = csv.DictReader(io.StringIO(text))
         result = []
         for row in reader:
-            if row is None:
-                continue
             # Cast instrument_token to int
             if "instrument_token" in row:
                 try:
