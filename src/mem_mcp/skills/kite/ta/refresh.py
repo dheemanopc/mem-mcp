@@ -11,6 +11,9 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pandas as pd
 
+from mem_mcp.skills.base import SkillError
+from mem_mcp.skills.kite.client import KiteApiError
+
 if TYPE_CHECKING:
     pass
 
@@ -124,15 +127,15 @@ async def paginated_fetch(
         if current_from < from_dt:
             current_from = from_dt
 
-        # Fetch
+        # Fetch (Kite requires yyyy-mm-dd HH:MM:SS format, not ISO-8601)
         try:
             result = await client.get_historical_data(
                 api_key=api_key,
                 access_token=access_token,
                 instrument_token=instrument_token,
                 interval=interval,
-                from_date=current_from.isoformat(),
-                to_date=current_to.isoformat(),
+                from_date=current_from.strftime("%Y-%m-%d %H:%M:%S"),
+                to_date=current_to.strftime("%Y-%m-%d %H:%M:%S"),
                 continuous=False,
                 oi=False,
             )
@@ -141,8 +144,18 @@ async def paginated_fetch(
                 df_chunk = parse_kite_candles(candles)
                 all_dfs.insert(0, df_chunk)  # prepend (walking backwards)
                 total_bars_needed -= len(candles)
-        except Exception as e:
-            logger.warning(f"kite fetch error: {e}")
+            else:
+                # No more bars upstream — we've reached the data limit
+                break
+        except KiteApiError as e:
+            if not all_dfs:
+                # First chunk failed — raise so the user sees the real error
+                raise SkillError(
+                    f"kite fetch failed for instrument={instrument_token} interval={interval}: "
+                    f"{e.error_type or 'error'}: {e}"
+                ) from e
+            # After partial success, log and stop (better to return partial than break mid-fetch)
+            logger.warning(f"kite fetch error after partial success: {e}")
             break
 
         # Stop if we hit the start boundary
@@ -201,7 +214,7 @@ async def lazy_trailing_refresh(
     if time_since_last_bar < bar_duration:
         return current_df, False
 
-    # Refresh from last bar onwards
+    # Refresh from last bar onwards (Kite requires yyyy-mm-dd HH:MM:SS format)
     refresh_from = last_bar_ts + timedelta(seconds=1)
     try:
         result = await client.get_historical_data(
@@ -209,8 +222,8 @@ async def lazy_trailing_refresh(
             access_token=access_token,
             instrument_token=instrument_token,
             interval=interval,
-            from_date=refresh_from.isoformat(),
-            to_date=now.isoformat(),
+            from_date=refresh_from.strftime("%Y-%m-%d %H:%M:%S"),
+            to_date=now.strftime("%Y-%m-%d %H:%M:%S"),
             continuous=False,
             oi=False,
         )
@@ -224,7 +237,7 @@ async def lazy_trailing_refresh(
                 df_refreshed = df_refreshed[~df_refreshed.index.duplicated(keep="first")]
                 df_refreshed.sort_index(inplace=True)
                 return df_refreshed, True
-    except Exception as e:
+    except KiteApiError as e:
         logger.warning(f"kite trailing refresh error: {e}")
 
     return current_df, False

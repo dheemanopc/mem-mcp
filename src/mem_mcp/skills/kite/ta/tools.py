@@ -210,7 +210,8 @@ async def ta_session_open(
     else:
         lookback_bars = int(args.lookback_bars)
 
-    # Paginated fetch
+    # Paginated fetch (note: paginated_fetch expects ISO strings for internal parsing,
+    # and converts to Kite format yyyy-mm-dd HH:MM:SS when calling Kite API)
     now = datetime.now(UTC)
     from_date = (now - timedelta(days=365)).isoformat()  # Conservative upper bound
     to_date = now.isoformat()
@@ -654,7 +655,7 @@ async def ta_session_refresh(
         bars_added = len(df_new) - len(entry.df) if was_refreshed else 0
     else:  # full
         now = datetime.now(UTC)
-        from_date = (now - timedelta(days=365)).isoformat()
+        from_date = (now - timedelta(days=365)).isoformat()  # paginated_fetch expects ISO
         to_date = now.isoformat()
         df_new = await paginated_fetch(
             client,
