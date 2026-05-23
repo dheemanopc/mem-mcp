@@ -125,7 +125,7 @@ class MemoryListTool(BaseTool):
             params.append(inp.type)
 
         if inp.tags:
-            where_clauses.append(f"tags && ${len(params) + 1}")
+            where_clauses.append(f"tags @> ${len(params) + 1}")
             params.append(inp.tags)
 
         if inp.since:

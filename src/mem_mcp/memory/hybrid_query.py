@@ -66,7 +66,7 @@ WITH semantic AS (
       AND is_current = true
       AND embedding IS NOT NULL  -- oversize content stored without embedding
       AND ($3::text IS NULL OR type = $3)
-      AND ($4::text[] IS NULL OR tags && $4)
+      AND ($4::text[] IS NULL OR tags @> $4)
       AND ($5::timestamptz IS NULL OR created_at >= $5)
       AND ($6::timestamptz IS NULL OR created_at <= $6)
       AND ($12::uuid IS NULL OR parent_id = $12::uuid)
@@ -82,7 +82,7 @@ keyword AS (
       AND m.is_current = true
       AND m.content_tsv @@ q
       AND ($3::text IS NULL OR m.type = $3)
-      AND ($4::text[] IS NULL OR m.tags && $4)
+      AND ($4::text[] IS NULL OR m.tags @> $4)
       AND ($5::timestamptz IS NULL OR m.created_at >= $5)
       AND ($6::timestamptz IS NULL OR m.created_at <= $6)
       AND ($12::uuid IS NULL OR m.parent_id = $12::uuid)

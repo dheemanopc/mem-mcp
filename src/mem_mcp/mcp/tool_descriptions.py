@@ -27,6 +27,8 @@ Call when: user says "what did we decide", "remind me", "what was our", "do you 
 
 Do not call for: general knowledge questions unrelated to the user's personal history; real-time or live data; information just provided in this conversation turn.
 
+Tags: Multiple tags are intersected (AND) — a memory matches only if it has ALL the listed tags.
+
 Threading: pass parent_id (UUID of a root memory) to restrict results to that root's direct replies, ranked by hybrid relevance. Use this when you want the most relevant comments on a specific memory rather than the full chronological thread (which is what memory_thread_get returns).
 
 Examples: "What did we decide about authentication?" → query="authentication decision". "Remind me of our pricing strategy." → query="pricing strategy". "What snippets do I have for retries?" → query="retry snippet", type=snippet. "What's our database?" → query="database choice decision". "Find the most relevant comments about RECLTD on this trade" → query="RECLTD slippage", parent_id="<trade-uuid>".""",
@@ -42,6 +44,8 @@ Examples: User says "show me memory abc-123-..." → get id="abc-123-...". You f
 Call when: user says "show me all my decisions", "list my snippets", "what memories do I have tagged python", "show everything from last week", "what have I saved recently", "browse my memories"; user wants to audit or review stored memories; user asks for a count or overview.
 
 Do not call when the user has a specific question — use memory_search instead (it ranks by relevance). Do not call just to check whether something exists — memory_search is better for existence checks. Do not call with no filters when memory_search would serve better.
+
+Tags: Multiple tags are intersected (AND) — a memory matches only if it has ALL the listed tags.
 
 Examples: "Show me all my decisions." → type=decision, order=desc. "What did I save last week?" → since=7 days ago. "List snippets tagged python." → type=snippet, tags=["python"]. "Show my most recent 10 memories." → limit=10, order_by=created_at, order=desc.""",
     "memory_update": """Edit the content or tags of an existing memory in place — call this when the user wants to correct or extend a memory without creating a new version.

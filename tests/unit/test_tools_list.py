@@ -257,3 +257,61 @@ class TestMemoryListTool:
         # Verify content length is exactly 2000 (truncated)
         assert len(result.results[0].content) == 2000
         assert result.results[0].content == truncated_content
+
+    @pytest.mark.asyncio
+    async def test_tag_filter_is_and_semantics(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that multiple tags are intersected (AND), not overlapped (OR).
+
+        When filtering with tags=["a", "b"], only memories with BOTH tags should match.
+        This tests the fix from && (overlap) to @> (contains) operator.
+        """
+        tool = MemoryListTool()
+        ctx = _ctx()
+
+        # Create memory that matches the AND filter.
+        # (M2 with tags=["a", "c"] and M3 with tags=["b", "c"] would NOT match
+        # the ["a", "b"] filter due to AND semantics)
+        m1 = _memory_row(id=uuid4(), tags=["a", "b"])
+
+        mock_conn = AsyncMock()
+        # Simulate the database returning only m1 when filtering with tags @> ["a", "b"]
+        mock_conn.fetch = AsyncMock(return_value=[m1])
+
+        _patch_tenant_tx(monkeypatch, mock_conn)
+
+        # Filter for memories with both "a" AND "b"
+        inp = MemoryListInput(tags=["a", "b"])
+        result = await tool(ctx, inp)
+
+        assert isinstance(result, MemoryListOutput)
+        assert len(result.results) == 1
+        assert result.results[0].tags == ["a", "b"]
+        assert result.results[0].id == m1["id"]
+
+    @pytest.mark.asyncio
+    async def test_single_tag_filter_still_works(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that single-tag filtering still works (sanity check).
+
+        When filtering with tags=["a"], both memories with ["a", "b"] and ["a", "c"] match.
+        """
+        tool = MemoryListTool()
+        ctx = _ctx()
+
+        # Create two memories:
+        # M1: tags=["a", "b"]  <- should match
+        # M2: tags=["a", "c"]  <- should match
+        m1 = _memory_row(id=uuid4(), tags=["a", "b"])
+        m2 = _memory_row(id=uuid4(), tags=["a", "c"])
+
+        mock_conn = AsyncMock()
+        # Simulate the database returning both m1 and m2 when filtering with tags @> ["a"]
+        mock_conn.fetch = AsyncMock(return_value=[m1, m2])
+
+        _patch_tenant_tx(monkeypatch, mock_conn)
+
+        inp = MemoryListInput(tags=["a"])
+        result = await tool(ctx, inp)
+
+        assert isinstance(result, MemoryListOutput)
+        assert len(result.results) == 2
+        assert all("a" in r.tags for r in result.results)
