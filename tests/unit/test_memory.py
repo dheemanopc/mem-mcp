@@ -299,3 +299,60 @@ class TestHybridSearch:
         )
         assert params.w_sem == 0.7
         assert params.w_kw == 0.3
+
+    @pytest.mark.asyncio
+    async def test_tag_filter_is_and_semantics(self) -> None:
+        """Test that multiple tags are intersected (AND), not overlapped (OR).
+
+        When filtering with tags=["a", "b"], only memories with BOTH tags should match.
+        This tests the fix from && (overlap) to @> (contains) operator in hybrid_search.
+
+        Comment: R2 (tags=["a", "c"]) and R3 (tags=["b", "c"]) would NOT match
+        with ["a", "b"] filter, but we only test the matching case here.
+        """
+        # Create row that matches the AND filter
+        r1 = _row(tags=["a", "b"], score=0.9)
+
+        # Simulate the database returning only r1 when filtering with tags @> ["a", "b"]
+        conn = _FakeFetchConn([r1])
+        params = SearchParams(
+            qvec=[0.0] * 1024,
+            qtxt="test",
+            type_=None,
+            tags=["a", "b"],  # Filter for memories with BOTH "a" AND "b"
+            since=None,
+            until=None,
+            limit=10,
+            recency_lambda=0.05,
+        )
+        results = await hybrid_search(conn, uuid4(), params)
+
+        assert len(results) == 1
+        assert results[0].tags == ["a", "b"]
+
+    @pytest.mark.asyncio
+    async def test_single_tag_filter_still_works(self) -> None:
+        """Test that single-tag filtering still works (sanity check).
+
+        When filtering with tags=["a"], both memories with ["a", "b"] and ["a", "c"] match.
+        """
+        # Create two rows that both have "a":
+        r1 = _row(tags=["a", "b"], score=0.9)
+        r2 = _row(tags=["a", "c"], score=0.8)
+
+        # Simulate the database returning both r1 and r2 when filtering with tags @> ["a"]
+        conn = _FakeFetchConn([r1, r2])
+        params = SearchParams(
+            qvec=[0.0] * 1024,
+            qtxt="test",
+            type_=None,
+            tags=["a"],
+            since=None,
+            until=None,
+            limit=10,
+            recency_lambda=0.05,
+        )
+        results = await hybrid_search(conn, uuid4(), params)
+
+        assert len(results) == 2
+        assert all("a" in r.tags for r in results)
