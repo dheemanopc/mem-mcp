@@ -9,6 +9,8 @@ so the same client instance is safe to use across tenants.
 
 from __future__ import annotations
 
+import csv
+import io
 from collections.abc import Mapping
 from typing import Any, cast
 
@@ -98,6 +100,39 @@ class KiteClient:
         async with httpx.AsyncClient() as client:
             return await _send(client)
 
+    async def _request_text(
+        self,
+        method: str,
+        path: str,
+        *,
+        api_key: str,
+        access_token: str,
+        params: list[tuple[str, str]] | Mapping[str, str] | None = None,
+    ) -> str:
+        """Make a request and return raw text (for CSV responses)."""
+        url = f"{self._base_url}{path}"
+        headers = self._auth_headers(api_key, access_token)
+
+        async def _send(client: httpx.AsyncClient) -> str:
+            resp = await client.request(
+                method,
+                url,
+                headers=headers,
+                params=params,  # type: ignore[arg-type]
+                timeout=self._timeout,
+            )
+            if resp.status_code != 200:
+                raise KiteApiError(
+                    f"Kite error ({method} {path}, status {resp.status_code})",
+                    status_code=resp.status_code,
+                )
+            return resp.text
+
+        if self._injected_http is not None:
+            return await _send(self._injected_http)
+        async with httpx.AsyncClient() as client:
+            return await _send(client)
+
     # ---------- portfolio ----------
 
     async def get_holdings(self, *, api_key: str, access_token: str) -> list[dict[str, Any]]:
@@ -164,6 +199,36 @@ class KiteClient:
                 "GET", path, api_key=api_key, access_token=access_token, params=params
             ),
         )
+
+    async def get_instruments(
+        self, *, api_key: str, access_token: str, exchange: str = "NSE"
+    ) -> list[dict[str, Any]]:
+        """Fetch instruments master for given exchange.
+
+        Returns CSV parsed as list of dicts with at minimum:
+        - instrument_token (int)
+        - tradingsymbol (str)
+        - exchange (str)
+        and other Kite standard columns.
+        """
+        path = f"/instruments/{exchange}"
+        text = await self._request_text("GET", path, api_key=api_key, access_token=access_token)
+
+        # Parse CSV
+        reader = csv.DictReader(io.StringIO(text))
+        result = []
+        for row in reader:
+            if row is None:
+                continue
+            # Cast instrument_token to int
+            if "instrument_token" in row:
+                try:
+                    row["instrument_token"] = int(row["instrument_token"])
+                except (ValueError, TypeError):
+                    pass  # Leave as string if conversion fails
+            result.append(row)
+
+        return result
 
     # ---------- orders ----------
 

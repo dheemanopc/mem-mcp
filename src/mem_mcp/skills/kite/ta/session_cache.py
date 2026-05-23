@@ -50,6 +50,7 @@ class SessionEntry:
     tenant_id: str
     symbol: str
     timeframe: str
+    instrument_token: int
     opened_at: datetime
     expires_at: datetime
     ttl_seconds: int
@@ -110,6 +111,7 @@ class SessionCache:
         symbol: str,
         timeframe: str,
         tenant_id: str,
+        instrument_token: int,
         df: pd.DataFrame,
         ttl_seconds: int | None = None,
     ) -> tuple[str, str | None]:
@@ -148,6 +150,7 @@ class SessionCache:
                 tenant_id=tenant_id,
                 symbol=symbol,
                 timeframe=timeframe,
+                instrument_token=instrument_token,
                 opened_at=now,
                 expires_at=expires_at,
                 ttl_seconds=ttl_seconds,
