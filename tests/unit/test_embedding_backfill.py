@@ -50,9 +50,9 @@ class TestEmbeddingBackfillHelper:
 
         # Verify the update was called
         conn.execute.assert_called_once()
-        call_args = conn.execute.call_args[0][1]
-        assert call_args["id"] == str(mid)
-        assert call_args["embedding"] == vec
+        call_args = conn.execute.call_args[0]
+        assert call_args[1] == vec  # embedding_vec is 2nd positional arg
+        assert call_args[2] == str(mid)  # memory_id is 3rd positional arg
 
     @pytest.mark.asyncio
     async def test_update_row_status_sets_status_only(self) -> None:
@@ -63,9 +63,9 @@ class TestEmbeddingBackfillHelper:
         await update_row_status(conn, str(mid), "failed_validation")
 
         conn.execute.assert_called_once()
-        call_args = conn.execute.call_args[0][1]
-        assert call_args["id"] == str(mid)
-        assert call_args["status"] == "failed_validation"
+        call_args = conn.execute.call_args[0]
+        assert call_args[1] == "failed_validation"  # status is 2nd positional arg
+        assert call_args[2] == str(mid)  # memory_id is 3rd positional arg
 
 
 class TestEmbeddingBackfill:

@@ -15,8 +15,6 @@ import os
 import sys
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import text
-
 from mem_mcp.config import get_settings
 from mem_mcp.embeddings.bedrock import BedrockEmbeddingClient, EmbeddingError
 from mem_mcp.logging_setup import get_logger, setup_logging
@@ -44,18 +42,18 @@ async def fetch_candidates(conn: asyncpg.Connection, batch_size: int) -> list[di
     Ordered by created_at ASC (oldest first).
     """
     rows = await conn.fetch(
-        text("""
-            SELECT id, content
-            FROM memories
-            WHERE embedding IS NULL
-              AND embedding_status IN ('failed_throttled', 'failed_unavailable', 'failed_unknown')
-              AND length(content) <= 32000
-              AND deleted_at IS NULL
-              AND (expires_at IS NULL OR expires_at > NOW())
-            ORDER BY created_at ASC
-            LIMIT :limit
-        """),
-        {"limit": batch_size},
+        """
+        SELECT id, content
+        FROM memories
+        WHERE embedding IS NULL
+          AND embedding_status IN ('failed_throttled', 'failed_unavailable', 'failed_unknown')
+          AND length(content) <= 32000
+          AND deleted_at IS NULL
+          AND (expires_at IS NULL OR expires_at > NOW())
+        ORDER BY created_at ASC
+        LIMIT $1
+        """,
+        batch_size,
     )
     return [{"id": str(r["id"]), "content": r["content"]} for r in rows]
 
@@ -65,25 +63,27 @@ async def update_row_success(
 ) -> None:
     """Update row: set embedding vector and embedding_status='ok'."""
     await conn.execute(
-        text("""
-            UPDATE memories
-            SET embedding = :embedding::vector,
-                embedding_status = 'ok'
-            WHERE id = :id::uuid
-        """),
-        {"embedding": embedding_vec, "id": memory_id},
+        """
+        UPDATE memories
+        SET embedding = $1::vector,
+            embedding_status = 'ok'
+        WHERE id = $2::uuid
+        """,
+        embedding_vec,
+        memory_id,
     )
 
 
 async def update_row_status(conn: asyncpg.Connection, memory_id: str, status: str) -> None:
     """Update row: set embedding_status (for failed_validation, etc)."""
     await conn.execute(
-        text("""
-            UPDATE memories
-            SET embedding_status = :status
-            WHERE id = :id::uuid
-        """),
-        {"status": status, "id": memory_id},
+        """
+        UPDATE memories
+        SET embedding_status = $1
+        WHERE id = $2::uuid
+        """,
+        status,
+        memory_id,
     )
 
 
