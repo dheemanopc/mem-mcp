@@ -6,9 +6,6 @@ authors = ["Anand <anand@dheemantech.com>"]
 readme = "README.md"
 packages = [{ include = "mem_mcp", from = "src" }]
 
-[tool.poetry.scripts]
-mem-mcp-embedding-backfill = "mem_mcp.jobs.embedding_backfill:main"
-
 [tool.poetry.dependencies]
 python = "^3.12"
 fastapi = "^0.115"

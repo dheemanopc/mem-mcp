@@ -1,11 +1,19 @@
 [Unit]
-Description=Embedding Backfill Worker
-After=network-online.target
+Description=mem-mcp embedding backfill worker
+After=network.target postgresql.service
+Requires=postgresql.service
 
 [Service]
 Type=oneshot
-User=mem-mcp
+User=memmcp
+Group=memmcp
 WorkingDirectory=/opt/mem-mcp
 EnvironmentFile=/etc/mem-mcp/env
-ExecStart=/opt/mem-mcp/venv/bin/mem-mcp-embedding-backfill
+ExecStart=/home/memmcp/.local/bin/poetry run python -m mem_mcp.jobs embedding_backfill
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+
+LimitNOFILE=4096
 TimeoutStartSec=3600

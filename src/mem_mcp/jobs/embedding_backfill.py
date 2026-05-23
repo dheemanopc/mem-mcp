@@ -152,7 +152,7 @@ async def run_backfill(
     return tally
 
 
-async def main() -> int:
+async def main(dry_run: bool = False) -> int:
     """Entry point: connect to DB, run backfill, exit."""
     dsn = os.getenv("DATABASE_URL")
     if not dsn:
