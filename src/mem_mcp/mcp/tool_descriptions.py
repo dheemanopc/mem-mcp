@@ -31,7 +31,9 @@ Tags: Multiple tags are intersected (AND) — a memory matches only if it has AL
 
 Threading: pass parent_id (UUID of a root memory) to restrict results to that root's direct replies, ranked by hybrid relevance. Use this when you want the most relevant comments on a specific memory rather than the full chronological thread (which is what memory_thread_get returns).
 
-Examples: "What did we decide about authentication?" → query="authentication decision". "Remind me of our pricing strategy." → query="pricing strategy". "What snippets do I have for retries?" → query="retry snippet", type=snippet. "What's our database?" → query="database choice decision". "Find the most relevant comments about RECLTD on this trade" → query="RECLTD slippage", parent_id="<trade-uuid>".""",
+Examples: "What did we decide about authentication?" → query="authentication decision". "Remind me of our pricing strategy." → query="pricing strategy". "What snippets do I have for retries?" → query="retry snippet", type=snippet. "What's our database?" → query="database choice decision". "Find the most relevant comments about RECLTD on this trade" → query="RECLTD slippage", parent_id="<trade-uuid>".
+
+Note: returned `content` may be truncated for very large memories; call `memory_get(id)` to fetch the full body.""",
     "memory_get": """Fetch a single memory by its UUID — call this when you have a specific memory ID and need its complete, untruncated content or full metadata.
 
 Call when: user references a specific memory ID explicitly; you found a result via memory_search and need the full content (search may truncate); you need to verify current state of a specific memory before updating or superseding it; user says "show me that memory" after you displayed an ID.
@@ -47,7 +49,9 @@ Do not call when the user has a specific question — use memory_search instead 
 
 Tags: Multiple tags are intersected (AND) — a memory matches only if it has ALL the listed tags.
 
-Examples: "Show me all my decisions." → type=decision, order=desc. "What did I save last week?" → since=7 days ago. "List snippets tagged python." → type=snippet, tags=["python"]. "Show my most recent 10 memories." → limit=10, order_by=created_at, order=desc.""",
+Examples: "Show me all my decisions." → type=decision, order=desc. "What did I save last week?" → since=7 days ago. "List snippets tagged python." → type=snippet, tags=["python"]. "Show my most recent 10 memories." → limit=10, order_by=created_at, order=desc.
+
+Note: returned `content` is truncated to ~2000 chars per result; call `memory_get(id)` to fetch the full body.""",
     "memory_update": """Edit the content or tags of an existing memory in place — call this when the user wants to correct or extend a memory without creating a new version.
 
 Call when: user says "update that memory", "fix that note", "change it to say", "add a tag to", "that's not right — it should say"; user provides a correction to a stored note or snippet; user wants to add tags to an existing memory; small corrections to facts or notes that don't represent a conceptual change.
