@@ -12,7 +12,6 @@ import pytest
 
 from mem_mcp.skills.base import SkillCallContext
 from mem_mcp.skills.kite.client import KiteClient
-from mem_mcp.skills.kite.instruments_cache import get_instruments_cache
 from mem_mcp.skills.kite.ta import (
     TAIndicatorComputeInput,
     TAOhlcFetchInput,
