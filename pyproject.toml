@@ -74,6 +74,7 @@ asyncio_mode = "auto"
 markers = [
     "live_aws: opt-in tests against real AWS (require --live-aws)",
     "security: tenant isolation suite (REQUIRED CI gate)",
+    "integration: tests requiring real Postgres / external services",
 ]
 addopts = "-ra --strict-markers"
 

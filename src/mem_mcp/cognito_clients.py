@@ -32,6 +32,7 @@ class CognitoUserInfo:
     email: str
     provider: str  # 'google' or 'cognito'
     provider_user_id: str | None
+    workspace_domain: str | None = None  # custom:google_hd for workspace users
 
 
 class HttpxTokenExchanger:
@@ -89,12 +90,16 @@ class IdTokenUserInfoFetcher:
                 provider = identities[0].get("providerName", "cognito").lower()
                 provider_user_id = identities[0].get("userId")
 
+        # Extract custom:google_hd for workspace domain (enterprise feature)
+        workspace_domain = payload.get("custom:google_hd")
+
         return CognitoUserInfo(
             cognito_sub=payload["sub"],
             cognito_username=payload.get("cognito:username", payload["sub"]),
             email=payload.get("email", ""),
             provider=provider,
             provider_user_id=provider_user_id,
+            workspace_domain=workspace_domain,
         )
 
 

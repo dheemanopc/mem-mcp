@@ -64,6 +64,9 @@ class CognitoUserInfo(Protocol):
     @property
     def provider_user_id(self) -> str: ...
 
+    @property
+    def workspace_domain(self) -> str | None: ...
+
 
 class CognitoTokenExchanger(Protocol):
     """Wraps the Cognito Hosted UI token endpoint."""
@@ -172,6 +175,20 @@ def make_web_router(
             # Linking flow is handled via separate /api/web/identities/link/complete
             # endpoint (T-8.9). Log warning and redirect to welcome.
             return RedirectResponse("/welcome?status=tenant_not_provisioned", status_code=302)
+
+        # UPDATE workspace_domain from custom:google_hd claim (enterprise feature).
+        # Only update if the new value differs from existing (idempotent).
+        if info.workspace_domain:
+            async with system_tx(pool) as conn:
+                await conn.execute(
+                    """
+                    UPDATE tenant_identities
+                    SET workspace_domain = $1
+                    WHERE id = $2 AND (workspace_domain IS NULL OR workspace_domain != $1)
+                    """,
+                    info.workspace_domain,
+                    row["id"],
+                )
 
         # Create web session
         ua = request.headers.get("user-agent")
