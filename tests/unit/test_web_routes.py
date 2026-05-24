@@ -72,12 +72,14 @@ class FakeCognitoUserInfo:
         email: str = "user@example.com",
         provider: str = "cognito",
         provider_user_id: str = "cognito-uid-123",
+        workspace_domain: str | None = None,
     ) -> None:
         self.cognito_sub = cognito_sub
         self.cognito_username = cognito_username
         self.email = email
         self.provider = provider
         self.provider_user_id = provider_user_id
+        self.workspace_domain = workspace_domain
 
 
 class FakeTokenExchanger:
