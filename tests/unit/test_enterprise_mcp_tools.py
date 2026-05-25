@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import uuid4
 
 from mem_mcp.mcp.tools.create_team import CreateTeamInput, CreateTeamTool
@@ -11,14 +12,14 @@ from mem_mcp.mcp.tools.list_my_teams import ListMyTeamsTool
 class TestListMyTeams:
     """Tests for memsys_list_my_teams tool."""
 
-    async def test_list_teams_empty(self, tool_ctx_personal):
+    async def test_list_teams_empty(self, tool_ctx_personal: Any) -> None:
         """New user has no teams."""
         tool = ListMyTeamsTool()
         output = await tool(tool_ctx_personal, None)
         assert output.teams == []
         assert output.default_team_id is None
 
-    async def test_list_teams_with_membership(self, tool_ctx_with_workspace, db_session):
+    async def test_list_teams_with_membership(self, tool_ctx_with_workspace: Any, db_session: Any) -> None:
         """User can see teams they are in."""
         # Create a team first
         await db_session.execute(
@@ -42,7 +43,7 @@ class TestListMyTeams:
 class TestCreateTeam:
     """Tests for memsys_create_team tool."""
 
-    async def test_create_team_workspace_auto_domain(self, tool_ctx_with_workspace):
+    async def test_create_team_workspace_auto_domain(self, tool_ctx_with_workspace: Any) -> None:
         """Workspace user's domain is auto-set."""
         tool = CreateTeamTool()
         inp = CreateTeamInput(name="Engineering")
@@ -51,7 +52,7 @@ class TestCreateTeam:
         assert output.team.workspace_domain == "example.com"
         assert output.your_role == "admin"
 
-    async def test_create_team_personal_no_domain(self, tool_ctx_personal):
+    async def test_create_team_personal_no_domain(self, tool_ctx_personal: Any) -> None:
         """Personal user creates team with no domain."""
         tool = CreateTeamTool()
         inp = CreateTeamInput(name="My Team")

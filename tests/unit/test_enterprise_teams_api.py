@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -10,8 +12,8 @@ class TestTeamCreation:
     """Team creation endpoint tests."""
 
     async def test_workspace_user_creates_workspace_team(
-        self, client: TestClient, db_session, user_with_workspace
-    ):
+        self, client: TestClient, db_session: Any, user_with_workspace: Any
+    ) -> None:
         """Workspace user can create a workspace team with auto-derived domain."""
         # user_with_workspace has workspace_domain="example.com"
         resp = client.post(
@@ -26,8 +28,8 @@ class TestTeamCreation:
         assert data["your_role"] == "admin"
 
     async def test_workspace_user_explicit_matching_domain(
-        self, client: TestClient, user_with_workspace
-    ):
+        self, client: TestClient, user_with_workspace: Any
+    ) -> None:
         """Workspace user can explicitly pass their domain."""
         resp = client.post(
             "/api/web/teams",
@@ -39,8 +41,8 @@ class TestTeamCreation:
         assert data["team"]["workspace_domain"] == "example.com"
 
     async def test_workspace_user_cross_domain_rejected(
-        self, client: TestClient, user_with_workspace
-    ):
+        self, client: TestClient, user_with_workspace: Any
+    ) -> None:
         """Workspace user cannot create team in different domain."""
         resp = client.post(
             "/api/web/teams",
@@ -51,8 +53,8 @@ class TestTeamCreation:
         assert resp.json()["detail"]["code"] == "cross_workspace_team_create_denied"
 
     async def test_personal_user_cannot_create_workspace_team(
-        self, client: TestClient, user_personal
-    ):
+        self, client: TestClient, user_personal: Any
+    ) -> None:
         """Personal user (no workspace_domain) cannot create workspace team."""
         resp = client.post(
             "/api/web/teams",
@@ -62,7 +64,7 @@ class TestTeamCreation:
         assert resp.status_code == 400
         assert resp.json()["detail"]["code"] == "workspace_team_by_personal_user_denied"
 
-    async def test_personal_user_creates_personal_team(self, client: TestClient, user_personal):
+    async def test_personal_user_creates_personal_team(self, client: TestClient, user_personal: Any) -> None:
         """Personal user can create a personal team (no workspace_domain)."""
         resp = client.post(
             "/api/web/teams",
@@ -78,7 +80,7 @@ class TestTeamCreation:
 class TestTeamListing:
     """Team listing endpoint tests."""
 
-    async def test_list_teams_empty(self, client: TestClient, user_personal):
+    async def test_list_teams_empty(self, client: TestClient, user_personal: Any) -> None:
         """New user has no teams initially."""
         resp = client.get(
             "/api/web/teams",
@@ -87,7 +89,7 @@ class TestTeamListing:
         assert resp.status_code == 200
         assert resp.json()["teams"] == []
 
-    async def test_list_teams_with_membership(self, client: TestClient, user_personal):
+    async def test_list_teams_with_membership(self, client: TestClient, user_personal: Any) -> None:
         """User can see teams they are a member of."""
         # Create a team
         create_resp = client.post(
@@ -114,8 +116,8 @@ class TestMemberManagement:
     """Member management endpoint tests."""
 
     async def test_add_member_by_tenant_id_workspace_match(
-        self, client: TestClient, user_with_workspace, other_user_same_workspace
-    ):
+        self, client: TestClient, user_with_workspace: Any, other_user_same_workspace: Any
+    ) -> None:
         """Can add member from same workspace to workspace team."""
         # user_with_workspace creates a team
         create_resp = client.post(
@@ -141,8 +143,8 @@ class TestMemberManagement:
         assert len(list_resp.json()["members"]) == 2
 
     async def test_add_member_workspace_domain_mismatch(
-        self, client: TestClient, user_with_workspace, user_different_workspace
-    ):
+        self, client: TestClient, user_with_workspace: Any, user_different_workspace: Any
+    ) -> None:
         """Cannot add member from different workspace to workspace team."""
         # user_with_workspace creates a team
         create_resp = client.post(
@@ -162,8 +164,8 @@ class TestMemberManagement:
         assert add_resp.json()["detail"]["code"] == "member_domain_mismatch"
 
     async def test_add_member_personal_team_workspace_user_rejected(
-        self, client: TestClient, user_personal, user_with_workspace
-    ):
+        self, client: TestClient, user_personal: Any, user_with_workspace: Any
+    ) -> None:
         """Cannot add workspace user to personal team."""
         # user_personal creates a team
         create_resp = client.post(
@@ -182,7 +184,7 @@ class TestMemberManagement:
         assert add_resp.status_code == 400
         assert add_resp.json()["detail"]["code"] == "member_has_workspace_domain"
 
-    async def test_email_invite_creates_pending(self, client: TestClient, user_with_workspace):
+    async def test_email_invite_creates_pending(self, client: TestClient, user_with_workspace: Any) -> None:
         """Email invite creates pending invite."""
         create_resp = client.post(
             "/api/web/teams",
@@ -209,7 +211,7 @@ class TestMemberManagement:
         assert invites[0]["email"] == "newuser@example.com"
         assert invites[0]["status"] == "pending"
 
-    async def test_last_admin_protection_demote(self, client: TestClient, user_with_workspace):
+    async def test_last_admin_protection_demote(self, client: TestClient, user_with_workspace: Any) -> None:
         """Cannot demote the last admin."""
         create_resp = client.post(
             "/api/web/teams",
@@ -227,7 +229,7 @@ class TestMemberManagement:
         assert patch_resp.status_code == 400
         assert patch_resp.json()["detail"]["code"] == "last_admin_protected"
 
-    async def test_last_admin_protection_remove(self, client: TestClient, user_with_workspace):
+    async def test_last_admin_protection_remove(self, client: TestClient, user_with_workspace: Any) -> None:
         """Cannot remove the last admin."""
         create_resp = client.post(
             "/api/web/teams",
@@ -245,8 +247,8 @@ class TestMemberManagement:
         assert delete_resp.json()["detail"]["code"] == "last_admin_protected"
 
     async def test_non_admin_cannot_remove_member(
-        self, client: TestClient, user_with_workspace, other_user_same_workspace
-    ):
+        self, client: TestClient, user_with_workspace: Any, other_user_same_workspace: Any
+    ) -> None:
         """Non-admin cannot remove members."""
         # user_with_workspace creates team and adds other_user
         create_resp = client.post(
@@ -270,8 +272,8 @@ class TestMemberManagement:
         assert delete_resp.status_code == 403
 
     async def test_non_admin_can_remove_self(
-        self, client: TestClient, user_with_workspace, other_user_same_workspace
-    ):
+        self, client: TestClient, user_with_workspace: Any, other_user_same_workspace: Any
+    ) -> None:
         """Non-admin can remove themselves."""
         # Create team and add other_user
         create_resp = client.post(
@@ -306,8 +308,8 @@ class TestTeamDeletion:
     """Team deletion endpoint tests."""
 
     async def test_soft_delete_orphans_memories(
-        self, client: TestClient, user_with_workspace, db_session
-    ):
+        self, client: TestClient, user_with_workspace: Any, db_session: Any
+    ) -> None:
         """Soft-deleting team orphans its memories (privacy to team_id=NULL)."""
         # Create team
         create_resp = client.post(
