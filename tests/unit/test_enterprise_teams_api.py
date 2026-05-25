@@ -64,7 +64,9 @@ class TestTeamCreation:
         assert resp.status_code == 400
         assert resp.json()["detail"]["code"] == "workspace_team_by_personal_user_denied"
 
-    async def test_personal_user_creates_personal_team(self, client: TestClient, user_personal: Any) -> None:
+    async def test_personal_user_creates_personal_team(
+        self, client: TestClient, user_personal: Any
+    ) -> None:
         """Personal user can create a personal team (no workspace_domain)."""
         resp = client.post(
             "/api/web/teams",
@@ -184,7 +186,9 @@ class TestMemberManagement:
         assert add_resp.status_code == 400
         assert add_resp.json()["detail"]["code"] == "member_has_workspace_domain"
 
-    async def test_email_invite_creates_pending(self, client: TestClient, user_with_workspace: Any) -> None:
+    async def test_email_invite_creates_pending(
+        self, client: TestClient, user_with_workspace: Any
+    ) -> None:
         """Email invite creates pending invite."""
         create_resp = client.post(
             "/api/web/teams",
@@ -211,7 +215,9 @@ class TestMemberManagement:
         assert invites[0]["email"] == "newuser@example.com"
         assert invites[0]["status"] == "pending"
 
-    async def test_last_admin_protection_demote(self, client: TestClient, user_with_workspace: Any) -> None:
+    async def test_last_admin_protection_demote(
+        self, client: TestClient, user_with_workspace: Any
+    ) -> None:
         """Cannot demote the last admin."""
         create_resp = client.post(
             "/api/web/teams",
@@ -229,7 +235,9 @@ class TestMemberManagement:
         assert patch_resp.status_code == 400
         assert patch_resp.json()["detail"]["code"] == "last_admin_protected"
 
-    async def test_last_admin_protection_remove(self, client: TestClient, user_with_workspace: Any) -> None:
+    async def test_last_admin_protection_remove(
+        self, client: TestClient, user_with_workspace: Any
+    ) -> None:
         """Cannot remove the last admin."""
         create_resp = client.post(
             "/api/web/teams",

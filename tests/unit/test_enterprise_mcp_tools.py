@@ -19,7 +19,9 @@ class TestListMyTeams:
         assert output.teams == []
         assert output.default_team_id is None
 
-    async def test_list_teams_with_membership(self, tool_ctx_with_workspace: Any, db_session: Any) -> None:
+    async def test_list_teams_with_membership(
+        self, tool_ctx_with_workspace: Any, db_session: Any
+    ) -> None:
         """User can see teams they are in."""
         # Create a team first
         await db_session.execute(
