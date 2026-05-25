@@ -20,7 +20,11 @@ Types: note (general), decision (architectural or product choices), fact (object
 
 Threading: pass parent_id (UUID of an existing root memory) to write this memory as a reply rather than a standalone entry. Replies inherit the parent's tags automatically at write time; you may add reply-only tags via the tags field. Replies cannot have their own replies (flat hierarchy) — pass parent_id only if you have a root id. parent_id cannot be combined with supersedes in the same call.
 
-Examples: "Remember we chose PostgreSQL over MySQL." → type=decision. "Save this retry snippet." → type=snippet. "Note: deadline is March 15." → type=fact. "We're going freemium." → type=decision, tags=["pricing"]. "Add my comment on that trade memory: SL too tight." → type=note, parent_id="<trade-uuid>".""",
+Multi-team users: pass `team_id` (UUID or team name) to set the team scope; pass `visibility="team"` to make the memory shared with team members. If you receive a `team_required` error, ask the user which team to work in (or use `user_default_team_id` from the error data). **Remember the chosen team for the rest of this conversation and pass it on every subsequent memory_* call** unless the user explicitly switches contexts.
+
+Examples: "Remember we chose PostgreSQL over MySQL." → type=decision. "Save this retry snippet." → type=snippet. "Note: deadline is March 15." → type=fact. "We're going freemium." → type=decision, tags=["pricing"]. "Add my comment on that trade memory: SL too tight." → type=note, parent_id="<trade-uuid>". "Save this for the team" → team_id=<uuid>, visibility="team".
+
+Note: `visibility="team"` requires `team_id` to be specified.""",
     "memory_search": """Search memories using a natural-language query — call this to retrieve previously stored information relevant to the current topic, or when the user references past conversations, decisions, or facts.
 
 Call when: user says "what did we decide", "remind me", "what was our", "do you remember", "what did I save about"; user asks a question whose answer might be in memory; user uses possessive pronouns about past work ("our plan", "my preferences", "the approach we chose"); a new conversation starts on a topic where prior context likely exists; you need to check for duplicates before calling memory_write.
@@ -30,6 +34,8 @@ Do not call for: general knowledge questions unrelated to the user's personal hi
 Tags: Multiple tags are intersected (AND) — a memory matches only if it has ALL the listed tags.
 
 Threading: pass parent_id (UUID of a root memory) to restrict results to that root's direct replies, ranked by hybrid relevance. Use this when you want the most relevant comments on a specific memory rather than the full chronological thread (which is what memory_thread_get returns).
+
+Multi-team users: pass `team_id` (UUID or team name) to scope the call. If you receive a `team_required` error, ask the user which team to work in (or use `user_default_team_id` from the error data). **Remember the chosen team for the rest of this conversation and pass it on every subsequent memory_* call** unless the user explicitly switches contexts. Use `team_id="*"` for cross-team queries. Use `memsys_list_my_teams` to see options.
 
 Examples: "What did we decide about authentication?" → query="authentication decision". "Remind me of our pricing strategy." → query="pricing strategy". "What snippets do I have for retries?" → query="retry snippet", type=snippet. "What's our database?" → query="database choice decision". "Find the most relevant comments about RECLTD on this trade" → query="RECLTD slippage", parent_id="<trade-uuid>".
 
@@ -48,6 +54,8 @@ Call when: user says "show me all my decisions", "list my snippets", "what memor
 Do not call when the user has a specific question — use memory_search instead (it ranks by relevance). Do not call just to check whether something exists — memory_search is better for existence checks. Do not call with no filters when memory_search would serve better.
 
 Tags: Multiple tags are intersected (AND) — a memory matches only if it has ALL the listed tags.
+
+Multi-team users: pass `team_id` (UUID or team name) to scope the call. If you receive a `team_required` error, ask the user which team to work in (or use `user_default_team_id` from the error data). **Remember the chosen team for the rest of this conversation and pass it on every subsequent memory_* call** unless the user explicitly switches contexts. Use `team_id="*"` for cross-team queries.
 
 Examples: "Show me all my decisions." → type=decision, order=desc. "What did I save last week?" → since=7 days ago. "List snippets tagged python." → type=snippet, tags=["python"]. "Show my most recent 10 memories." → limit=10, order_by=created_at, order=desc.
 
@@ -279,4 +287,24 @@ Inputs: session_id, mode ("trailing"|"full", default "trailing").
 Output: bars_refetched (int), new_last_bar_ts (ISO).
 
 Examples: "Refresh my session" → ta_session_refresh(session_id=<id>, mode="trailing"). "Rescan all 100 days" → ta_session_refresh(session_id=<id>, mode="full").""",
+    "memsys_list_my_teams": """Fetch the caller's teams (workspace and personal) with their role and member count.
+
+Call when: user asks "what teams am I in", "list my teams", "show my workspace teams"; you receive a team_required error and need to show available teams to the user; you need to resolve a fuzzy team name to UUID.
+
+Do not call repeatedly in the same conversation — cache the result locally.
+
+Inputs: none. Output: teams (array of {id, name, workspace_domain, role, member_count}), default_team_id (UUID or null).
+
+Examples: "What teams do I have?" → memsys_list_my_teams(). After team_required error → show the available_teams from error.data instead of calling this.""",
+    "memsys_create_team": """Create a new team (workspace or personal) with the caller as admin.
+
+Call when: user says "create a team", "start a new team", "set up a workspace"; caller is a workspace user (domain auto-derived); caller is a personal user (no domain).
+
+Do not call without explicit user instruction.
+
+Inputs: name (string). Workspace domain is auto-derived from caller's identity.workspace_domain if set.
+
+Output: team (with id, name, workspace_domain, created_at), your_role="admin".
+
+Examples: "Create a team called Engineering" → memsys_create_team(name="Engineering"). Workspace user creates team → domain auto-set to their workspace_domain.""",
 }

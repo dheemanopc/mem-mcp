@@ -56,11 +56,13 @@ from mem_mcp.health import (
 from mem_mcp.logging_setup import get_logger, setup_logging
 from mem_mcp.mcp.registry import ToolRegistry
 from mem_mcp.mcp.tools._deps import make_default_deps
+from mem_mcp.mcp.tools.create_team import CreateTeamTool
 from mem_mcp.mcp.tools.delete import MemoryDeleteTool
 from mem_mcp.mcp.tools.export import MemoryExportTool
 from mem_mcp.mcp.tools.feedback import MemoryFeedbackTool
 from mem_mcp.mcp.tools.get import MemoryGetTool
 from mem_mcp.mcp.tools.list import MemoryListTool
+from mem_mcp.mcp.tools.list_my_teams import ListMyTeamsTool
 from mem_mcp.mcp.tools.search import MemorySearchTool
 from mem_mcp.mcp.tools.stats import MemoryStatsTool
 from mem_mcp.mcp.tools.supersede import MemorySupersedeTool
@@ -80,6 +82,7 @@ from mem_mcp.web.handlers.feedback import make_feedback_router
 from mem_mcp.web.handlers.identities import make_identities_router
 from mem_mcp.web.handlers.memories import make_memories_router
 from mem_mcp.web.handlers.stats import make_stats_router
+from mem_mcp.web.handlers.teams import make_teams_router
 from mem_mcp.web.handlers.tenant import make_tenant_router
 from mem_mcp.web.routes import make_web_router
 
@@ -316,7 +319,7 @@ def _wire_routers(app: FastAPI) -> None:
         quotas=quotas,
     )
 
-    # Build ToolRegistry with 13 tools (12 memory + 1 onboarding)
+    # Build ToolRegistry with 15 tools (12 memory + 1 onboarding + 2 team)
     registry = ToolRegistry()
     tools_list: list = [
         MemoryWriteTool,
@@ -333,6 +336,8 @@ def _wire_routers(app: FastAPI) -> None:
         MemoryFeedbackTool,
         MemoryStatsTool,
         MemsysEnableKiteTool,
+        ListMyTeamsTool,
+        CreateTeamTool,
     ]
     for tool_cls in tools_list:  # type: ignore[attr-defined]
         registry.register(tool_cls)  # type: ignore[arg-type]
@@ -381,6 +386,9 @@ def _wire_routers(app: FastAPI) -> None:
         callback_url=callback_url,
     )
     app.include_router(identities_router)
+
+    teams_router = make_teams_router(pool=pool, audit=audit)
+    app.include_router(teams_router)
 
     clients_router = make_clients_router(
         pool=pool,

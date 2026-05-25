@@ -178,8 +178,9 @@ def make_web_router(
 
         # UPDATE workspace_domain from custom:google_hd claim (enterprise feature).
         # Only update if the new value differs from existing (idempotent).
-        if info.workspace_domain:
-            async with system_tx(pool) as conn:
+        # Then consume pending team invites (PR 1.B).
+        async with system_tx(pool) as conn:
+            if info.workspace_domain:
                 await conn.execute(
                     """
                     UPDATE tenant_identities
@@ -189,6 +190,70 @@ def make_web_router(
                     info.workspace_domain,
                     row["id"],
                 )
+
+            # Get updated identity info for invite consumption
+            updated_identity = await conn.fetchrow(
+                "SELECT workspace_domain FROM tenant_identities WHERE id = $1",
+                row["id"],
+            )
+            caller_workspace_domain = (
+                updated_identity.get("workspace_domain") if updated_identity else None
+            )
+
+            # Look up pending invites by email
+            pending_invites = await conn.fetch(
+                """
+                SELECT team_id, role, invited_by_tenant_id FROM team_invites
+                WHERE LOWER(email) = LOWER($1) AND status = 'pending'
+                """,
+                info.email,
+            )
+
+            # For each pending invite, validate domain rule and accept if applicable
+            for invite in pending_invites:
+                team = await conn.fetchrow(
+                    "SELECT workspace_domain FROM teams WHERE id = $1 AND deleted_at IS NULL",
+                    invite["team_id"],
+                )
+                if not team:
+                    continue  # Team was deleted; skip this invite
+
+                team_workspace_domain = team["workspace_domain"]
+
+                # Validate domain rules
+                domain_match = False
+                if team_workspace_domain:
+                    # Workspace team: caller must share domain
+                    domain_match = caller_workspace_domain == team_workspace_domain
+                else:
+                    # Personal team: caller must have no domain
+                    domain_match = caller_workspace_domain is None
+
+                if domain_match:
+                    # Accept the invite
+                    async with conn.transaction():
+                        await conn.execute(
+                            """
+                            INSERT INTO team_members (team_id, tenant_id, role, status, added_by_tenant_id)
+                            VALUES ($1, $2, $3, $4, $5)
+                            ON CONFLICT DO NOTHING
+                            """,
+                            invite["team_id"],
+                            row["tenant_id"],
+                            invite["role"],
+                            "active",
+                            invite["invited_by_tenant_id"],
+                        )
+                        await conn.execute(
+                            """
+                            UPDATE team_invites
+                            SET status = 'accepted'
+                            WHERE team_id = $1 AND LOWER(email) = LOWER($2)
+                            """,
+                            invite["team_id"],
+                            info.email,
+                        )
+                # else: domain mismatch; leave invite pending, don't break sign-in
 
         # Create web session
         ua = request.headers.get("user-agent")
