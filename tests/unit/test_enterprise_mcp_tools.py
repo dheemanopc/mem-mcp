@@ -38,8 +38,8 @@ class TestListMyTeams:
         tool = ListMyTeamsTool()
         output = await tool(tool_ctx_with_workspace, None)  # type: ignore[arg-type]
         assert len(output.teams) == 1  # type: ignore[attr-defined]
-        assert output.teams[0].name == "Team 1"  # type: ignore[attr-defined,index]
-        assert output.teams[0].role == "admin"  # type: ignore[attr-defined,index]
+        assert output.teams[0].name == "Team 1"  # type: ignore[attr-defined]
+        assert output.teams[0].role == "admin"  # type: ignore[attr-defined]
 
 
 class TestCreateTeam:
