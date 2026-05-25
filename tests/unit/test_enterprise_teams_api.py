@@ -345,25 +345,25 @@ class TestTeamDeletion:
 
 
 @pytest.fixture
-def user_with_workspace():
+def user_with_workspace() -> Any:
     """Fixture: workspace user (workspace_domain='example.com')."""
     # Returns dict with tenant_id, session, workspace_domain
     pass
 
 
 @pytest.fixture
-def user_personal():
+def user_personal() -> Any:
     """Fixture: personal user (no workspace_domain)."""
     pass
 
 
 @pytest.fixture
-def other_user_same_workspace():
+def other_user_same_workspace() -> Any:
     """Fixture: another user in same workspace (example.com)."""
     pass
 
 
 @pytest.fixture
-def user_different_workspace():
+def user_different_workspace() -> Any:
     """Fixture: user in different workspace (other.com)."""
     pass

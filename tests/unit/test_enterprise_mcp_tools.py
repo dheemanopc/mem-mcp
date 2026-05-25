@@ -15,9 +15,9 @@ class TestListMyTeams:
     async def test_list_teams_empty(self, tool_ctx_personal: Any) -> None:
         """New user has no teams."""
         tool = ListMyTeamsTool()
-        output = await tool(tool_ctx_personal, None)
-        assert output.teams == []
-        assert output.default_team_id is None
+        output = await tool(tool_ctx_personal, None)  # type: ignore[arg-type]
+        assert output.teams == []  # type: ignore[attr-defined]
+        assert output.default_team_id is None  # type: ignore[attr-defined]
 
     async def test_list_teams_with_membership(
         self, tool_ctx_with_workspace: Any, db_session: Any
@@ -36,10 +36,10 @@ class TestListMyTeams:
         )
 
         tool = ListMyTeamsTool()
-        output = await tool(tool_ctx_with_workspace, None)
-        assert len(output.teams) == 1
-        assert output.teams[0].name == "Team 1"
-        assert output.teams[0].role == "admin"
+        output = await tool(tool_ctx_with_workspace, None)  # type: ignore[arg-type]
+        assert len(output.teams) == 1  # type: ignore[attr-defined]
+        assert output.teams[0].name == "Team 1"  # type: ignore[attr-defined,index]
+        assert output.teams[0].role == "admin"  # type: ignore[attr-defined,index]
 
 
 class TestCreateTeam:
@@ -50,15 +50,15 @@ class TestCreateTeam:
         tool = CreateTeamTool()
         inp = CreateTeamInput(name="Engineering")
         output = await tool(tool_ctx_with_workspace, inp)
-        assert output.team.name == "Engineering"
-        assert output.team.workspace_domain == "example.com"
-        assert output.your_role == "admin"
+        assert output.team.name == "Engineering"  # type: ignore[attr-defined]
+        assert output.team.workspace_domain == "example.com"  # type: ignore[attr-defined]
+        assert output.your_role == "admin"  # type: ignore[attr-defined]
 
     async def test_create_team_personal_no_domain(self, tool_ctx_personal: Any) -> None:
         """Personal user creates team with no domain."""
         tool = CreateTeamTool()
         inp = CreateTeamInput(name="My Team")
         output = await tool(tool_ctx_personal, inp)
-        assert output.team.name == "My Team"
-        assert output.team.workspace_domain is None
-        assert output.your_role == "admin"
+        assert output.team.name == "My Team"  # type: ignore[attr-defined]
+        assert output.team.workspace_domain is None  # type: ignore[attr-defined]
+        assert output.your_role == "admin"  # type: ignore[attr-defined]
