@@ -9,10 +9,11 @@ User=memmcp
 Group=memmcp
 WorkingDirectory=/opt/mem-mcp
 EnvironmentFile=/etc/mem-mcp/env
+# NOTE: --workers 1 required until session_cache moves to DB/Redis (see memsys d6baba0c)
 ExecStart=/home/memmcp/.local/bin/poetry run uvicorn mem_mcp.main:app \
     --host 127.0.0.1 --port 8080 \
     --proxy-headers --forwarded-allow-ips '127.0.0.1' \
-    --workers 6
+    --workers 1
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=15
