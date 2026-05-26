@@ -377,3 +377,96 @@ class TestMakeWebRouter:
 
         assert response.status_code == 302
         assert response.headers["location"] == "/"
+
+    def test_callback_with_oauth_error_redirects_to_welcome(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """GET /auth/callback?error=access_denied redirects to /welcome with oauth_error status."""
+        pool = MagicMock()
+        audit = MagicMock()
+
+        router = make_web_router(
+            cognito_authorize_base_url="https://cognito.example.com/oauth2/authorize",
+            cognito_client_id="test-client-id",
+            callback_url="https://myapp.example.com/auth/callback",
+            token_exchanger=FakeTokenExchanger(),
+            user_info_fetcher=FakeUserInfoFetcher(),
+            pool=pool,
+            audit=audit,
+        )
+
+        app = FastAPI()
+        app.include_router(router)
+        client = TestClient(app)
+
+        response = client.get(
+            "/auth/callback",
+            params={
+                "error": "access_denied",
+                "error_description": "user_denied",
+            },
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 302
+        assert response.headers["location"] == "/welcome?status=oauth_error&reason=access_denied"
+
+    def test_callback_missing_state_redirects_to_welcome(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """GET /auth/callback?code=abc123 (no state) redirects to /welcome with missing_params status."""
+        pool = MagicMock()
+        audit = MagicMock()
+
+        router = make_web_router(
+            cognito_authorize_base_url="https://cognito.example.com/oauth2/authorize",
+            cognito_client_id="test-client-id",
+            callback_url="https://myapp.example.com/auth/callback",
+            token_exchanger=FakeTokenExchanger(),
+            user_info_fetcher=FakeUserInfoFetcher(),
+            pool=pool,
+            audit=audit,
+        )
+
+        app = FastAPI()
+        app.include_router(router)
+        client = TestClient(app)
+
+        response = client.get(
+            "/auth/callback",
+            params={"code": "abc123"},
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 302
+        assert response.headers["location"] == "/welcome?status=missing_params"
+
+    def test_callback_missing_code_redirects_to_welcome(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """GET /auth/callback?state=xyz (no code) redirects to /welcome with missing_params status."""
+        pool = MagicMock()
+        audit = MagicMock()
+
+        router = make_web_router(
+            cognito_authorize_base_url="https://cognito.example.com/oauth2/authorize",
+            cognito_client_id="test-client-id",
+            callback_url="https://myapp.example.com/auth/callback",
+            token_exchanger=FakeTokenExchanger(),
+            user_info_fetcher=FakeUserInfoFetcher(),
+            pool=pool,
+            audit=audit,
+        )
+
+        app = FastAPI()
+        app.include_router(router)
+        client = TestClient(app)
+
+        response = client.get(
+            "/auth/callback",
+            params={"state": "xyz"},
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 302
+        assert response.headers["location"] == "/welcome?status=missing_params"
