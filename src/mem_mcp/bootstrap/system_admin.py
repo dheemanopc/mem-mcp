@@ -3,6 +3,7 @@
 Idempotent: marks completion in system_state and skips on subsequent runs.
 Safe to fail: any error here is logged but does NOT crash startup.
 """
+
 from __future__ import annotations
 
 import logging
@@ -40,9 +41,7 @@ async def bootstrap_first_system_admin(pool: asyncpg.Pool) -> dict[str, str]:
 
     async with system_tx(pool) as conn:
         # idempotency check
-        existing = await conn.fetchval(
-            "SELECT 1 FROM system_state WHERE key = $1", _STATE_KEY
-        )
+        existing = await conn.fetchval("SELECT 1 FROM system_state WHERE key = $1", _STATE_KEY)
         if existing:
             return {"status": "already_done"}
 

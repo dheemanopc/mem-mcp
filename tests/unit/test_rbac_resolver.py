@@ -1,4 +1,5 @@
 """Tests for has_permission() resolver across system + team scopes."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -42,19 +43,13 @@ class TestHasPermissionResolver:
                 )
 
                 # Test system permissions
-                result = await has_permission(
-                    conn, tenant_id, Permission.SYSTEM_REVIEW_SIGNUPS
-                )
+                result = await has_permission(conn, tenant_id, Permission.SYSTEM_REVIEW_SIGNUPS)
                 assert result is True
 
-                result = await has_permission(
-                    conn, tenant_id, Permission.SYSTEM_MANAGE_ROLES
-                )
+                result = await has_permission(conn, tenant_id, Permission.SYSTEM_MANAGE_ROLES)
                 assert result is True
 
-                result = await has_permission(
-                    conn, tenant_id, Permission.SYSTEM_APPROVE_SIGNUPS
-                )
+                result = await has_permission(conn, tenant_id, Permission.SYSTEM_APPROVE_SIGNUPS)
                 assert result is True
             finally:
                 # Cleanup
@@ -77,9 +72,7 @@ class TestHasPermissionResolver:
                 )
 
                 # System permission should be denied
-                result = await has_permission(
-                    conn, tenant_id, Permission.SYSTEM_REVIEW_SIGNUPS
-                )
+                result = await has_permission(conn, tenant_id, Permission.SYSTEM_REVIEW_SIGNUPS)
                 assert result is False
 
                 # Team permission should be denied (even with team_id)
@@ -134,9 +127,7 @@ class TestHasPermissionResolver:
                 assert result is True
 
                 # Should NOT have permission without team_id
-                result = await has_permission(
-                    conn, tenant_id, Permission.TEAM_MANAGE_MEMBERS
-                )
+                result = await has_permission(conn, tenant_id, Permission.TEAM_MANAGE_MEMBERS)
                 assert result is False
 
                 # Should NOT have permission for different team
@@ -147,9 +138,7 @@ class TestHasPermissionResolver:
                 assert result is False
             finally:
                 # Cleanup
-                await conn.execute(
-                    "DELETE FROM team_members WHERE team_id = $1", team_id
-                )
+                await conn.execute("DELETE FROM team_members WHERE team_id = $1", team_id)
                 await conn.execute("DELETE FROM teams WHERE id = $1", team_id)
                 await conn.execute("DELETE FROM tenants WHERE id = $1", tenant_id)
 
@@ -207,9 +196,7 @@ class TestHasPermissionResolver:
                 assert result is False
             finally:
                 # Cleanup
-                await conn.execute(
-                    "DELETE FROM team_members WHERE team_id = $1", team_id
-                )
+                await conn.execute("DELETE FROM team_members WHERE team_id = $1", team_id)
                 await conn.execute("DELETE FROM teams WHERE id = $1", team_id)
                 await conn.execute("DELETE FROM tenants WHERE id = $1", tenant_id)
 
@@ -260,8 +247,6 @@ class TestHasPermissionResolver:
                 assert result is False
             finally:
                 # Cleanup
-                await conn.execute(
-                    "DELETE FROM team_members WHERE team_id = $1", team_id
-                )
+                await conn.execute("DELETE FROM team_members WHERE team_id = $1", team_id)
                 await conn.execute("DELETE FROM teams WHERE id = $1", team_id)
                 await conn.execute("DELETE FROM tenants WHERE id = $1", tenant_id)

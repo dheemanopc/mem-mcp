@@ -1,4 +1,5 @@
 """Tests for bootstrap_first_system_admin env-driven bootstrap mechanism."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -88,12 +89,8 @@ class TestBootstrapFirstSystemAdmin:
                     "DELETE FROM tenant_system_roles WHERE tenant_id = $1",
                     tenant_id,
                 )
-                await conn.execute(
-                    "DELETE FROM tenant_identities WHERE tenant_id = $1", tenant_id
-                )
-                await conn.execute(
-                    "DELETE FROM system_state WHERE key = 'bootstrap_first_admin'"
-                )
+                await conn.execute("DELETE FROM tenant_identities WHERE tenant_id = $1", tenant_id)
+                await conn.execute("DELETE FROM system_state WHERE key = 'bootstrap_first_admin'")
                 await conn.execute("DELETE FROM tenants WHERE id = $1", tenant_id)
 
     @pytest.mark.asyncio
@@ -148,12 +145,8 @@ class TestBootstrapFirstSystemAdmin:
                     "DELETE FROM tenant_system_roles WHERE tenant_id = $1",
                     tenant_id,
                 )
-                await conn.execute(
-                    "DELETE FROM tenant_identities WHERE tenant_id = $1", tenant_id
-                )
-                await conn.execute(
-                    "DELETE FROM system_state WHERE key = 'bootstrap_first_admin'"
-                )
+                await conn.execute("DELETE FROM tenant_identities WHERE tenant_id = $1", tenant_id)
+                await conn.execute("DELETE FROM system_state WHERE key = 'bootstrap_first_admin'")
                 await conn.execute("DELETE FROM tenants WHERE id = $1", tenant_id)
 
     @pytest.mark.asyncio
@@ -182,6 +175,4 @@ class TestBootstrapFirstSystemAdmin:
                 assert state_exists is None
             finally:
                 # Cleanup just in case
-                await conn.execute(
-                    "DELETE FROM system_state WHERE key = 'bootstrap_first_admin'"
-                )
+                await conn.execute("DELETE FROM system_state WHERE key = 'bootstrap_first_admin'")

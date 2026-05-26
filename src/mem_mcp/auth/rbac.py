@@ -1,4 +1,5 @@
 """RBAC resolver: has_permission() + require_permission() FastAPI dependency."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
@@ -23,9 +24,7 @@ async def get_system_roles(conn: asyncpg.Connection, tenant_id: UUID) -> set[str
     return {r["role"] for r in rows}
 
 
-async def get_team_role(
-    conn: asyncpg.Connection, tenant_id: UUID, team_id: UUID
-) -> str | None:
+async def get_team_role(conn: asyncpg.Connection, tenant_id: UUID, team_id: UUID) -> str | None:
     """Fetch the team role for a tenant in a specific team."""
     result = await conn.fetchval(
         """
@@ -91,16 +90,12 @@ def require_permission(
         team_id: UUID | None = None
         if team_id_param:
             # Try path params first, then query
-            raw = request.path_params.get(team_id_param) or request.query_params.get(
-                team_id_param
-            )
+            raw = request.path_params.get(team_id_param) or request.query_params.get(team_id_param)
             if raw is not None:
                 try:
                     team_id = UUID(str(raw))
                 except (ValueError, TypeError) as exc:
-                    raise HTTPException(
-                        status_code=400, detail=f"invalid {team_id_param}"
-                    ) from exc
+                    raise HTTPException(status_code=400, detail=f"invalid {team_id_param}") from exc
 
         async with system_tx(pool) as conn:
             ok = await has_permission(conn, sess.tenant_id, permission, team_id=team_id)

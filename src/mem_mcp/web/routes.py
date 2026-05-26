@@ -153,9 +153,7 @@ def make_web_router(
         """
         # Cognito error-path: ?error=access_denied&error_description=...
         if error:
-            return RedirectResponse(
-                f"/welcome?status=oauth_error&reason={error}", status_code=302
-            )
+            return RedirectResponse(f"/welcome?status=oauth_error&reason={error}", status_code=302)
 
         # Missing code or state — happens on browser back/refresh, or if Cognito drops state.
         # Don't 422; send the user back to /welcome with a retry hint.

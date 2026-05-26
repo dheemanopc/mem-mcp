@@ -72,9 +72,7 @@ def upgrade() -> None:
     # ==========================================================================
     # GRANTS to mem_app role
     # ==========================================================================
-    op.execute(
-        sa.text("GRANT SELECT, INSERT, UPDATE, DELETE ON tenant_system_roles TO mem_app")
-    )
+    op.execute(sa.text("GRANT SELECT, INSERT, UPDATE, DELETE ON tenant_system_roles TO mem_app"))
 
     # ==========================================================================
     # NEW TABLE: system_state
@@ -99,9 +97,7 @@ def upgrade() -> None:
     # ==========================================================================
     # GRANTS to mem_app role for system_state
     # ==========================================================================
-    op.execute(
-        sa.text("GRANT SELECT, INSERT, UPDATE ON system_state TO mem_app")
-    )
+    op.execute(sa.text("GRANT SELECT, INSERT, UPDATE ON system_state TO mem_app"))
 
 
 def downgrade() -> None:

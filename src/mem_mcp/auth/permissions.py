@@ -3,6 +3,7 @@
 System roles live in tenant_system_roles. Team roles live in team_members.role.
 A permission resolver (rbac.py) checks both.
 """
+
 from __future__ import annotations
 
 from enum import StrEnum

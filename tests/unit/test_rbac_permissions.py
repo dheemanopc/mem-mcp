@@ -1,4 +1,5 @@
 """Matrix tests for has_permission() across all role/permission combos."""
+
 from __future__ import annotations
 
 from mem_mcp.auth.permissions import ROLE_PERMISSIONS, Permission, Role
