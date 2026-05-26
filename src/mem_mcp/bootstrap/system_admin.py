@@ -69,7 +69,7 @@ async def bootstrap_first_system_admin(pool: asyncpg.Pool) -> dict[str, str]:
             await conn.execute(
                 """
                 INSERT INTO system_state (key, value)
-                VALUES ($1, jsonb_build_object('tenant_id', $2::text, 'email', $3))
+                VALUES ($1, jsonb_build_object('tenant_id', $2::text, 'email', $3::text))
                 ON CONFLICT (key) DO NOTHING
                 """,
                 _STATE_KEY,
