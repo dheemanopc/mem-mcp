@@ -134,16 +134,35 @@ def make_web_router(
         return response
 
     @router.get("/auth/callback")
-    async def callback(request: Request, code: str, state: str) -> Response:
+    async def callback(
+        request: Request,
+        code: str | None = None,
+        state: str | None = None,
+        error: str | None = None,
+        error_description: str | None = None,
+    ) -> Response:
         """Token exchange + existing-user lookup → session + dashboard redirect.
 
         Flow:
-        1. Verify state cookie matches state param
-        2. Exchange code for tokens
-        3. Look up tenant_identities by cognito_sub
+        1. Handle OAuth error or missing params
+        2. Verify state cookie matches state param
+        3. Exchange code for tokens
+        4. Look up tenant_identities by cognito_sub
            - HIT → existing user; create web session; redirect /dashboard
            - MISS → new user or linking flow. Log warning and redirect /welcome
         """
+        # Cognito error-path: ?error=access_denied&error_description=...
+        if error:
+            return RedirectResponse(f"/welcome?status=oauth_error&reason={error}", status_code=302)
+
+        # Missing code or state — happens on browser back/refresh, or if Cognito drops state.
+        # Don't 422; send the user back to /welcome with a retry hint.
+        if not code or not state:
+            return RedirectResponse("/welcome?status=missing_params", status_code=302)
+
+        # From this point, code and state are guaranteed non-None
+        assert code is not None and state is not None
+
         # Verify state
         state_cookie = request.cookies.get("auth_state")
         if not state_cookie or state_cookie != state:

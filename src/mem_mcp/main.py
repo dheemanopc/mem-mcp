@@ -169,6 +169,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await init_pool()
     log.info("pool_initialized")
 
+    # Bootstrap first system admin (idempotent, no-op if env var unset)
+    try:
+        from mem_mcp.bootstrap.system_admin import bootstrap_first_system_admin
+        from mem_mcp.db import get_pool as _get_pool_for_bootstrap
+
+        pool = _get_pool_for_bootstrap()
+        bs_result = await bootstrap_first_system_admin(pool)
+        log.info("bootstrap_first_system_admin", result=bs_result)
+    except Exception:
+        log.exception("bootstrap_first_system_admin failed (non-fatal)")
+
     # Wire routers AFTER pool is initialized but BEFORE yielding to uvicorn.
     # (Middleware is added separately in create_app() — Starlette requires
     # add_middleware() before the app starts serving.)
