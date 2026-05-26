@@ -1,18 +1,18 @@
-"""Admin routes for signup-request review. Email-match guard against settings.operator_email."""
+"""Admin routes for signup-request review. Permission-gated via RBAC."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Cookie, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from mem_mcp.audit.logger import AuditLogger
-from mem_mcp.config import get_settings
-from mem_mcp.db import system_tx
+from mem_mcp.auth.permissions import Permission
+from mem_mcp.auth.rbac import require_permission
+from mem_mcp.db import get_pool, system_tx
 from mem_mcp.invites import seed_invite_email
-from mem_mcp.web.sessions import lookup_session
 from mem_mcp.web.signup_requests import emails, repository
 
 if TYPE_CHECKING:
@@ -29,24 +29,16 @@ class RejectInput(BaseModel):
     send_email: bool = False
 
 
-async def _require_operator(pool: asyncpg.Pool, mem_session: str | None) -> str:
-    """Return operator email if session belongs to operator. Else 401/403."""
-    if not mem_session:
-        raise HTTPException(status_code=401, detail="not authenticated")
-    sess = await lookup_session(pool, mem_session)
-    if sess is None:
-        raise HTTPException(status_code=401, detail="invalid session")
-    # Pull email from tenant_identities (system context since looking up by identity_id)
+async def _get_reviewer_email(tenant_id: UUID) -> str:
+    """Fetch the email for a tenant_id from tenant_identities."""
+    pool = get_pool()
     async with system_tx(pool) as conn:
         row = await conn.fetchrow(
-            "SELECT email FROM tenant_identities WHERE id = $1",
-            sess.identity_id,
+            "SELECT email FROM tenant_identities WHERE id IN (SELECT identity_id FROM tenants WHERE id = $1)",
+            tenant_id,
         )
     if row is None or row["email"] is None:
-        raise HTTPException(status_code=403, detail="email not found on identity")
-    operator_email = get_settings().operator_email.lower()
-    if row["email"].lower() != operator_email:
-        raise HTTPException(status_code=403, detail="not an operator")
+        return f"tenant:{tenant_id}"  # fallback if identity email not found
     return str(row["email"])
 
 
@@ -56,9 +48,8 @@ def make_admin_signup_router(*, pool: asyncpg.Pool, audit: AuditLogger) -> APIRo
     @router.get("/api/web/admin/signup-requests")
     async def list_all(
         status: str | None = None,
-        mem_session: str | None = Cookie(default=None),
+        caller_tenant_id: UUID = Depends(require_permission(Permission.SYSTEM_REVIEW_SIGNUPS)),
     ) -> dict[str, Any]:
-        await _require_operator(pool, mem_session)
         if status and status not in (
             "awaiting_verification",
             "pending",
@@ -92,14 +83,14 @@ def make_admin_signup_router(*, pool: asyncpg.Pool, audit: AuditLogger) -> APIRo
     async def approve(
         request_id: UUID,
         payload: ApproveInput,
-        mem_session: str | None = Cookie(default=None),
+        caller_tenant_id: UUID = Depends(require_permission(Permission.SYSTEM_APPROVE_SIGNUPS)),
     ) -> dict[str, Any]:
-        reviewer = await _require_operator(pool, mem_session)
+        reviewer_email = await _get_reviewer_email(caller_tenant_id)
         req = await repository.mark_reviewed(
             pool,
             request_id=request_id,
             status="approved",
-            reviewer=reviewer,
+            reviewer=reviewer_email,
             notes=payload.notes,
         )
         if req is None:
@@ -108,7 +99,7 @@ def make_admin_signup_router(*, pool: asyncpg.Pool, audit: AuditLogger) -> APIRo
         await seed_invite_email(
             pool,
             email=req.email,
-            invited_by=reviewer,
+            invited_by=reviewer_email,
             notes=f"approved via signup_requests {req.id}",
         )
         await emails.send_approval_email(to=req.email)
@@ -123,7 +114,7 @@ def make_admin_signup_router(*, pool: asyncpg.Pool, audit: AuditLogger) -> APIRo
                 target_id=req.id,
                 target_kind="signup_request",
                 request_id=str(req.id),
-                details={"reviewer": reviewer, "applicant_email": req.email},
+                details={"reviewer_tenant_id": str(caller_tenant_id), "reviewer_email": reviewer_email, "applicant_email": req.email},
             )
         return {"status": "approved", "id": str(req.id)}
 
@@ -131,14 +122,14 @@ def make_admin_signup_router(*, pool: asyncpg.Pool, audit: AuditLogger) -> APIRo
     async def reject(
         request_id: UUID,
         payload: RejectInput,
-        mem_session: str | None = Cookie(default=None),
+        caller_tenant_id: UUID = Depends(require_permission(Permission.SYSTEM_REJECT_SIGNUPS)),
     ) -> dict[str, Any]:
-        reviewer = await _require_operator(pool, mem_session)
+        reviewer_email = await _get_reviewer_email(caller_tenant_id)
         req = await repository.mark_reviewed(
             pool,
             request_id=request_id,
             status="rejected",
-            reviewer=reviewer,
+            reviewer=reviewer_email,
             notes=f"{payload.reason}\n\n{payload.notes or ''}".strip(),
         )
         if req is None:
@@ -157,7 +148,8 @@ def make_admin_signup_router(*, pool: asyncpg.Pool, audit: AuditLogger) -> APIRo
                 target_kind="signup_request",
                 request_id=str(req.id),
                 details={
-                    "reviewer": reviewer,
+                    "reviewer_tenant_id": str(caller_tenant_id),
+                    "reviewer_email": reviewer_email,
                     "reason": payload.reason,
                     "email_sent": payload.send_email,
                 },
