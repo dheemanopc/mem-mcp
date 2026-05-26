@@ -1,4 +1,4 @@
-"""Bootstrap the first system_admin from BOOTSTRAP_SYSTEM_ADMIN_EMAIL env var.
+"""Bootstrap the first system_admin from MEM_MCP_BOOTSTRAP_SYSTEM_ADMIN_EMAIL env var.
 
 Idempotent: marks completion in system_state and skips on subsequent runs.
 Safe to fail: any error here is logged but does NOT crash startup.
@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 _STATE_KEY = "bootstrap_first_admin"
-_ENV_VAR = "BOOTSTRAP_SYSTEM_ADMIN_EMAIL"
+_ENV_VAR = "MEM_MCP_BOOTSTRAP_SYSTEM_ADMIN_EMAIL"
 
 
 async def bootstrap_first_system_admin(pool: asyncpg.Pool) -> dict[str, str]:
@@ -29,7 +29,7 @@ async def bootstrap_first_system_admin(pool: asyncpg.Pool) -> dict[str, str]:
         {"status": "granted"|"already_done"|"skipped"|"not_found"|"error", ...}
 
     Conditions for granting:
-      1. Env var BOOTSTRAP_SYSTEM_ADMIN_EMAIL is set + non-empty
+      1. Env var MEM_MCP_BOOTSTRAP_SYSTEM_ADMIN_EMAIL is set + non-empty
       2. system_state has no row with key='bootstrap_first_admin' (idempotency)
       3. tenant_identities row matches that email (case-insensitive)
 
@@ -60,7 +60,7 @@ async def bootstrap_first_system_admin(pool: asyncpg.Pool) -> dict[str, str]:
             await conn.execute(
                 """
                 INSERT INTO tenant_system_roles (tenant_id, role, granted_by_tenant_id, notes)
-                VALUES ($1, $2, NULL, 'bootstrap from BOOTSTRAP_SYSTEM_ADMIN_EMAIL env var')
+                VALUES ($1, $2, NULL, 'bootstrap from MEM_MCP_BOOTSTRAP_SYSTEM_ADMIN_EMAIL env var')
                 ON CONFLICT (tenant_id, role) DO NOTHING
                 """,
                 tenant_id,

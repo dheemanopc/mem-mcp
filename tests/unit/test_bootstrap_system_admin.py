@@ -25,7 +25,7 @@ class TestBootstrapFirstSystemAdmin:
     ) -> None:
         """Clear env var → bootstrap returns skipped status."""
         # Remove the env var if set
-        monkeypatch.delenv("BOOTSTRAP_SYSTEM_ADMIN_EMAIL", raising=False)
+        monkeypatch.delenv("MEM_MCP_BOOTSTRAP_SYSTEM_ADMIN_EMAIL", raising=False)
 
         result = await bootstrap_first_system_admin(pg_pool)
         assert result["status"] == "skipped"
@@ -61,7 +61,7 @@ class TestBootstrapFirstSystemAdmin:
                 )
 
                 # Set env var
-                monkeypatch.setenv("BOOTSTRAP_SYSTEM_ADMIN_EMAIL", email)
+                monkeypatch.setenv("MEM_MCP_BOOTSTRAP_SYSTEM_ADMIN_EMAIL", email)
 
                 # Run bootstrap
                 result = await bootstrap_first_system_admin(pg_pool)
@@ -123,7 +123,7 @@ class TestBootstrapFirstSystemAdmin:
                 )
 
                 # Set env var
-                monkeypatch.setenv("BOOTSTRAP_SYSTEM_ADMIN_EMAIL", email)
+                monkeypatch.setenv("MEM_MCP_BOOTSTRAP_SYSTEM_ADMIN_EMAIL", email)
 
                 # First bootstrap call
                 result1 = await bootstrap_first_system_admin(pg_pool)
@@ -157,7 +157,7 @@ class TestBootstrapFirstSystemAdmin:
         nonexistent_email = f"nonexistent-{uuid4()}@example.com"
 
         # Set env var to nonexistent email
-        monkeypatch.setenv("BOOTSTRAP_SYSTEM_ADMIN_EMAIL", nonexistent_email)
+        monkeypatch.setenv("MEM_MCP_BOOTSTRAP_SYSTEM_ADMIN_EMAIL", nonexistent_email)
 
         async with pg_pool.acquire() as conn:
             try:
