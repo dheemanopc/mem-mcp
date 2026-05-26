@@ -15,9 +15,12 @@ is passed.
 
 from __future__ import annotations
 
+import hashlib
 import os
+import secrets
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -132,3 +135,377 @@ def mcp_client() -> Any:
             return []
 
     return _StubMcpClient()
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Enterprise test fixtures (PR #239 / PR 1.B)
+# Live-DB; all skip via pg_pool when MEM_MCP_TEST_DSN is unset.
+# ────────────────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+async def db_session(pg_pool: Any) -> AsyncIterator[Any]:
+    """Async PG connection scoped to a single test.
+
+    Tests can `await db_session.execute(...)` directly. The connection is
+    closed at teardown. Cleanup of inserted rows is the test's responsibility.
+    """
+    async with pg_pool.acquire() as conn:
+        yield conn
+
+
+@pytest.fixture
+async def tool_ctx_personal(pg_pool: Any) -> AsyncIterator[Any]:
+    """A ToolContext-like object for a personal user (no workspace_domain).
+
+    The object has: tenant_id (UUID), identity_id (UUID), db_pool (asyncpg.Pool).
+    Used by MCP tool tests that call Tool(ctx, input).
+    """
+    from mem_mcp.mcp.tools._base import ToolContext
+
+    tenant_id = uuid4()
+    identity_id = uuid4()
+    email = f"personal-{tenant_id}@test.invalid"
+
+    async with pg_pool.acquire() as conn:
+        # Insert tenant
+        await conn.execute(
+            "INSERT INTO tenants (id, email, status) VALUES ($1, $2, 'active')",
+            tenant_id,
+            email,
+        )
+        # Insert primary identity (workspace_domain=NULL)
+        await conn.execute(
+            """
+            INSERT INTO tenant_identities
+            (id, tenant_id, cognito_sub, provider, email, is_primary)
+            VALUES ($1, $2, $3, $4, $5, true)
+            """,
+            identity_id,
+            tenant_id,
+            f"sub-{tenant_id}",
+            "cognito",
+            email,
+        )
+
+    # Build a ToolContext-like object for tests
+    ctx = ToolContext(
+        request_id=str(uuid4()),
+        tenant_id=tenant_id,
+        identity_id=identity_id,
+        client_id="test-client",
+        scopes=frozenset(["memory.read", "memory.write"]),
+        db_pool=pg_pool,
+    )
+
+    yield ctx
+
+    # Cleanup
+    async with pg_pool.acquire() as conn:
+        await conn.execute("DELETE FROM tenant_identities WHERE id = $1", identity_id)
+        await conn.execute("DELETE FROM tenants WHERE id = $1", tenant_id)
+
+
+@pytest.fixture
+async def tool_ctx_with_workspace(pg_pool: Any) -> AsyncIterator[Any]:
+    """A ToolContext-like object for a workspace user (workspace_domain='example.com').
+
+    The object has: tenant_id (UUID), identity_id (UUID), db_pool (asyncpg.Pool),
+    and the corresponding tenant_identities row has workspace_domain='example.com'.
+    """
+    from mem_mcp.mcp.tools._base import ToolContext
+
+    tenant_id = uuid4()
+    identity_id = uuid4()
+    email = f"workspace-{tenant_id}@example.com"
+
+    async with pg_pool.acquire() as conn:
+        # Insert tenant
+        await conn.execute(
+            "INSERT INTO tenants (id, email, status) VALUES ($1, $2, 'active')",
+            tenant_id,
+            email,
+        )
+        # Insert primary identity with workspace_domain
+        await conn.execute(
+            """
+            INSERT INTO tenant_identities
+            (id, tenant_id, cognito_sub, provider, email, is_primary, workspace_domain)
+            VALUES ($1, $2, $3, $4, $5, true, $6)
+            """,
+            identity_id,
+            tenant_id,
+            f"sub-{tenant_id}",
+            "cognito",
+            email,
+            "example.com",
+        )
+
+    ctx = ToolContext(
+        request_id=str(uuid4()),
+        tenant_id=tenant_id,
+        identity_id=identity_id,
+        client_id="test-client",
+        scopes=frozenset(["memory.read", "memory.write"]),
+        db_pool=pg_pool,
+    )
+
+    yield ctx
+
+    # Cleanup
+    async with pg_pool.acquire() as conn:
+        await conn.execute("DELETE FROM tenant_identities WHERE id = $1", identity_id)
+        await conn.execute("DELETE FROM tenants WHERE id = $1", tenant_id)
+
+
+@pytest.fixture
+async def user_personal(pg_pool: Any) -> AsyncIterator[dict[str, Any]]:
+    """Personal user fixture: returns dict with session, tenant_id, identity_id, email.
+
+    The session cookie can be passed to the TestClient via mem_session cookie.
+    """
+    tenant_id = uuid4()
+    identity_id = uuid4()
+    email = f"personal-{tenant_id}@test.invalid"
+    session_raw = secrets.token_urlsafe(32)
+    session_hash = hashlib.sha256(session_raw.encode()).hexdigest()
+    expires_at = datetime.now(tz=UTC) + timedelta(days=7)
+
+    async with pg_pool.acquire() as conn:
+        # Insert tenant
+        await conn.execute(
+            "INSERT INTO tenants (id, email, status) VALUES ($1, $2, 'active')",
+            tenant_id,
+            email,
+        )
+        # Insert primary identity (workspace_domain=NULL)
+        await conn.execute(
+            """
+            INSERT INTO tenant_identities
+            (id, tenant_id, cognito_sub, provider, email, is_primary)
+            VALUES ($1, $2, $3, $4, $5, true)
+            """,
+            identity_id,
+            tenant_id,
+            f"sub-{tenant_id}",
+            "cognito",
+            email,
+        )
+        # Insert web session
+        await conn.execute(
+            """
+            INSERT INTO web_sessions
+            (session_hash, tenant_id, identity_id, expires_at)
+            VALUES ($1, $2, $3, $4)
+            """,
+            session_hash,
+            tenant_id,
+            identity_id,
+            expires_at,
+        )
+
+    yield {
+        "session": session_raw,
+        "tenant_id": tenant_id,
+        "identity_id": identity_id,
+        "email": email,
+    }
+
+    # Cleanup
+    async with pg_pool.acquire() as conn:
+        await conn.execute("DELETE FROM web_sessions WHERE session_hash = $1", session_hash)
+        await conn.execute("DELETE FROM tenant_identities WHERE id = $1", identity_id)
+        await conn.execute("DELETE FROM tenants WHERE id = $1", tenant_id)
+
+
+@pytest.fixture
+async def user_with_workspace(pg_pool: Any) -> AsyncIterator[dict[str, Any]]:
+    """Workspace user fixture: returns dict with session, tenant_id, identity_id, email.
+
+    workspace_domain='example.com'.
+    """
+    tenant_id = uuid4()
+    identity_id = uuid4()
+    email = f"workspace-{tenant_id}@example.com"
+    session_raw = secrets.token_urlsafe(32)
+    session_hash = hashlib.sha256(session_raw.encode()).hexdigest()
+    expires_at = datetime.now(tz=UTC) + timedelta(days=7)
+
+    async with pg_pool.acquire() as conn:
+        # Insert tenant
+        await conn.execute(
+            "INSERT INTO tenants (id, email, status) VALUES ($1, $2, 'active')",
+            tenant_id,
+            email,
+        )
+        # Insert primary identity with workspace_domain
+        await conn.execute(
+            """
+            INSERT INTO tenant_identities
+            (id, tenant_id, cognito_sub, provider, email, is_primary, workspace_domain)
+            VALUES ($1, $2, $3, $4, $5, true, $6)
+            """,
+            identity_id,
+            tenant_id,
+            f"sub-{tenant_id}",
+            "cognito",
+            email,
+            "example.com",
+        )
+        # Insert web session
+        await conn.execute(
+            """
+            INSERT INTO web_sessions
+            (session_hash, tenant_id, identity_id, expires_at)
+            VALUES ($1, $2, $3, $4)
+            """,
+            session_hash,
+            tenant_id,
+            identity_id,
+            expires_at,
+        )
+
+    yield {
+        "session": session_raw,
+        "tenant_id": tenant_id,
+        "identity_id": identity_id,
+        "email": email,
+    }
+
+    # Cleanup
+    async with pg_pool.acquire() as conn:
+        await conn.execute("DELETE FROM web_sessions WHERE session_hash = $1", session_hash)
+        await conn.execute("DELETE FROM tenant_identities WHERE id = $1", identity_id)
+        await conn.execute("DELETE FROM tenants WHERE id = $1", tenant_id)
+
+
+@pytest.fixture
+async def other_user_same_workspace(pg_pool: Any) -> AsyncIterator[dict[str, Any]]:
+    """Another workspace user in 'example.com' workspace."""
+    tenant_id = uuid4()
+    identity_id = uuid4()
+    email = f"other-ws-{tenant_id}@example.com"
+    session_raw = secrets.token_urlsafe(32)
+    session_hash = hashlib.sha256(session_raw.encode()).hexdigest()
+    expires_at = datetime.now(tz=UTC) + timedelta(days=7)
+
+    async with pg_pool.acquire() as conn:
+        # Insert tenant
+        await conn.execute(
+            "INSERT INTO tenants (id, email, status) VALUES ($1, $2, 'active')",
+            tenant_id,
+            email,
+        )
+        # Insert primary identity with workspace_domain='example.com'
+        await conn.execute(
+            """
+            INSERT INTO tenant_identities
+            (id, tenant_id, cognito_sub, provider, email, is_primary, workspace_domain)
+            VALUES ($1, $2, $3, $4, $5, true, $6)
+            """,
+            identity_id,
+            tenant_id,
+            f"sub-{tenant_id}",
+            "cognito",
+            email,
+            "example.com",
+        )
+        # Insert web session
+        await conn.execute(
+            """
+            INSERT INTO web_sessions
+            (session_hash, tenant_id, identity_id, expires_at)
+            VALUES ($1, $2, $3, $4)
+            """,
+            session_hash,
+            tenant_id,
+            identity_id,
+            expires_at,
+        )
+
+    yield {
+        "session": session_raw,
+        "tenant_id": tenant_id,
+        "identity_id": identity_id,
+        "email": email,
+    }
+
+    # Cleanup
+    async with pg_pool.acquire() as conn:
+        await conn.execute("DELETE FROM web_sessions WHERE session_hash = $1", session_hash)
+        await conn.execute("DELETE FROM tenant_identities WHERE id = $1", identity_id)
+        await conn.execute("DELETE FROM tenants WHERE id = $1", tenant_id)
+
+
+@pytest.fixture
+async def user_different_workspace(pg_pool: Any) -> AsyncIterator[dict[str, Any]]:
+    """User in different workspace: workspace_domain='other.com'."""
+    tenant_id = uuid4()
+    identity_id = uuid4()
+    email = f"other-domain-{tenant_id}@other.com"
+    session_raw = secrets.token_urlsafe(32)
+    session_hash = hashlib.sha256(session_raw.encode()).hexdigest()
+    expires_at = datetime.now(tz=UTC) + timedelta(days=7)
+
+    async with pg_pool.acquire() as conn:
+        # Insert tenant
+        await conn.execute(
+            "INSERT INTO tenants (id, email, status) VALUES ($1, $2, 'active')",
+            tenant_id,
+            email,
+        )
+        # Insert primary identity with workspace_domain='other.com'
+        await conn.execute(
+            """
+            INSERT INTO tenant_identities
+            (id, tenant_id, cognito_sub, provider, email, is_primary, workspace_domain)
+            VALUES ($1, $2, $3, $4, $5, true, $6)
+            """,
+            identity_id,
+            tenant_id,
+            f"sub-{tenant_id}",
+            "cognito",
+            email,
+            "other.com",
+        )
+        # Insert web session
+        await conn.execute(
+            """
+            INSERT INTO web_sessions
+            (session_hash, tenant_id, identity_id, expires_at)
+            VALUES ($1, $2, $3, $4)
+            """,
+            session_hash,
+            tenant_id,
+            identity_id,
+            expires_at,
+        )
+
+    yield {
+        "session": session_raw,
+        "tenant_id": tenant_id,
+        "identity_id": identity_id,
+        "email": email,
+    }
+
+    # Cleanup
+    async with pg_pool.acquire() as conn:
+        await conn.execute("DELETE FROM web_sessions WHERE session_hash = $1", session_hash)
+        await conn.execute("DELETE FROM tenant_identities WHERE id = $1", identity_id)
+        await conn.execute("DELETE FROM tenants WHERE id = $1", tenant_id)
+
+
+@pytest.fixture
+def client(pg_pool: Any) -> Any:
+    """FastAPI TestClient over the real app, with pg_pool wired in.
+
+    Uses the live DB pointed to by MEM_MCP_TEST_DSN via the fixture's
+    dependency on pg_pool (skips cleanly if DSN unset).
+    """
+    from fastapi.testclient import TestClient
+
+    from mem_mcp.main import create_app
+
+    # Create the app (lifespan will use the existing pg_pool from init_pool)
+    app = create_app()
+    return TestClient(app)
