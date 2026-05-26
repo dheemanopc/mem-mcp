@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 
@@ -20,8 +20,6 @@ class TestAdminSignupRoutesRBAC:
     @pytest.mark.asyncio
     async def test_signup_list_requires_review_perm(self, pg_pool: object) -> None:
         """GET /api/web/admin/signup-requests with no SYSTEM_REVIEW_SIGNUPS → 403."""
-        from mem_mcp.auth.rbac import require_permission
-        from mem_mcp.db import system_tx
 
         tenant_id = uuid4()
         pg_pool = pg_pool  # type: ignore[name-defined]

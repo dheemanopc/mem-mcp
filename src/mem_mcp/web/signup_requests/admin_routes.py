@@ -19,6 +19,13 @@ if TYPE_CHECKING:
     import asyncpg  # type: ignore[import-untyped]
 
 
+# Pre-built FastAPI dependencies; computed once at import time so ruff's
+# B008 (function call in argument default) doesn't fire.
+_DEP_REVIEW_SIGNUPS = Depends(require_permission(Permission.SYSTEM_REVIEW_SIGNUPS))
+_DEP_APPROVE_SIGNUPS = Depends(require_permission(Permission.SYSTEM_APPROVE_SIGNUPS))
+_DEP_REJECT_SIGNUPS = Depends(require_permission(Permission.SYSTEM_REJECT_SIGNUPS))
+
+
 class ApproveInput(BaseModel):
     notes: str | None = Field(default=None, max_length=1000)
 
@@ -48,7 +55,7 @@ def make_admin_signup_router(*, pool: asyncpg.Pool, audit: AuditLogger) -> APIRo
     @router.get("/api/web/admin/signup-requests")
     async def list_all(
         status: str | None = None,
-        caller_tenant_id: UUID = Depends(require_permission(Permission.SYSTEM_REVIEW_SIGNUPS)),
+        caller_tenant_id: UUID = _DEP_REVIEW_SIGNUPS,
     ) -> dict[str, Any]:
         if status and status not in (
             "awaiting_verification",
@@ -83,7 +90,7 @@ def make_admin_signup_router(*, pool: asyncpg.Pool, audit: AuditLogger) -> APIRo
     async def approve(
         request_id: UUID,
         payload: ApproveInput,
-        caller_tenant_id: UUID = Depends(require_permission(Permission.SYSTEM_APPROVE_SIGNUPS)),
+        caller_tenant_id: UUID = _DEP_APPROVE_SIGNUPS,
     ) -> dict[str, Any]:
         reviewer_email = await _get_reviewer_email(caller_tenant_id)
         req = await repository.mark_reviewed(
@@ -122,7 +129,7 @@ def make_admin_signup_router(*, pool: asyncpg.Pool, audit: AuditLogger) -> APIRo
     async def reject(
         request_id: UUID,
         payload: RejectInput,
-        caller_tenant_id: UUID = Depends(require_permission(Permission.SYSTEM_REJECT_SIGNUPS)),
+        caller_tenant_id: UUID = _DEP_REJECT_SIGNUPS,
     ) -> dict[str, Any]:
         reviewer_email = await _get_reviewer_email(caller_tenant_id)
         req = await repository.mark_reviewed(
