@@ -22,7 +22,7 @@ class TestAdminSignupRoutesRBAC:
         """GET /api/web/admin/signup-requests with no SYSTEM_REVIEW_SIGNUPS → 403."""
 
         tenant_id = uuid4()
-        pg_pool = pg_pool  # type: ignore[name-defined]
+        pg_pool = pg_pool
 
         async with pg_pool.acquire() as conn:  # type: ignore[attr-defined]
             try:
@@ -45,7 +45,7 @@ class TestAdminSignupRoutesRBAC:
     async def test_signup_list_returns_200_for_system_admin(self, pg_pool: object) -> None:
         """GET /api/web/admin/signup-requests with system_admin → 200."""
         tenant_id = uuid4()
-        pg_pool = pg_pool  # type: ignore[name-defined]
+        pg_pool = pg_pool
 
         async with pg_pool.acquire() as conn:  # type: ignore[attr-defined]
             try:
@@ -83,7 +83,7 @@ class TestAdminSignupRoutesRBAC:
     async def test_signup_list_returns_200_for_system_support(self, pg_pool: object) -> None:
         """GET /api/web/admin/signup-requests with system_support → 200 (review perm)."""
         tenant_id = uuid4()
-        pg_pool = pg_pool  # type: ignore[name-defined]
+        pg_pool = pg_pool
 
         async with pg_pool.acquire() as conn:  # type: ignore[attr-defined]
             try:
@@ -123,7 +123,7 @@ class TestAdminSignupRoutesRBAC:
     async def test_signup_approve_requires_approve_perm(self, pg_pool: object) -> None:
         """POST .../approve with only system_support (no approve perm) → 403."""
         tenant_id = uuid4()
-        pg_pool = pg_pool  # type: ignore[name-defined]
+        pg_pool = pg_pool
 
         async with pg_pool.acquire() as conn:  # type: ignore[attr-defined]
             try:
