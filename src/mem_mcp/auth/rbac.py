@@ -12,7 +12,7 @@ from mem_mcp.db import get_pool, system_tx
 from mem_mcp.web.sessions import lookup_session
 
 if TYPE_CHECKING:
-    import asyncpg
+    import asyncpg  # type: ignore[import-untyped]
 
 
 async def get_system_roles(conn: asyncpg.Connection, tenant_id: UUID) -> set[str]:

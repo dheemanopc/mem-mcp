@@ -14,7 +14,7 @@ from mem_mcp.auth.permissions import Role
 from mem_mcp.db import system_tx
 
 if TYPE_CHECKING:
-    import asyncpg
+    import asyncpg  # type: ignore[import-untyped]
 
 log = logging.getLogger(__name__)
 
