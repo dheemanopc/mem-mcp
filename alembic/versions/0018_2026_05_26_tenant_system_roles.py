@@ -9,8 +9,9 @@ Adds:
 2. system_state: singleton key/value store for bootstrap markers and system metadata
 """
 
-from alembic import op
 import sqlalchemy as sa
+
+from alembic import op
 
 revision = "0018_tenant_system_roles"
 down_revision = "0017_team_invites"

@@ -1,74 +1,187 @@
 """Tests for bootstrap_first_system_admin env-driven bootstrap mechanism."""
 from __future__ import annotations
 
+from typing import Any
+from uuid import uuid4
+
 import pytest
 
+from mem_mcp.bootstrap.system_admin import bootstrap_first_system_admin
 
-@pytest.mark.skipif(
-    True,
-    reason="Requires live DB fixture (pg_pool + setup_two_tenants + system_tx) — see notes below",
-)
+
+@pytest.mark.integration
 class TestBootstrapFirstSystemAdmin:
     """Test suite for idempotent first-admin bootstrap.
 
-    NOTE: Full bootstrap tests require a live-DB fixture that can:
-      1. Insert test tenants + tenant_identities
-      2. Run system_tx queries to check system_state
-      3. Verify tenant_system_roles inserts
-
-    This fixture infrastructure does not yet exist in the test suite.
-    To implement: extend tests/conftest.py with:
-      - setup_tenant_with_identity(pg_pool, email) fixture returning (tenant_id, identity_id)
-      - A pool-based fixture that provides pg_pool + monkeypatch for env vars
-
-    Tests below are template specs awaiting fixture implementation.
+    Tests use MEM_MCP_TEST_DSN env var to run against a live test DB.
+    Each test inserts test tenants + identities, then cleans up afterward.
+    Pattern matches tests/unit/test_enterprise_schema.py.
     """
 
     @pytest.mark.asyncio
-    async def test_bootstrap_skips_when_env_unset(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_bootstrap_skips_when_env_unset(
+        self, pg_pool: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Clear env var → bootstrap returns skipped status."""
-        # fixture: pg_pool, monkeypatch
-        # monkeypatch.delenv("BOOTSTRAP_SYSTEM_ADMIN_EMAIL", raising=False)
-        # result = await bootstrap_first_system_admin(pg_pool)
-        # assert result["status"] == "skipped"
-        # assert result["reason"] == "env_not_set"
-        pass
+        # Remove the env var if set
+        monkeypatch.delenv("BOOTSTRAP_SYSTEM_ADMIN_EMAIL", raising=False)
+
+        result = await bootstrap_first_system_admin(pg_pool)
+        assert result["status"] == "skipped"
+        assert result["reason"] == "env_not_set"
 
     @pytest.mark.asyncio
     async def test_bootstrap_grants_when_email_matches_identity(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, pg_pool: Any, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Email matches identity → role granted + system_state marker created."""
-        # fixture: pg_pool, setup_tenant_with_identity("admin@example.com"), monkeypatch
-        # monkeypatch.setenv("BOOTSTRAP_SYSTEM_ADMIN_EMAIL", "admin@example.com")
-        # result = await bootstrap_first_system_admin(pg_pool)
-        # assert result["status"] == "granted"
-        # assert result["email"] == "admin@example.com"
-        # Verify: SELECT 1 FROM tenant_system_roles WHERE tenant_id = ... AND role = 'system_admin'
-        # Verify: SELECT 1 FROM system_state WHERE key = 'bootstrap_first_admin'
-        pass
+        tenant_id = uuid4()
+        email = f"bootstrap-test-{uuid4()}@example.com"
+
+        async with pg_pool.acquire() as conn:
+            try:
+                # Insert test tenant
+                await conn.execute(
+                    "INSERT INTO tenants (id, email, status) VALUES ($1, $2, 'active')",
+                    tenant_id,
+                    f"tenant-{tenant_id}@test.invalid",
+                )
+
+                # Insert tenant_identity with target email
+                await conn.execute(
+                    """
+                    INSERT INTO tenant_identities (tenant_id, cognito_sub, provider, email)
+                    VALUES ($1, $2, $3, $4)
+                    """,
+                    tenant_id,
+                    f"sub-{tenant_id}",
+                    "google",
+                    email,
+                )
+
+                # Set env var
+                monkeypatch.setenv("BOOTSTRAP_SYSTEM_ADMIN_EMAIL", email)
+
+                # Run bootstrap
+                result = await bootstrap_first_system_admin(pg_pool)
+
+                # Verify status
+                assert result["status"] == "granted"
+                assert result["email"] == email
+                assert result["tenant_id"] == str(tenant_id)
+
+                # Verify tenant_system_roles row exists
+                role_exists = await conn.fetchval(
+                    "SELECT 1 FROM tenant_system_roles WHERE tenant_id = $1 AND role = 'system_admin'",
+                    tenant_id,
+                )
+                assert role_exists is not None
+
+                # Verify system_state marker exists
+                state_exists = await conn.fetchval(
+                    "SELECT 1 FROM system_state WHERE key = 'bootstrap_first_admin'",
+                )
+                assert state_exists is not None
+            finally:
+                # Cleanup
+                await conn.execute(
+                    "DELETE FROM tenant_system_roles WHERE tenant_id = $1",
+                    tenant_id,
+                )
+                await conn.execute(
+                    "DELETE FROM tenant_identities WHERE tenant_id = $1", tenant_id
+                )
+                await conn.execute(
+                    "DELETE FROM system_state WHERE key = 'bootstrap_first_admin'"
+                )
+                await conn.execute("DELETE FROM tenants WHERE id = $1", tenant_id)
 
     @pytest.mark.asyncio
-    async def test_bootstrap_idempotent(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_bootstrap_idempotent(
+        self, pg_pool: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Run twice → second returns already_done, exactly one role row."""
-        # fixture: pg_pool, setup_tenant_with_identity("admin@example.com"), monkeypatch
-        # monkeypatch.setenv("BOOTSTRAP_SYSTEM_ADMIN_EMAIL", "admin@example.com")
-        # result1 = await bootstrap_first_system_admin(pg_pool)
-        # result2 = await bootstrap_first_system_admin(pg_pool)
-        # assert result1["status"] == "granted"
-        # assert result2["status"] == "already_done"
-        # Verify: COUNT(*) FROM tenant_system_roles WHERE role = 'system_admin' == 1
-        pass
+        tenant_id = uuid4()
+        email = f"bootstrap-idempotent-{uuid4()}@example.com"
+
+        async with pg_pool.acquire() as conn:
+            try:
+                # Insert test tenant
+                await conn.execute(
+                    "INSERT INTO tenants (id, email, status) VALUES ($1, $2, 'active')",
+                    tenant_id,
+                    f"tenant-{tenant_id}@test.invalid",
+                )
+
+                # Insert tenant_identity with target email
+                await conn.execute(
+                    """
+                    INSERT INTO tenant_identities (tenant_id, cognito_sub, provider, email)
+                    VALUES ($1, $2, $3, $4)
+                    """,
+                    tenant_id,
+                    f"sub-{tenant_id}",
+                    "google",
+                    email,
+                )
+
+                # Set env var
+                monkeypatch.setenv("BOOTSTRAP_SYSTEM_ADMIN_EMAIL", email)
+
+                # First bootstrap call
+                result1 = await bootstrap_first_system_admin(pg_pool)
+                assert result1["status"] == "granted"
+
+                # Second bootstrap call
+                result2 = await bootstrap_first_system_admin(pg_pool)
+                assert result2["status"] == "already_done"
+
+                # Verify exactly ONE tenant_system_roles row (idempotent)
+                count = await conn.fetchval(
+                    "SELECT COUNT(*) FROM tenant_system_roles WHERE tenant_id = $1 AND role = 'system_admin'",
+                    tenant_id,
+                )
+                assert count == 1
+            finally:
+                # Cleanup
+                await conn.execute(
+                    "DELETE FROM tenant_system_roles WHERE tenant_id = $1",
+                    tenant_id,
+                )
+                await conn.execute(
+                    "DELETE FROM tenant_identities WHERE tenant_id = $1", tenant_id
+                )
+                await conn.execute(
+                    "DELETE FROM system_state WHERE key = 'bootstrap_first_admin'"
+                )
+                await conn.execute("DELETE FROM tenants WHERE id = $1", tenant_id)
 
     @pytest.mark.asyncio
     async def test_bootstrap_not_found_when_email_missing(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, pg_pool: Any, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Email doesn't match any identity → not_found status, no rows inserted."""
-        # fixture: pg_pool, monkeypatch
-        # monkeypatch.setenv("BOOTSTRAP_SYSTEM_ADMIN_EMAIL", "nonexistent@example.com")
-        # result = await bootstrap_first_system_admin(pg_pool)
-        # assert result["status"] == "not_found"
-        # assert result["email"] == "nonexistent@example.com"
-        # Verify: system_state has no row with key='bootstrap_first_admin'
-        pass
+        nonexistent_email = f"nonexistent-{uuid4()}@example.com"
+
+        # Set env var to nonexistent email
+        monkeypatch.setenv("BOOTSTRAP_SYSTEM_ADMIN_EMAIL", nonexistent_email)
+
+        async with pg_pool.acquire() as conn:
+            try:
+                # Run bootstrap
+                result = await bootstrap_first_system_admin(pg_pool)
+
+                # Verify not_found status
+                assert result["status"] == "not_found"
+                assert result["email"] == nonexistent_email
+
+                # Verify no system_state row was created for bootstrap
+                state_exists = await conn.fetchval(
+                    "SELECT 1 FROM system_state WHERE key = 'bootstrap_first_admin'",
+                )
+                assert state_exists is None
+            finally:
+                # Cleanup just in case
+                await conn.execute(
+                    "DELETE FROM system_state WHERE key = 'bootstrap_first_admin'"
+                )
