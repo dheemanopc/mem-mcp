@@ -121,7 +121,11 @@ def make_admin_signup_router(*, pool: asyncpg.Pool, audit: AuditLogger) -> APIRo
                 target_id=req.id,
                 target_kind="signup_request",
                 request_id=str(req.id),
-                details={"reviewer_tenant_id": str(caller_tenant_id), "reviewer_email": reviewer_email, "applicant_email": req.email},
+                details={
+                    "reviewer_tenant_id": str(caller_tenant_id),
+                    "reviewer_email": reviewer_email,
+                    "applicant_email": req.email,
+                },
             )
         return {"status": "approved", "id": str(req.id)}
 

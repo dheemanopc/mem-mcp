@@ -36,9 +36,7 @@ class TestAdminSignupRoutesRBAC:
                 # Test that has_permission returns False
                 from mem_mcp.auth.rbac import has_permission
 
-                result = await has_permission(
-                    conn, tenant_id, Permission.SYSTEM_REVIEW_SIGNUPS
-                )
+                result = await has_permission(conn, tenant_id, Permission.SYSTEM_REVIEW_SIGNUPS)
                 assert result is False
             finally:
                 await conn.execute("DELETE FROM tenants WHERE id = $1", tenant_id)
@@ -67,19 +65,13 @@ class TestAdminSignupRoutesRBAC:
                 # Test that has_permission returns True
                 from mem_mcp.auth.rbac import has_permission
 
-                result = await has_permission(
-                    conn, tenant_id, Permission.SYSTEM_REVIEW_SIGNUPS
-                )
+                result = await has_permission(conn, tenant_id, Permission.SYSTEM_REVIEW_SIGNUPS)
                 assert result is True
 
-                result = await has_permission(
-                    conn, tenant_id, Permission.SYSTEM_APPROVE_SIGNUPS
-                )
+                result = await has_permission(conn, tenant_id, Permission.SYSTEM_APPROVE_SIGNUPS)
                 assert result is True
 
-                result = await has_permission(
-                    conn, tenant_id, Permission.SYSTEM_REJECT_SIGNUPS
-                )
+                result = await has_permission(conn, tenant_id, Permission.SYSTEM_REJECT_SIGNUPS)
                 assert result is True
             finally:
                 await conn.execute(
@@ -88,9 +80,7 @@ class TestAdminSignupRoutesRBAC:
                 await conn.execute("DELETE FROM tenants WHERE id = $1", tenant_id)
 
     @pytest.mark.asyncio
-    async def test_signup_list_returns_200_for_system_support(
-        self, pg_pool: object
-    ) -> None:
+    async def test_signup_list_returns_200_for_system_support(self, pg_pool: object) -> None:
         """GET /api/web/admin/signup-requests with system_support → 200 (review perm)."""
         tenant_id = uuid4()
         pg_pool = pg_pool  # type: ignore[name-defined]
@@ -113,21 +103,15 @@ class TestAdminSignupRoutesRBAC:
                 # Test that has_permission returns True for REVIEW (support perm)
                 from mem_mcp.auth.rbac import has_permission
 
-                result = await has_permission(
-                    conn, tenant_id, Permission.SYSTEM_REVIEW_SIGNUPS
-                )
+                result = await has_permission(conn, tenant_id, Permission.SYSTEM_REVIEW_SIGNUPS)
                 assert result is True
 
                 # But False for APPROVE (admin-only perm)
-                result = await has_permission(
-                    conn, tenant_id, Permission.SYSTEM_APPROVE_SIGNUPS
-                )
+                result = await has_permission(conn, tenant_id, Permission.SYSTEM_APPROVE_SIGNUPS)
                 assert result is False
 
                 # And False for REJECT (admin-only perm)
-                result = await has_permission(
-                    conn, tenant_id, Permission.SYSTEM_REJECT_SIGNUPS
-                )
+                result = await has_permission(conn, tenant_id, Permission.SYSTEM_REJECT_SIGNUPS)
                 assert result is False
             finally:
                 await conn.execute(
