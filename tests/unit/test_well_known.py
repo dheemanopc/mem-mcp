@@ -139,3 +139,23 @@ class TestCustomScopes:
         assert f"{_RESOURCE}/custom.scope2" in asm["scopes_supported"]
         # OIDC standard scopes still present
         assert "openid" in asm["scopes_supported"]
+
+
+class TestNonAdvertisedScopes:
+    """memory.admin and account.manage are NOT advertised in OAuth discovery
+    because they are not issuable via the DCR/OAuth flow — only via the web UI
+    session-cookie inline path. Advertising them would cause Claude.ai-style
+    clients to request scopes their DCR client cannot receive, triggering
+    Cognito invalid_scope at /oauth2/authorize. See PR #249."""
+
+    def test_memory_admin_not_in_prm(self) -> None:
+        body = _build_client().get("/.well-known/oauth-protected-resource").json()
+        for scope in body["scopes_supported"]:
+            assert "memory.admin" not in scope
+            assert "account.manage" not in scope
+
+    def test_memory_admin_not_in_as_metadata(self) -> None:
+        body = _build_client().get("/.well-known/oauth-authorization-server").json()
+        for scope in body["scopes_supported"]:
+            assert "memory.admin" not in scope
+            assert "account.manage" not in scope
