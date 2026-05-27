@@ -19,15 +19,17 @@ from collections.abc import Sequence
 
 from fastapi import APIRouter
 
-# Full scope set advertised in .well-known/oauth-* discovery. These are the
-# scopes Cognito's Resource Server may issue. The web UI (session-cookie
-# auth path) and the future admin console use memory.admin / account.manage
-# internally — they do not flow through DCR.
+# Scopes advertised in OAuth discovery (PRM + AS metadata). Only scopes
+# reachable via the DCR/OAuth flow belong here. memory.admin and
+# account.manage are constructed inline in web/handlers/*.py from a
+# session cookie — they never flow through Cognito. Advertising them in
+# discovery makes generic MCP clients (Claude.ai reads scopes_supported
+# and requests every advertised scope) ask Cognito for scopes their
+# DCR-issued client cannot receive, triggering invalid_scope at
+# /oauth2/authorize. See PR #249.
 DEFAULT_MCP_SCOPES: tuple[str, ...] = (
     "memory.read",
     "memory.write",
-    "memory.admin",
-    "account.manage",
 )
 
 # Scopes a DCR-registered client may receive. memory.admin and account.manage
