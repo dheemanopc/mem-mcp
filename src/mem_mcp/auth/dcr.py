@@ -268,6 +268,11 @@ class BotoCognitoClientFactory:
         import boto3  # type: ignore[import-untyped]
 
         qualified = self._qualify_scopes(scopes)
+        # Cognito Hosted UI requires openid for id_token issuance and the federated
+        # Google sign-in flow. Inject OIDC scopes for every DCR-created client so
+        # discovery-driven clients (Claude.ai picks openid from oauth-authorization-server)
+        # don't 400 with invalid_scope at the /oauth2/authorize step.
+        cognito_scopes = list(dict.fromkeys([*qualified, "openid", "email", "profile"]))
 
         def _call() -> tuple[str, str | None]:
             client = boto3.client("cognito-idp", region_name=self.region)
@@ -276,7 +281,7 @@ class BotoCognitoClientFactory:
                 ClientName=client_name,
                 AllowedOAuthFlows=["code"],
                 AllowedOAuthFlowsUserPoolClient=True,
-                AllowedOAuthScopes=qualified,
+                AllowedOAuthScopes=cognito_scopes,
                 CallbackURLs=callback_urls,
                 SupportedIdentityProviders=list(self.supported_idps),
                 GenerateSecret=generate_secret,
