@@ -46,6 +46,7 @@ AUDIT_ACTIONS: tuple[str, ...] = (
     "oauth.client_revoked",
     # tenant lifecycle
     "tenant.created",
+    "tenant.provisioned_by_reconcile",
     "tenant.suspended",
     "tenant.deletion_requested",
     "tenant.deletion_cancelled",
@@ -93,6 +94,7 @@ AuditAction = Literal[
     "oauth.dcr_rejected",
     "oauth.client_revoked",
     "tenant.created",
+    "tenant.provisioned_by_reconcile",
     "tenant.suspended",
     "tenant.deletion_requested",
     "tenant.deletion_cancelled",

@@ -420,6 +420,21 @@ def _wire_routers(app: FastAPI) -> None:
     admin_signup_router = make_admin_signup_router(pool=pool, audit=audit)
     app.include_router(admin_signup_router)
 
+    # Wire dangling users admin router
+    from mem_mcp.jobs.reconcile_signups import BotoCognitoUserLister
+    from mem_mcp.web.admin.dangling_users import make_dangling_users_router
+
+    cognito_lister = BotoCognitoUserLister(
+        user_pool_id=s.cognito_user_pool_id,
+        region=s.region,
+    )
+    dangling_users_router = make_dangling_users_router(
+        pool=pool,
+        cognito_lister=cognito_lister,
+        audit=audit,
+    )
+    app.include_router(dangling_users_router)
+
     # Wire kite confirm router (user-facing intent confirmation)
     try:
         from mem_mcp.web.skills.kite_confirm import make_kite_confirm_router

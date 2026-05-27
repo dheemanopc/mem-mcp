@@ -6,6 +6,7 @@ Currently registers:
     cluster_build         — weekly: rebuild near-duplicate clusters per tenant
     embedding_backfill    — retry failed embeddings from Bedrock
     expire_transient      — soft-delete expired transient memories
+    reconcile_signups     — sweep Cognito for missing tenants, auto-provision
     storage_stats         — daily: refresh per-tenant total_storage_bytes
     retention_memories    — soft + hard-delete memories per retention policy (T-7.14)
     retention_tokens      — purge expired link_state + web_sessions (T-7.14)
@@ -28,6 +29,7 @@ from mem_mcp.jobs.cleanup_kite_intents import main as cleanup_kite_intents_main
 from mem_mcp.jobs.cluster_build import main as cluster_build_main
 from mem_mcp.jobs.embedding_backfill import main as embedding_backfill_main
 from mem_mcp.jobs.expire_transient import main as expire_transient_main
+from mem_mcp.jobs.reconcile_signups import main as reconcile_signups_main
 from mem_mcp.jobs.retention_audit import main as retention_audit_main
 from mem_mcp.jobs.retention_deletion import main as retention_deletion_main
 from mem_mcp.jobs.retention_memories import main as retention_memories_main
@@ -42,6 +44,7 @@ _JOBS: dict[str, _JobMain] = {
     "cluster_build": cluster_build_main,
     "embedding_backfill": embedding_backfill_main,
     "expire_transient": expire_transient_main,
+    "reconcile_signups": reconcile_signups_main,
     "retention_audit": retention_audit_main,
     "retention_deletion": retention_deletion_main,
     "retention_memories": retention_memories_main,
