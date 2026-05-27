@@ -314,6 +314,231 @@ class TestReconcileSignups:
         assert err is not None
         assert "DB error" in err
 
+    @pytest.mark.asyncio
+    async def test_provisions_invited_confirmed_user_without_identity(self) -> None:
+        """Happy path: confirmed Cognito user gets provisioned as tenant."""
+        tenant_id = uuid4()
+        mock_pool = AsyncMock()
+        mock_conn = AsyncMock()
+        mock_conn.fetchrow.return_value = {"id": tenant_id}
+        mock_conn.fetch.side_effect = [[], []]  # No existing identities, no pending invites
+
+        mock_lister = AsyncMock()
+        user = CognitoUserSummary(
+            sub="sub-123",
+            username="kewal",
+            email="kewal@example.com",
+            email_verified=True,
+            workspace_domain=None,
+            enabled=True,
+            user_status="CONFIRMED",
+            identities_json=None,
+        )
+        mock_lister.list_users.return_value = [user]
+
+        mock_audit = AsyncMock()
+        mock_provision_one = AsyncMock(return_value=(True, None))
+
+        with (
+            patch(
+                "mem_mcp.jobs.reconcile_signups.system_tx",
+                create_mock_system_tx(mock_conn),
+            ),
+            patch("mem_mcp.jobs.reconcile_signups._provision_one", mock_provision_one),
+        ):
+            report = await reconcile_signups(mock_pool, mock_lister, mock_audit, dry_run=False)
+
+        assert report.provisioned == ["kewal@example.com"]
+        # Verify _provision_one was called with the user
+        assert mock_provision_one.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_consumes_matching_team_invite(self) -> None:
+        """Provision with team invite consumption when domains match."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import MagicMock
+
+        tenant_id = uuid4()
+        team_id = uuid4()
+        inviter_id = uuid4()
+
+        mock_pool = AsyncMock()
+        mock_conn = AsyncMock()
+
+        # Mock transaction as an async context manager
+        @asynccontextmanager
+        async def mock_transaction():  # type: ignore[no-untyped-def]
+            yield
+
+        # Make transaction() return the async context manager directly
+        mock_conn.transaction = MagicMock(return_value=mock_transaction())
+
+        # fetchrow mock: returns tenant ID for INSERT, workspace_domain for team lookup
+        async def fetchrow_side_effect(query: str, *args: object) -> dict[str, object] | None:
+            if "workspace_domain" in query:
+                return {"workspace_domain": None}
+            return {"id": tenant_id}
+
+        mock_conn.fetchrow.side_effect = fetchrow_side_effect
+
+        # fetch mock: _classify calls fetch twice, _consume_pending_invites calls once
+        # Order: existing_identities, invited_emails, team_invites
+        mock_conn.fetch.side_effect = [
+            [],  # existing identities in _classify
+            [{"email": "kewal@example.com"}],  # invited_emails in _classify
+            [
+                {"team_id": team_id, "role": "member", "invited_by_tenant_id": inviter_id}
+            ],  # team_invites in _consume_pending_invites
+        ]
+
+        mock_lister = AsyncMock()
+        mock_lister.list_users.return_value = [
+            CognitoUserSummary(
+                sub="sub-123",
+                username="kewal",
+                email="kewal@example.com",
+                email_verified=True,
+                workspace_domain=None,  # Personal user
+                enabled=True,
+                user_status="CONFIRMED",
+                identities_json=None,
+            ),
+        ]
+
+        mock_audit = AsyncMock()
+
+        with patch(
+            "mem_mcp.jobs.reconcile_signups.system_tx",
+            create_mock_system_tx(mock_conn),
+        ):
+            report = await reconcile_signups(mock_pool, mock_lister, mock_audit, dry_run=False)
+
+        assert report.provisioned == ["kewal@example.com"]
+        # Verify team_members INSERT was called
+        calls = [str(call) for call in mock_conn.execute.call_args_list]
+        assert any("INSERT INTO team_members" in call for call in calls)
+        # Verify team_invites UPDATE was called
+        assert any("UPDATE team_invites" in call for call in calls)
+
+    @pytest.mark.asyncio
+    async def test_skips_domain_mismatched_team_invite(self) -> None:
+        """Provision succeeds but team invite NOT consumed due to domain mismatch."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import MagicMock
+
+        tenant_id = uuid4()
+        team_id = uuid4()
+        inviter_id = uuid4()
+
+        mock_pool = AsyncMock()
+        mock_conn = AsyncMock()
+
+        # Mock transaction as an async context manager
+        @asynccontextmanager
+        async def mock_transaction():  # type: ignore[no-untyped-def]
+            yield
+
+        # Make transaction() return the async context manager directly
+        mock_conn.transaction = MagicMock(return_value=mock_transaction())
+
+        # fetchrow mock: returns tenant ID for INSERT, workspace_domain for team lookup
+        async def fetchrow_side_effect(query: str, *args: object) -> dict[str, object] | None:
+            if "workspace_domain" in query:
+                return {"workspace_domain": "other.com"}
+            return {"id": tenant_id}
+
+        mock_conn.fetchrow.side_effect = fetchrow_side_effect
+
+        # fetch mock: _classify calls fetch twice, _consume_pending_invites calls once
+        # Order: existing_identities, invited_emails, team_invites
+        mock_conn.fetch.side_effect = [
+            [],  # existing identities in _classify
+            [{"email": "kewal@example.com"}],  # invited_emails in _classify
+            [
+                {"team_id": team_id, "role": "member", "invited_by_tenant_id": inviter_id}
+            ],  # team_invites in _consume_pending_invites
+        ]
+
+        mock_lister = AsyncMock()
+        mock_lister.list_users.return_value = [
+            CognitoUserSummary(
+                sub="sub-123",
+                username="kewal",
+                email="kewal@example.com",
+                email_verified=True,
+                workspace_domain="user.com",  # Different domain
+                enabled=True,
+                user_status="CONFIRMED",
+                identities_json=None,
+            ),
+        ]
+
+        mock_audit = AsyncMock()
+
+        with patch(
+            "mem_mcp.jobs.reconcile_signups.system_tx",
+            create_mock_system_tx(mock_conn),
+        ):
+            report = await reconcile_signups(mock_pool, mock_lister, mock_audit, dry_run=False)
+
+        assert report.provisioned == ["kewal@example.com"]
+        # Verify tenants/tenant_identities were inserted
+        calls = [str(call) for call in mock_conn.execute.call_args_list]
+        assert any("INSERT INTO tenant_identities" in call for call in calls)
+        # Verify team_members INSERT was NOT called
+        assert not any("INSERT INTO team_members" in call for call in calls)
+        # Verify team_invites UPDATE was NOT called
+        assert not any("UPDATE team_invites" in call for call in calls)
+
+    @pytest.mark.asyncio
+    async def test_workspace_domain_persisted_from_custom_google_hd(self) -> None:
+        """Workspace domain from Cognito is persisted to tenant_identities."""
+        tenant_id = uuid4()
+        mock_pool = AsyncMock()
+        mock_conn = AsyncMock()
+        mock_conn.fetchrow.return_value = {"id": tenant_id}
+        # fetch mock: _classify calls fetch twice, _consume_pending_invites calls once
+        # Order: existing_identities, invited_emails, team_invites
+        mock_conn.fetch.side_effect = [
+            [],  # existing identities in _classify
+            [],  # invited_emails in _classify
+            [],  # team_invites in _consume_pending_invites
+        ]
+
+        mock_lister = AsyncMock()
+        mock_lister.list_users.return_value = [
+            CognitoUserSummary(
+                sub="sub-123",
+                username="kewal",
+                email="kewal@example.com",
+                email_verified=True,
+                workspace_domain="myco.com",  # Custom workspace domain
+                enabled=True,
+                user_status="CONFIRMED",
+                identities_json=None,
+            ),
+        ]
+
+        mock_audit = AsyncMock()
+
+        with patch(
+            "mem_mcp.jobs.reconcile_signups.system_tx",
+            create_mock_system_tx(mock_conn),
+        ):
+            report = await reconcile_signups(mock_pool, mock_lister, mock_audit, dry_run=False)
+
+        assert report.provisioned == ["kewal@example.com"]
+        # Verify UPDATE tenant_identities SET workspace_domain was called
+        update_calls = [
+            call
+            for call in mock_conn.execute.call_args_list
+            if "UPDATE tenant_identities" in str(call) and "workspace_domain" in str(call)
+        ]
+        assert len(update_calls) > 0
+        # Verify "myco.com" was passed as argument
+        call_args = update_calls[0][0]
+        assert "myco.com" in call_args
+
 
 # Test Cognito lister
 

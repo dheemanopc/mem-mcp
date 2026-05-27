@@ -228,9 +228,7 @@ async def _classify(
         }
 
         # Fetch all pending invite emails
-        invited_emails = await conn.fetch(
-            "SELECT email FROM invited_emails WHERE status = 'pending'"
-        )
+        invited_emails = await conn.fetch("SELECT email FROM invited_emails")
         invited_emails_set = {row["email"].lower() for row in invited_emails}
 
     # Classify Cognito users
