@@ -527,12 +527,14 @@ class TestInMemoryRateLimiter:
 
 class TestBotoCognitoClientFactoryOidcInjection:
     @pytest.mark.asyncio
-    async def test_injects_openid_email_profile_for_memory_only_scopes(self, monkeypatch) -> None:
+    async def test_injects_openid_email_profile_for_memory_only_scopes(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Call factory with memory.read+memory.write, assert OIDC scopes are injected."""
         captured = {}
 
         class FakeBotoClient:
-            def create_user_pool_client(self, **kwargs):
+            def create_user_pool_client(self, **kwargs: Any) -> dict[str, Any]:
                 captured.update(kwargs)
                 return {"UserPoolClient": {"ClientId": "test-id", "ClientSecret": None}}
 
@@ -561,12 +563,14 @@ class TestBotoCognitoClientFactoryOidcInjection:
         assert "profile" in scopes
 
     @pytest.mark.asyncio
-    async def test_dedupes_when_openid_already_present(self, monkeypatch) -> None:
+    async def test_dedupes_when_openid_already_present(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Call factory with openid already in scopes, verify it appears exactly once."""
         captured = {}
 
         class FakeBotoClient:
-            def create_user_pool_client(self, **kwargs):
+            def create_user_pool_client(self, **kwargs: Any) -> dict[str, Any]:
                 captured.update(kwargs)
                 return {"UserPoolClient": {"ClientId": "test-id", "ClientSecret": None}}
 
@@ -592,12 +596,14 @@ class TestBotoCognitoClientFactoryOidcInjection:
         ), f"Expected openid to appear exactly once, found {openid_count} times"
 
     @pytest.mark.asyncio
-    async def test_no_resource_server_identifier_still_adds_oidc(self, monkeypatch) -> None:
+    async def test_no_resource_server_identifier_still_adds_oidc(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """When resource_server_identifier=None, scopes pass through unchanged and OIDC is still appended."""
         captured = {}
 
         class FakeBotoClient:
-            def create_user_pool_client(self, **kwargs):
+            def create_user_pool_client(self, **kwargs: Any) -> dict[str, Any]:
                 captured.update(kwargs)
                 return {"UserPoolClient": {"ClientId": "test-id", "ClientSecret": None}}
 
