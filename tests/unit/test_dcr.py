@@ -12,6 +12,7 @@ from pydantic import ValidationError
 
 from mem_mcp.auth.dcr import (
     AllowedSoftwarePolicy,
+    BotoCognitoClientFactory,
     DcrInput,
     InMemoryRateLimiter,
     _sanitize_client_name,
@@ -517,3 +518,115 @@ class TestInMemoryRateLimiter:
         for _ in range(5):
             await rl.check_and_consume("k1", limit=5, window_seconds=60)
         assert await rl.check_and_consume("k2", limit=5, window_seconds=60)
+
+
+# --------------------------------------------------------------------------
+# BotoCognitoClientFactory — OIDC injection
+# --------------------------------------------------------------------------
+
+
+class TestBotoCognitoClientFactoryOidcInjection:
+    @pytest.mark.asyncio
+    async def test_injects_openid_email_profile_for_memory_only_scopes(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Call factory with memory.read+memory.write, assert OIDC scopes are injected."""
+        captured = {}
+
+        class FakeBotoClient:
+            def create_user_pool_client(self, **kwargs: Any) -> dict[str, Any]:
+                captured.update(kwargs)
+                return {"UserPoolClient": {"ClientId": "test-id", "ClientSecret": None}}
+
+        monkeypatch.setattr("boto3.client", lambda *a, **kw: FakeBotoClient())
+
+        factory = BotoCognitoClientFactory(
+            user_pool_id="up",
+            region="us-east-1",
+            resource_server_identifier="https://memsys.dheemantech.in",
+        )
+
+        client_id, client_secret = await factory.create_user_pool_client(
+            client_name="test-client",
+            callback_urls=["https://localhost/cb"],
+            scopes=["memory.read", "memory.write"],
+        )
+
+        assert client_id == "test-id"
+        assert client_secret is None
+        assert "AllowedOAuthScopes" in captured
+        scopes = captured["AllowedOAuthScopes"]
+        assert "https://memsys.dheemantech.in/memory.read" in scopes
+        assert "https://memsys.dheemantech.in/memory.write" in scopes
+        assert "openid" in scopes
+        assert "email" in scopes
+        assert "profile" in scopes
+
+    @pytest.mark.asyncio
+    async def test_dedupes_when_openid_already_present(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Call factory with openid already in scopes, verify it appears exactly once."""
+        captured = {}
+
+        class FakeBotoClient:
+            def create_user_pool_client(self, **kwargs: Any) -> dict[str, Any]:
+                captured.update(kwargs)
+                return {"UserPoolClient": {"ClientId": "test-id", "ClientSecret": None}}
+
+        monkeypatch.setattr("boto3.client", lambda *a, **kw: FakeBotoClient())
+
+        factory = BotoCognitoClientFactory(
+            user_pool_id="up",
+            region="us-east-1",
+            resource_server_identifier="https://memsys.dheemantech.in",
+        )
+
+        client_id, client_secret = await factory.create_user_pool_client(
+            client_name="test-client",
+            callback_urls=["https://localhost/cb"],
+            scopes=["memory.read", "openid"],
+        )
+
+        assert client_id == "test-id"
+        scopes = captured["AllowedOAuthScopes"]
+        openid_count = scopes.count("openid")
+        assert (
+            openid_count == 1
+        ), f"Expected openid to appear exactly once, found {openid_count} times"
+
+    @pytest.mark.asyncio
+    async def test_no_resource_server_identifier_still_adds_oidc(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When resource_server_identifier=None, scopes pass through unchanged and OIDC is still appended."""
+        captured = {}
+
+        class FakeBotoClient:
+            def create_user_pool_client(self, **kwargs: Any) -> dict[str, Any]:
+                captured.update(kwargs)
+                return {"UserPoolClient": {"ClientId": "test-id", "ClientSecret": None}}
+
+        monkeypatch.setattr("boto3.client", lambda *a, **kw: FakeBotoClient())
+
+        factory = BotoCognitoClientFactory(
+            user_pool_id="up",
+            region="us-east-1",
+            resource_server_identifier=None,
+        )
+
+        client_id, client_secret = await factory.create_user_pool_client(
+            client_name="test-client",
+            callback_urls=["https://localhost/cb"],
+            scopes=["memory.read", "memory.write"],
+        )
+
+        assert client_id == "test-id"
+        scopes = captured["AllowedOAuthScopes"]
+        # Without resource_server_identifier, scopes pass through as-is
+        assert "memory.read" in scopes
+        assert "memory.write" in scopes
+        # But OIDC scopes are still injected
+        assert "openid" in scopes
+        assert "email" in scopes
+        assert "profile" in scopes
