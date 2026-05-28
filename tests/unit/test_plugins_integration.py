@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 from fastapi import APIRouter
+from fastapi.routing import APIRoute
 from pydantic import BaseModel
 
 from mem_mcp.plugins.contract import Plugin
@@ -155,7 +156,7 @@ class TestMountPluginRoutes:
 
         # Check that routes were added to the app
         # The route should be at /skills/fake-test-skill/test
-        route_paths = [str(r.path) for r in app.routes]
+        route_paths = [str(r.path) for r in app.routes if isinstance(r, APIRoute)]
         assert any("/skills/fake-test-skill" in p for p in route_paths)
 
     def test_mount_handles_plugin_registration_error(self) -> None:
@@ -178,7 +179,7 @@ class TestMountPluginRoutes:
         # Should not raise; bad plugin skipped
         mount_plugin_routes(app, registry)
 
-        route_paths = [str(r.path) for r in app.routes]
+        route_paths = [str(r.path) for r in app.routes if isinstance(r, APIRoute)]
         assert any("/skills/fake-test-skill" in p for p in route_paths)
 
 
