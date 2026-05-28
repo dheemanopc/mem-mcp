@@ -229,7 +229,7 @@ Resources:
   App5xxMetricFilter:
     Type: AWS::Logs::MetricFilter
     Properties:
-      FilterPattern: '[timestamp, request_id, ..., status_code = 5*, ...]'
+      FilterPattern: '{ $.status >= 500 && $.status < 600 }'
       LogGroupName: !Ref AppLogGroup
       MetricTransformations:
         - MetricName: app.http_5xx_count
@@ -241,7 +241,7 @@ Resources:
   AuthFailMetricFilter:
     Type: AWS::Logs::MetricFilter
     Properties:
-      FilterPattern: '[timestamp, request_id, ..., status_code = 401, ...] || [timestamp, request_id, ..., status_code = 403, ...]'
+      FilterPattern: '{ $.status = 401 || $.status = 403 }'
       LogGroupName: !Ref AppLogGroup
       MetricTransformations:
         - MetricName: auth.failure_count
@@ -253,7 +253,7 @@ Resources:
   DcrAttemptsMetricFilter:
     Type: AWS::Logs::MetricFilter
     Properties:
-      FilterPattern: '[timestamp, request_id, ..., "action":"oauth.dcr_register", ...]'
+      FilterPattern: '{ $.action = "oauth.dcr_register" }'
       LogGroupName: !Ref AuditLogGroup
       MetricTransformations:
         - MetricName: oauth.dcr_register_count
@@ -265,7 +265,7 @@ Resources:
   TokenReuseMetricFilter:
     Type: AWS::Logs::MetricFilter
     Properties:
-      FilterPattern: '[timestamp, request_id, ..., "action":"auth.token_refresh_reuse", ...]'
+      FilterPattern: '{ $.action = "auth.token_refresh_reuse" }'
       LogGroupName: !Ref AuditLogGroup
       MetricTransformations:
         - MetricName: auth.token_refresh_reuse_count
@@ -277,7 +277,7 @@ Resources:
   QuotaCircuitBreakerMetricFilter:
     Type: AWS::Logs::MetricFilter
     Properties:
-      FilterPattern: '[timestamp, request_id, ..., "action":"quota.circuit_breaker_tripped", ...]'
+      FilterPattern: '{ $.action = "quota.circuit_breaker_tripped" }'
       LogGroupName: !Ref AppLogGroup
       MetricTransformations:
         - MetricName: quota.circuit_breaker_tripped_count
