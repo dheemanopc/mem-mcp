@@ -180,6 +180,24 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     except Exception:
         log.exception("bootstrap_first_system_admin failed (non-fatal)")
 
+    # Plugin discovery — load entry-point plugins
+    try:
+        from mem_mcp.plugins.registry import PluginRegistry
+
+        plugin_registry = PluginRegistry()
+        plugin_registry.discover()
+        log.info(
+            "plugin_discovery_complete",
+            extra={
+                "count": len(plugin_registry.all()),
+                "ids": [p.id for p in plugin_registry.all()],
+            },
+        )
+        app.state.plugin_registry = plugin_registry
+    except Exception:
+        log.exception("plugin_discovery_failed (non-fatal)")
+        app.state.plugin_registry = None
+
     # Wire routers AFTER pool is initialized but BEFORE yielding to uvicorn.
     # (Middleware is added separately in create_app() — Starlette requires
     # add_middleware() before the app starts serving.)
