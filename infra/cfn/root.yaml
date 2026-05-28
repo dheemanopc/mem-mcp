@@ -269,7 +269,6 @@ Resources:
         LogRetentionDays: !Ref LogRetentionDays
         AuditLogRetentionDays: !Ref AuditLogRetentionDays
         MonthlyBudgetUsd: !Ref MonthlyBudgetUsd
-        BackupBucketName: !GetAtt StorageStack.Outputs.BackupBucketName
       Tags:
         - Key: Name
           Value: !Sub '${AWS::StackName}-observability'
