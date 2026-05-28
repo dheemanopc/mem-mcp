@@ -374,26 +374,6 @@ Resources:
         - !Ref OpsSnsTopic
       TreatMissingData: notBreaching
 
-  # Alarm 10: Disk usage (>80%)
-  DiskUsageAlarm:
-    Type: AWS::CloudWatch::Alarm
-    Properties:
-      AlarmName: mem-mcp-disk-usage-high
-      AlarmDescription: 'EC2 disk usage >80%'
-      MetricName: disk_used_percent
-      Namespace: AWS/EC2
-      Statistic: Average
-      Period: 300
-      EvaluationPeriods: 1
-      Threshold: 80
-      ComparisonOperator: GreaterThanThreshold
-      Dimensions:
-        - Name: InstanceId
-          Value: !Ref Ec2InstanceId
-      AlarmActions:
-        - !Ref OpsSnsTopic
-      TreatMissingData: notBreaching
-
   # Alarm 11: SES bounce rate (>5%)
   SesBounceRateAlarm:
     Type: AWS::CloudWatch::Alarm
@@ -498,18 +478,17 @@ Resources:
               "properties": {
                 "title": "Active Alarms",
                 "alarms": [
-                  "${AppDownAlarm}",
-                  "${CpuHighAlarm}",
-                  "${BackupStaleAlarm}",
-                  "${BedrockThrottleAlarm}",
-                  "${App5xxAlarm}",
-                  "${AuthFailSpikAlarm}",
-                  "${DcrAttemptsAlarm}",
-                  "${TokenReuseAlarm}",
-                  "${TenantIsolationTestAlarm}",
-                  "${DiskUsageAlarm}",
-                  "${SesBounceRateAlarm}",
-                  "${QuotaCircuitBreakerAlarm}"
+                  "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:${AppDownAlarm}",
+                  "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:${CpuHighAlarm}",
+                  "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:${BackupStaleAlarm}",
+                  "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:${BedrockThrottleAlarm}",
+                  "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:${App5xxAlarm}",
+                  "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:${AuthFailSpikAlarm}",
+                  "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:${DcrAttemptsAlarm}",
+                  "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:${TokenReuseAlarm}",
+                  "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:${TenantIsolationTestAlarm}",
+                  "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:${SesBounceRateAlarm}",
+                  "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:${QuotaCircuitBreakerAlarm}"
                 ]
               }
             }
@@ -545,6 +524,21 @@ Resources:
                   - logs:CreateLogStream
                   - logs:PutLogEvents
                 Resource: !Sub '${CloudTrailLogGroup.Arn}:*'
+        - PolicyName: CloudTrailS3Policy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetBucketAcl
+                Resource: !Sub 'arn:aws:s3:::${BackupBucketName}'
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                Resource: !Sub 'arn:aws:s3:::${BackupBucketName}/AWSLogs/${AWS::AccountId}/*'
+                Condition:
+                  StringEquals:
+                    s3:x-amz-acl: bucket-owner-full-control
 
   MemMcpTrail:
     Type: AWS::CloudTrail::Trail
