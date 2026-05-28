@@ -4,9 +4,19 @@ Description: 'mem-mcp 060-compute — EC2 t4g.medium + IAM instance profile + EB
 Parameters:
   # EC2 configuration
   Ec2AmiId:
-    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
-    Default: /aws/service/canonical/ubuntu/server/24.04/stable/current/arm64/hvm/ebs-gp3/ami-id
-    Description: Ubuntu 24.04 ARM64 AMI for ap-south-1 (resolved from public Canonical SSM parameter)
+    Type: AWS::EC2::Image::Id
+    Default: ami-039c8bec2cb71e1ea
+    Description: |
+      Pinned Ubuntu 24.04 ARM64 AMI for ap-south-1. Pinned (not SSM-resolved)
+      because the prior `AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>` form
+      re-resolved Canonical's stable-current SSM param on every sam deploy,
+      and Canonical updates that param whenever they publish a new image —
+      causing CFN to see ImageId change and REPLACE the EC2 every deploy.
+      Bump this default deliberately when you want a new image: update both
+      this Default and parameters/prod.json (or pass --parameter-overrides),
+      run sam deploy, accept the EC2 replacement as a planned event.
+      Latest Canonical 24.04 ARM64 lookup:
+        aws ssm get-parameter --name /aws/service/canonical/ubuntu/server/24.04/stable/current/arm64/hvm/ebs-gp3/ami-id --region ap-south-1 --query Parameter.Value --output text
 
   Ec2InstanceType:
     Type: String
