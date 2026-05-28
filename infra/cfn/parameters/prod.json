@@ -1,0 +1,19 @@
+{
+  "DomainName": "dheemantech.in",
+  "MemSysSubdomain": "memsys",
+  "MemAppSubdomain": "memapp",
+  "MemAuthSubdomain": "memauth",
+  "OperatorEmail": "anand@dheemantech.com",
+  "OperatorIpCidr": "0.0.0.0/0",
+  "Ec2KeyName": "mem-mcp-ops",
+  "Ec2InstanceType": "t4g.medium",
+  "Ec2AmiId": "ami-039c8bec2cb71e1ea",
+  "BackupRetentionDays": "730",
+  "LogRetentionDays": "30",
+  "AuditLogRetentionDays": "90",
+  "BootstrapBucketName": "mem-mcp-cfn-172485061306-aps1",
+  "UsEast1CertArn": "arn:aws:acm:us-east-1:172485061306:certificate/542ab145-9d7d-4c5c-96ee-d3545f6837f9",
+  "GoogleClientIdSsmName": "/mem-mcp/cognito/google_client_id",
+  "ManageDns": "false",
+  "DeployerPrincipalArn": "arn:aws:iam::172485061306:user/Local"
+}
