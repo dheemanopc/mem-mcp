@@ -206,6 +206,41 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.routers_wired = True
         log.info("routers_wired", count=len(app.routes))
 
+    # Phase 2.5: wire concrete plugin integration
+    if app.state.plugin_registry is not None:
+        try:
+            from mem_mcp.db import get_pool
+            from mem_mcp.plugins.integration import (
+                collect_plugin_tools,
+                mount_plugin_routes,
+                run_plugin_jobs_setup,
+            )
+            from mem_mcp.plugins.schema import ensure_plugin_schemas
+
+            pool = get_pool()
+
+            # 1. Create per-plugin PG schemas
+            await ensure_plugin_schemas(pool, app.state.plugin_registry)
+
+            # 2. Mount plugin web routes under /skills/<id>
+            mount_plugin_routes(app, app.state.plugin_registry)
+
+            # 3. Collect tool declarations (real MCP server wiring is later PR)
+            app.state.plugin_tools = collect_plugin_tools(app.state.plugin_registry)
+
+            # 4. Collect job declarations (real firing is later PR)
+            app.state.plugin_jobs = await run_plugin_jobs_setup(app.state.plugin_registry)
+
+            log.info(
+                "plugin_wiring_complete",
+                extra={
+                    "tool_count": len(app.state.plugin_tools),
+                    "job_plugin_count": len(app.state.plugin_jobs),
+                },
+            )
+        except Exception:
+            log.exception("plugin_wiring_failed (non-fatal)")
+
     # Stash default checker list on app state so test clients can override
     if not hasattr(app.state, "health_checkers"):
         app.state.health_checkers = _build_default_checkers()
