@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-from uuid import uuid4
+from collections.abc import Awaitable, Callable
+from typing import Any
+from uuid import UUID, uuid4
 
 import pytest
 from pydantic import BaseModel
 
+from mem_mcp.auth.permissions import Permission
 from mem_mcp.plugins.contract import (
     SDK_API_VERSION,
     CredentialStore,
@@ -101,43 +104,71 @@ class TestProtocolsRuntimeCheckable:
     """Test that Protocols are runtime_checkable."""
 
     class StubToolRegistry:
-        def register(self, name, handler, *, description, input_schema, required_permission=None):
-            pass
+        def register(
+            self,
+            name: str,
+            handler: Callable[..., Awaitable[Any]],
+            *,
+            description: str,
+            input_schema: type[BaseModel],
+            required_permission: Permission | None = None,
+        ) -> None:
+            return None
 
     class StubJobScheduler:
-        def register(self, name, schedule, handler):
-            pass
+        def register(
+            self, name: str, schedule: str, handler: Callable[[Any], Awaitable[None]]
+        ) -> None:
+            return None
 
     class StubNoticeClient:
-        async def queue(self, kind, template, payload, *, ttl_seconds=86400):
-            pass
+        async def queue(
+            self, kind: str, template: str, payload: dict[str, Any], *, ttl_seconds: int = 86400
+        ) -> None:
+            return None
 
     class StubCredentialStore:
-        async def store(self, creds):
-            pass
+        async def store(self, creds: dict[str, Any]) -> None:
+            return None
 
-        async def load(self):
-            pass
+        async def load(self) -> dict[str, Any]:
+            return {}
 
-        async def delete(self):
-            pass
+        async def delete(self) -> bool:
+            return True
 
     class StubMemoryClient:
-        async def write(self, content, *, type="note", tags=None, metadata=None):
-            pass
+        async def write(
+            self,
+            content: str,
+            *,
+            type: str = "note",
+            tags: list[str] | None = None,
+            metadata: dict[str, Any] | None = None,
+        ) -> UUID:
+            return uuid4()
 
-        async def search(self, query, *, type=None, tags=None, since=None, until=None, limit=20):
-            pass
+        async def search(
+            self,
+            query: str,
+            *,
+            type: str | None = None,
+            tags: list[str] | None = None,
+            since: Any = None,
+            until: Any = None,
+            limit: int = 20,
+        ) -> list[dict[str, Any]]:
+            return []
 
-        async def get(self, memory_id):
-            pass
+        async def get(self, memory_id: UUID) -> dict[str, Any] | None:
+            return None
 
-        async def supersede(self, memory_id, content):
-            pass
+        async def supersede(self, memory_id: UUID, content: str) -> UUID:
+            return uuid4()
 
     class StubPermissionResolver:
-        async def has(self, permission, *, team_id=None):
-            pass
+        async def has(self, permission: Permission, *, team_id: UUID | None = None) -> bool:
+            return True
 
     def test_tool_registry_protocol_check(self) -> None:
         """isinstance() works for ToolRegistry."""

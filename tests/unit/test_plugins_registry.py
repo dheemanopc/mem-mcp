@@ -59,7 +59,7 @@ class TestPluginRegistry:
         registry = PluginRegistry()
         p1 = SimplePlugin()
         p2 = SimplePlugin()
-        p2.id = "other"  # type: ignore[misc]
+        p2.id = "other"
 
         registry.register_for_test(p1)
         registry.register_for_test(p2)
