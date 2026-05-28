@@ -210,12 +210,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if app.state.plugin_registry is not None:
         try:
             from mem_mcp.db import get_pool
-            from mem_mcp.plugins.schema import ensure_plugin_schemas
             from mem_mcp.plugins.integration import (
-                mount_plugin_routes,
                 collect_plugin_tools,
+                mount_plugin_routes,
                 run_plugin_jobs_setup,
             )
+            from mem_mcp.plugins.schema import ensure_plugin_schemas
 
             pool = get_pool()
 
@@ -231,9 +231,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             # 4. Collect job declarations (real firing is later PR)
             app.state.plugin_jobs = await run_plugin_jobs_setup(app.state.plugin_registry)
 
-            log.info("plugin_wiring_complete",
-                     extra={"tool_count": len(app.state.plugin_tools),
-                            "job_plugin_count": len(app.state.plugin_jobs)})
+            log.info(
+                "plugin_wiring_complete",
+                extra={
+                    "tool_count": len(app.state.plugin_tools),
+                    "job_plugin_count": len(app.state.plugin_jobs),
+                },
+            )
         except Exception:
             log.exception("plugin_wiring_failed (non-fatal)")
 
