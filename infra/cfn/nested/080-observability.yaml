@@ -453,29 +453,6 @@ Resources:
               Address: !Ref OperatorEmail
 
   # ============================================================================
-  # AWS Cost Anomaly Detection
-  # ============================================================================
-
-  AnomalyMonitor:
-    Type: AWS::CE::AnomalyMonitor
-    Properties:
-      MonitorName: mem-mcp-cost-anomaly
-      MonitorType: DIMENSIONAL
-      MonitorDimension: SERVICE
-
-  AnomalySubscription:
-    Type: AWS::CE::AnomalySubscription
-    Properties:
-      SubscriptionName: mem-mcp-cost-anomaly-email
-      Threshold: 10
-      Frequency: DAILY
-      MonitorArnList:
-        - !GetAtt AnomalyMonitor.MonitorArn
-      Subscribers:
-        - Type: EMAIL
-          Address: !Ref OperatorEmail
-
-  # ============================================================================
   # CloudWatch Dashboard
   # ============================================================================
 
