@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import traceback
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from pydantic import BaseModel, ValidationError
 
@@ -12,6 +12,7 @@ from mem_mcp.mcp.errors import JsonRpcError
 
 if TYPE_CHECKING:
     from mem_mcp.mcp.tools._base import BaseTool, ToolContext
+    from mem_mcp.plugins.integration import RegisteredTool
 
 
 _log = get_logger("mem_mcp.mcp.registry")
@@ -26,6 +27,38 @@ class ToolRegistry:
     def register(self, tool_cls: type[BaseTool]) -> None:
         """Register a tool class. Idempotent (overwrites by name)."""
         self._tools[tool_cls.name] = tool_cls
+
+    def register_plugin_tool(self, registered_tool: RegisteredTool) -> None:
+        """Register a plugin's RegisteredTool by wrapping it as a BaseTool-compatible class.
+
+        The adapter exposes the same interface as BaseTool so the dispatcher
+        (dispatch method) can treat it uniformly with native tools.
+        """
+        rt = registered_tool
+        required_scope = rt.required_permission.value if rt.required_permission else None
+
+        class _PluginToolAdapter:
+            name: ClassVar[str] = rt.namespaced_name
+            description: ClassVar[str] = rt.description
+            required_scope: ClassVar[str | None] = required_scope
+            InputModel: ClassVar[type[BaseModel]] = rt.input_schema
+            OutputModel: ClassVar[type[BaseModel]] = (
+                rt.input_schema
+            )  # TODO: store output schema in RegisteredTool
+
+            async def __call__(self, ctx: ToolContext, inp: BaseModel) -> BaseModel:
+                """Invoke the plugin handler with (inp, tenant_id, request_id)."""
+                result = await rt.handler(inp, ctx.tenant_id, ctx.request_id)
+                assert isinstance(result, BaseModel)
+                return result
+
+        # Register the adapter
+        self.register(_PluginToolAdapter)  # type: ignore
+        _log.info(
+            "plugin_tool_registered_in_mcp",
+            tool_name=rt.namespaced_name,
+            plugin_id=rt.plugin_id,
+        )
 
     def names(self) -> list[str]:
         return sorted(self._tools.keys())

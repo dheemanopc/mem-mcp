@@ -225,8 +225,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             # 2. Mount plugin web routes under /skills/<id>
             mount_plugin_routes(app, app.state.plugin_registry)
 
-            # 3. Collect tool declarations (real MCP server wiring is later PR)
+            # 3. Collect tool declarations
             app.state.plugin_tools = collect_plugin_tools(app.state.plugin_registry)
+
+            # 3b. Wire plugin tools into MCP ToolRegistry so MCP clients can call them
+            if hasattr(app.state, "mcp_tool_registry"):
+                mcp_registry = app.state.mcp_tool_registry
+                for rt in app.state.plugin_tools:
+                    mcp_registry.register_plugin_tool(rt)
+                log.info(
+                    "plugin_tools_wired_into_mcp_registry",
+                    extra={"count": len(app.state.plugin_tools)},
+                )
+            else:
+                log.warning("mcp_tool_registry_not_found_during_plugin_wiring")
 
             # 4. Collect job declarations (real firing is later PR)
             app.state.plugin_jobs = await run_plugin_jobs_setup(app.state.plugin_registry)
@@ -579,6 +591,9 @@ def _wire_routers(app: FastAPI) -> None:
         deps=deps,
     )
     app.include_router(mcp_router)
+
+    # Stash registry on app state so lifespan can wire plugin tools into it
+    app.state.mcp_tool_registry = registry
 
     log.info("app_wiring_complete", routes_count=len(app.routes))
 

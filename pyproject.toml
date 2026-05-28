@@ -78,6 +78,9 @@ markers = [
 ]
 addopts = "-ra --strict-markers"
 
+[tool.poetry.plugins."mem_mcp.skills"]
+kite = "mem_mcp.skills.kite.plugin:KitePlugin"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
