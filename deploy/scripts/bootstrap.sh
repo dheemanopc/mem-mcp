@@ -112,6 +112,28 @@ ALTER DEFAULT PRIVILEGES FOR ROLE mem_maint IN SCHEMA public
 SQL
 
 #=============================================================================
+# Step 3b: Install PG auth config
+#=============================================================================
+log "Step 3b: Installing PG auth config (pg_hba.conf, pg_ident.conf)"
+
+PG_CONF_DIR=/etc/postgresql/16/main
+install -m 0640 -o postgres -g postgres \
+    "$REPO_DIR/deploy/postgres/pg_hba.conf" \
+    "$PG_CONF_DIR/pg_hba.conf"
+install -m 0640 -o postgres -g postgres \
+    "$REPO_DIR/deploy/postgres/pg_ident.conf" \
+    "$PG_CONF_DIR/pg_ident.conf"
+
+# Reload PG to apply the new auth config. SELECT pg_reload_conf() is safer than
+# systemctl reload (doesn't drop connections); falls back to systemctl if pg_isready fails.
+sudo -u postgres psql -c "SELECT pg_reload_conf();" >/dev/null || {
+    log "  pg_reload_conf failed; falling back to systemctl reload postgresql"
+    systemctl reload postgresql
+}
+
+log "  PG auth config installed and reloaded"
+
+#=============================================================================
 # Step 4: Python deps + Alembic upgrade
 #=============================================================================
 log "Step 4: Python deps + Alembic upgrade"
