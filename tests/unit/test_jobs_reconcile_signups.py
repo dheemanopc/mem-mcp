@@ -184,7 +184,8 @@ class TestClassify:
         ):
             to_provision, dangling, orphans, skipped = await _classify(AsyncMock(), cognito_users)
 
-        assert len(to_provision) == 1
+        # User is not invited, so should be flagged as dangling, not provisioned
+        assert len(to_provision) == 0
         assert dangling == ["user1@example.com"]
 
     @pytest.mark.asyncio
@@ -208,6 +209,107 @@ class TestClassify:
         assert len(to_provision) == 0
         assert orphans == ["orphan@example.com"]
 
+    @pytest.mark.asyncio
+    async def test_user_classified_either_provision_or_dangling_never_both(self) -> None:
+        """Test that a user lands in exactly one bucket: provision or dangling, not both."""
+        mock_conn = AsyncMock()
+        # No existing identities, no invited emails
+        mock_conn.fetch.side_effect = [[], []]
+
+        cognito_users = [
+            CognitoUserSummary(
+                sub="new-sub",
+                username="u",
+                email="unknown@x.com",
+                email_verified=True,
+                workspace_domain=None,
+                enabled=True,
+                user_status="CONFIRMED",
+                identities_json=None,
+            ),
+        ]
+
+        with patch(
+            "mem_mcp.jobs.reconcile_signups.system_tx",
+            create_mock_system_tx(mock_conn),
+        ):
+            to_provision, dangling, orphans, skipped = await _classify(AsyncMock(), cognito_users)
+
+        # User should be in exactly one bucket
+        assert len(to_provision) == 0
+        assert dangling == ["unknown@x.com"]
+        assert len(orphans) == 0
+        assert skipped == 0
+
+    @pytest.mark.asyncio
+    async def test_skipped_user_not_double_counted_as_dangling(self) -> None:
+        """Test that skipped users (existing) don't also appear in dangling."""
+        mock_conn = AsyncMock()
+        # Existing identity with matching sub
+        mock_conn.fetch.side_effect = [
+            [{"cognito_sub": "existing-sub", "email": "known@x.com"}],
+            [],  # No invited emails
+        ]
+
+        cognito_users = [
+            CognitoUserSummary(
+                sub="existing-sub",
+                username="u",
+                email="known@x.com",
+                email_verified=True,
+                workspace_domain=None,
+                enabled=True,
+                user_status="CONFIRMED",
+                identities_json=None,
+            ),
+        ]
+
+        with patch(
+            "mem_mcp.jobs.reconcile_signups.system_tx",
+            create_mock_system_tx(mock_conn),
+        ):
+            to_provision, dangling, orphans, skipped = await _classify(AsyncMock(), cognito_users)
+
+        # User should be in skipped, not dangling
+        assert skipped == 1
+        assert dangling == []
+        assert len(to_provision) == 0
+        assert len(orphans) == 0
+
+    @pytest.mark.asyncio
+    async def test_orphan_uses_full_cognito_set_not_filtered(self) -> None:
+        """Test that orphan check uses full Cognito set, not just filtered users."""
+        mock_conn = AsyncMock()
+        # Existing identity that will be in Cognito but filtered out
+        mock_conn.fetch.side_effect = [
+            [{"cognito_sub": "different-sub", "email": "filtered@x.com"}],
+            [],
+        ]
+
+        # User with email_verified=False will be filtered
+        cognito_users = [
+            CognitoUserSummary(
+                sub="s1",
+                username="u",
+                email="filtered@x.com",
+                email_verified=False,  # Filtered out by criteria
+                workspace_domain=None,
+                enabled=True,
+                user_status="CONFIRMED",
+                identities_json=None,
+            ),
+        ]
+
+        with patch(
+            "mem_mcp.jobs.reconcile_signups.system_tx",
+            create_mock_system_tx(mock_conn),
+        ):
+            to_provision, dangling, orphans, skipped = await _classify(AsyncMock(), cognito_users)
+
+        # Email is in Cognito (even though user is filtered), so NOT orphan
+        assert orphans == []
+        assert skipped == 1
+
 
 # Tests for reconciliation flow
 
@@ -220,7 +322,8 @@ class TestReconcileSignups:
         """Dry run populates report.provisioned but does not mutate DB."""
         mock_pool = AsyncMock()
         mock_conn = AsyncMock()
-        mock_conn.fetch.side_effect = [[], []]
+        # Simulate invited emails so user is provisioned
+        mock_conn.fetch.side_effect = [[], [{"email": "user1@example.com"}]]
 
         mock_lister = AsyncMock()
         mock_lister.list_users.return_value = [
@@ -321,7 +424,8 @@ class TestReconcileSignups:
         mock_pool = AsyncMock()
         mock_conn = AsyncMock()
         mock_conn.fetchrow.return_value = {"id": tenant_id}
-        mock_conn.fetch.side_effect = [[], []]  # No existing identities, no pending invites
+        # No existing identities, but kewal is in invited emails
+        mock_conn.fetch.side_effect = [[], [{"email": "kewal@example.com"}]]
 
         mock_lister = AsyncMock()
         user = CognitoUserSummary(
@@ -501,7 +605,7 @@ class TestReconcileSignups:
         # Order: existing_identities, invited_emails, team_invites
         mock_conn.fetch.side_effect = [
             [],  # existing identities in _classify
-            [],  # invited_emails in _classify
+            [{"email": "kewal@example.com"}],  # invited_emails in _classify
             [],  # team_invites in _consume_pending_invites
         ]
 
@@ -598,3 +702,40 @@ class TestBotoCognitoUserLister:
         assert users[0].email == "user1@example.com"
         assert users[1].sub == "sub2"
         assert users[1].email == "user2@example.com"
+
+    @pytest.mark.asyncio
+    async def test_lister_parses_enabled_from_user_dict_not_attrs(self) -> None:
+        """Test that Enabled is read from top-level User dict, not Attributes."""
+        from unittest.mock import Mock
+
+        # Mock boto3 client
+        mock_client = Mock()
+        mock_paginator = Mock()
+
+        # Single page with Enabled as top-level User field
+        page = {
+            "Users": [
+                {
+                    "Username": "u1",
+                    "Enabled": True,  # Top-level field
+                    "UserStatus": "CONFIRMED",  # Top-level field
+                    "Attributes": [
+                        {"Name": "sub", "Value": "s1"},
+                        {"Name": "email", "Value": "u1@x.com"},
+                        {"Name": "email_verified", "Value": "true"},
+                    ],
+                }
+            ]
+        }
+
+        mock_paginator.paginate.return_value = [page]
+        mock_client.get_paginator.return_value = mock_paginator
+
+        lister = BotoCognitoUserLister("pool-id", "us-east-1")
+        lister._client = mock_client
+
+        users = await lister.list_users()
+
+        assert len(users) == 1
+        assert users[0].enabled is True
+        assert users[0].user_status == "CONFIRMED"

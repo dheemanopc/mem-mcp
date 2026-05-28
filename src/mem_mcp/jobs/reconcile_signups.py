@@ -88,9 +88,6 @@ class BotoCognitoUserLister:
                     email_verified_str = attrs.get("email_verified", "false")
                     email_verified = email_verified_str.lower() == "true"
 
-                    enabled_str = attrs.get("enabled", "false")
-                    enabled = enabled_str.lower() == "true"
-
                     users.append(
                         CognitoUserSummary(
                             sub=attrs.get("sub", ""),
@@ -98,8 +95,8 @@ class BotoCognitoUserLister:
                             email=attrs.get("email", ""),
                             email_verified=email_verified,
                             workspace_domain=attrs.get("custom:google_hd"),
-                            enabled=enabled,
-                            user_status=attrs.get("UserStatus", ""),
+                            enabled=bool(user.get("Enabled", False)),
+                            user_status=str(user.get("UserStatus", "")),
                             identities_json=attrs.get("identities"),
                         )
                     )
@@ -237,23 +234,22 @@ async def _classify(
     orphan_identities = []
     skipped_count = 0
 
-    cognito_emails = set()
+    # Compute cognito_emails from full Cognito set (before filtering)
+    cognito_emails = {u.email.lower() for u in cognito_users if u.email}
+
     for user in cognito_users:
         # Skip users that don't meet basic criteria
         if not (user.enabled and user.email_verified and user.email):
             skipped_count += 1
             continue
-
-        cognito_emails.add(user.email.lower())
-
-        # Check if sub already in tenant_identities
+        # Check if sub already in tenant_identities; if so, skip entirely
         if user.sub in existing_subs:
             skipped_count += 1
-        else:
+            continue  # already a tenant; no further classification
+        # User is new and meets criteria: provision it
+        if user.email.lower() in invited_emails_set:
             to_provision.append(user)
-
-        # Check if email in invited_emails
-        if user.email.lower() not in invited_emails_set:
+        else:
             dangling_uninvited.append(user.email)
 
     # Orphan identities: emails in DB that aren't in Cognito
