@@ -52,10 +52,6 @@ Parameters:
     MaxValue: 1000
     Description: Monthly cost budget; 80% threshold triggers SNS notification
 
-  BackupBucketName:
-    Type: String
-    Description: Name of the S3 backup bucket for CloudTrail logs
-
 Resources:
   # ============================================================================
   # SNS Topic for Ops Alerts
@@ -495,70 +491,6 @@ Resources:
           ]
         }
 
-  # ── CloudTrail ──────────────────────────────────────────────────────────────
-  CloudTrailLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: /mem-mcp/cloudtrail
-      RetentionInDays: !Ref AuditLogRetentionDays
-      KmsKeyId: !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:${KmsKeyAlias}'
-
-  CloudTrailRole:
-    Type: AWS::IAM::Role
-    Properties:
-      RoleName: mem-mcp-cloudtrail-role
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: cloudtrail.amazonaws.com
-            Action: sts:AssumeRole
-      Policies:
-        - PolicyName: CloudTrailLogsPolicy
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - logs:CreateLogStream
-                  - logs:PutLogEvents
-                Resource: !Sub '${CloudTrailLogGroup.Arn}:*'
-        - PolicyName: CloudTrailS3Policy
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - s3:GetBucketAcl
-                Resource: !Sub 'arn:aws:s3:::${BackupBucketName}'
-              - Effect: Allow
-                Action:
-                  - s3:PutObject
-                Resource: !Sub 'arn:aws:s3:::${BackupBucketName}/AWSLogs/${AWS::AccountId}/*'
-                Condition:
-                  StringEquals:
-                    s3:x-amz-acl: bucket-owner-full-control
-
-  MemMcpTrail:
-    Type: AWS::CloudTrail::Trail
-    Properties:
-      TrailName: mem-mcp-trail
-      IsLogging: true
-      EnableLogFileValidation: true
-      IncludeGlobalServiceEvents: true
-      IsMultiRegionTrail: false
-      S3BucketName: !Ref BackupBucketName
-      S3KeyPrefix: cloudtrail
-      KMSKeyId: !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:${KmsKeyAlias}'
-      CloudWatchLogsLogGroupArn: !GetAtt CloudTrailLogGroup.Arn
-      CloudWatchLogsRoleArn: !GetAtt CloudTrailRole.Arn
-      EventSelectors:
-        - ReadWriteType: All
-          IncludeManagementEvents: true
-      Tags:
-        - Key: Project
-          Value: mem-mcp
 
 Outputs:
   OpsSnsTopicArn:
