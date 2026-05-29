@@ -7,16 +7,17 @@ pure-Pydantic stage-B tests missed.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
 
 from mem_mcp.audit.logger import NoopAuditLogger
+from mem_mcp.embeddings.bedrock import EmbedResult
 from mem_mcp.mcp.tools._base import ToolContext
 from mem_mcp.mcp.tools._deps import NoopQuotas, ToolDeps
-from mem_mcp.mcp.tools.get import MemoryGetInput, MemoryGetTool
-from mem_mcp.mcp.tools.write import MemoryWriteInput, MemoryWriteTool
+from mem_mcp.mcp.tools.get import MemoryGetInput, MemoryGetOutput, MemoryGetTool
+from mem_mcp.mcp.tools.write import MemoryWriteInput, MemoryWriteOutput, MemoryWriteTool
 from mem_mcp.teams.slugs import lookup_slug
 
 if TYPE_CHECKING:
@@ -28,8 +29,8 @@ pytestmark = pytest.mark.asyncio
 class FakeEmbeddings:
     """Stub embeddings for test context."""
 
-    async def embed(self, text: str) -> dict[str, Any]:
-        return {"vector": [0.1] * 1024, "input_tokens": 12}
+    async def embed(self, text: str) -> EmbedResult:
+        return EmbedResult(vector=[0.1] * 1024, input_tokens=12)
 
 
 class TestIT06_Spec2WriteGetSlugLookup:  # noqa: N801
@@ -89,8 +90,8 @@ class TestIT06_Spec2WriteGetSlugLookup:  # noqa: N801
                 await conn.execute(
                     """
                     INSERT INTO user_effective_team_access
-                    (user_id, resource_team_id, effective_role_class, updated_at)
-                    VALUES ($1, $2, 'owner', NOW())
+                    (user_id, resource_team_id, effective_role_class, effective_perms, path_count)
+                    VALUES ($1, $2, 'internal', ARRAY['read', 'write', 'delete'], 1)
                     """,
                     tenant_id,
                     personal_team_id,
@@ -119,10 +120,10 @@ class TestIT06_Spec2WriteGetSlugLookup:  # noqa: N801
             type="decision",
             slug_clue="my-test-decision",
             references=[],
-            team_id=str(personal_team_id),
+            team_id=personal_team_id,
             visibility="team",
         )
-        write_output = await write_tool(ctx, write_input)
+        write_output: MemoryWriteOutput = await write_tool(ctx, write_input)  # type: ignore[assignment]
         memory_id = write_output.id
 
         # Verify slug row exists
@@ -145,7 +146,7 @@ class TestIT06_Spec2WriteGetSlugLookup:  # noqa: N801
             resource_type="decision",
             slug="my-test-decision",
         )
-        get_output = await get_tool(ctx, get_input)
+        get_output: MemoryGetOutput = await get_tool(ctx, get_input)  # type: ignore[assignment]
         assert get_output.memory.id == memory_id
         assert get_output.memory.content == "My test decision content"
         assert get_output.memory.type == "decision"
@@ -157,7 +158,7 @@ class TestIT06_Spec2WriteGetSlugLookup:  # noqa: N801
             slug="my-test-decision",
             include_history=True,
         )
-        get_output_hist = await get_tool(ctx, get_input_hist)
+        get_output_hist: MemoryGetOutput = await get_tool(ctx, get_input_hist)  # type: ignore[assignment]
         assert get_output_hist.memory.id == memory_id
         assert get_output_hist.history == []  # No prior versions
 
