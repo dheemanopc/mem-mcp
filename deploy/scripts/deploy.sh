@@ -38,6 +38,37 @@ log "Re-installing systemd units (timers may have been added)"
 for svc in "$REPO_DIR/deploy/systemd/"*.{service,timer}; do
   [[ -e "$svc" ]] && install -m 0644 "$svc" "/etc/systemd/system/$(basename "$svc")"
 done
+
+log "Generating plugin job systemd units"
+PLUGIN_STAGING=/tmp/mem-mcp-plugin-units
+sudo -u memmcp rm -rf "$PLUGIN_STAGING"
+# Step 1: generator runs as memmcp (it imports the plugin venv); writes units
+# to staging dir and prints the manifest of unit basenames to stdout.
+PLUGIN_UNIT_BASES=$(sudo -u memmcp ~memmcp/.local/bin/poetry -C "$REPO_DIR" run \
+  python -m deploy.scripts.generate_plugin_units --staging "$PLUGIN_STAGING") || {
+  log "plugin unit generation failed; continuing"
+  PLUGIN_UNIT_BASES=""
+}
+# Step 2: install each staged unit + cleanup stale plugin units (as root).
+declare -A DESIRED_PLUGIN_UNITS=()
+for base in $PLUGIN_UNIT_BASES; do
+  install -m 0644 "$PLUGIN_STAGING/${base}.service" "/etc/systemd/system/${base}.service"
+  install -m 0644 "$PLUGIN_STAGING/${base}.timer" "/etc/systemd/system/${base}.timer"
+  DESIRED_PLUGIN_UNITS["${base}.service"]=1
+  DESIRED_PLUGIN_UNITS["${base}.timer"]=1
+  log "  installed ${base}.{service,timer}"
+done
+# Remove stale plugin units no longer in the manifest.
+for unit_path in /etc/systemd/system/mem-mcp-plugin-*.service /etc/systemd/system/mem-mcp-plugin-*.timer; do
+  [[ -e "$unit_path" ]] || continue
+  unit_name=$(basename "$unit_path")
+  if [[ -z "${DESIRED_PLUGIN_UNITS[$unit_name]:-}" ]]; then
+    log "  removing stale ${unit_name}"
+    systemctl disable --now "$unit_name" 2>/dev/null || true
+    rm -f "$unit_path"
+  fi
+done
+
 systemctl daemon-reload
 for t in /etc/systemd/system/mem-mcp-*.timer; do
   [[ -e "$t" ]] && systemctl enable --now "$(basename "$t")" || true
