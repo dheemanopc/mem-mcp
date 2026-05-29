@@ -197,12 +197,27 @@ def make_mcp_router(
             )
 
         if method == "tools/call":
+            content_items: list[dict[str, object]] = [{"type": "text", "text": json.dumps(result)}]
+            # Pluck + render any pending plugin notices for this tenant; appended
+            # as additional text content items so any MCP client sees them.
+            try:
+                from mem_mcp.db import system_tx
+                from mem_mcp.plugins.notice_delivery import deliver_pending
+
+                async with system_tx(db_pool) as nconn:
+                    notices = await deliver_pending(nconn, tenant_ctx.tenant_id)
+                for n in notices:
+                    content_items.append({"type": "text", "text": n.text})
+            except Exception:
+                # Notice delivery must never break tool responses.
+                _log.exception("notice_delivery_failed", request_id=req_id)
+
             return JSONResponse(
                 content={
                     "jsonrpc": "2.0",
                     "id": request_id,
                     "result": {
-                        "content": [{"type": "text", "text": json.dumps(result)}],
+                        "content": content_items,
                         "isError": False,
                     },
                 }
