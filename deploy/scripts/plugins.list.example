@@ -1,0 +1,19 @@
+# /etc/mem-mcp/plugins.list — one repo URL per line
+#
+# Format:
+#   - One git URL per line (HTTPS or SSH, depending on deploy host auth config)
+#   - Lines starting with # are comments
+#   - Blank lines are ignored
+#
+# The install_plugins.sh script will:
+#   1. Clone or pull each repo into /opt/mem-mcp-plugins/<repo-name>/
+#   2. Run `pip install -e` to install as an editable package into memsys's venv
+#   3. Load the plugin's entry point from mem_mcp.skills on next memsys startup
+#
+# Examples (uncomment to enable):
+#
+# git@github.com:dheemanopc/mem-mcp-skill-kite.git
+# git@github.com:dheemanopc/mem-mcp-skill-reminders.git
+#
+# For private repos, ensure the deploy host has git SSH auth configured
+# (e.g., via EC2 instance profile + CodeCommit, or SSH deploy key in ~/.ssh/config).

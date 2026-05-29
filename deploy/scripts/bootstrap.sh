@@ -144,6 +144,16 @@ su - memmcp -c "cd $REPO_DIR && \
   \$HOME/.local/bin/poetry run alembic upgrade head"
 
 #=============================================================================
+# Step 4b: Install / update skill plugins (idempotent; reads /etc/mem-mcp/plugins.list)
+#=============================================================================
+log "Step 4b: Installing skill plugins"
+if [[ -x "$REPO_DIR/deploy/scripts/install_plugins.sh" ]]; then
+    "$REPO_DIR/deploy/scripts/install_plugins.sh" || {
+        log "Step 4b: install_plugins.sh failed; continuing (non-fatal)"
+    }
+fi
+
+#=============================================================================
 # Step 5: Web (Next.js) build
 #=============================================================================
 log "Step 5: Next.js build (skipped if web/ dir missing — lands later in Phase 8)"
