@@ -81,25 +81,10 @@ def upgrade() -> None:
     # =========================================================
     # 2. Visibility widen
     # =========================================================
-    # First: backfill memories with visibility='private' OR team_id IS NULL
-    # to point at the author's personal team with visibility='team'.
-    # Author = the memory's owning tenant_id.
-    op.execute(
-        sa.text("""
-        UPDATE memories m
-        SET team_id = (
-            SELECT t.id FROM teams t
-            WHERE t.created_by_tenant_id = m.tenant_id
-              AND t.team_type = 'personal'
-              AND t.deleted_at IS NULL
-            ORDER BY t.created_at ASC LIMIT 1
-        )
-        WHERE m.team_id IS NULL
-          AND m.deleted_at IS NULL
-    """)
-    )
-
-    # Drop the old CHECK constraint that allowed only 'private' / 'team'
+    # Order matters: drop the old CHECK constraints FIRST. The legacy
+    # memories_visibility_team_consistency forbids (visibility='private'
+    # AND team_id IS NOT NULL), so backfilling team_id before dropping it
+    # crashes on real prod data with pre-existing private memories.
     op.execute(
         sa.text(
             "ALTER TABLE memories DROP CONSTRAINT IF EXISTS memories_visibility_team_consistency"
@@ -121,6 +106,24 @@ def upgrade() -> None:
                 EXECUTE 'ALTER TABLE memories DROP CONSTRAINT ' || quote_ident(cn);
             END LOOP;
         END$$;
+    """)
+    )
+
+    # Backfill team_id for memories that don't have one. Safe now that the
+    # old constraint is gone — private memories can transiently coexist with
+    # a non-NULL team_id until the visibility rewrite below.
+    op.execute(
+        sa.text("""
+        UPDATE memories m
+        SET team_id = (
+            SELECT t.id FROM teams t
+            WHERE t.created_by_tenant_id = m.tenant_id
+              AND t.team_type = 'personal'
+              AND t.deleted_at IS NULL
+            ORDER BY t.created_at ASC LIMIT 1
+        )
+        WHERE m.team_id IS NULL
+          AND m.deleted_at IS NULL
     """)
     )
 
