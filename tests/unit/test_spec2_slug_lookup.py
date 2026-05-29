@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 import pytest
@@ -17,7 +17,7 @@ class TestMemsysSlugLookup:
     """Tests for memsys_slug_lookup tool."""
 
     async def test_lookup_hit_on_existing_slug(
-        self, pg_pool: Pool, populate_user_effective_access
+        self, pg_pool: Pool, populate_user_effective_access: Any
     ) -> None:
         """Slug lookup returns memory_id, title, updated_at when slug exists and user has access."""
         async with pg_pool.acquire() as conn:

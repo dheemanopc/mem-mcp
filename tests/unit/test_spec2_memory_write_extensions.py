@@ -63,12 +63,13 @@ class TestMemoryWriteReferences:
             content="test content",
             type="note",
             references=[
-                {
+                {  # type: ignore[list-item]
                     "target_uuid": str(target_uuid),
                     "reference_kind": "cites",
                 }
             ],
         )
+        assert inp.references is not None
         assert len(inp.references) == 1
         assert inp.references[0].target_uuid == target_uuid
 
@@ -81,7 +82,7 @@ class TestMemoryWriteReferences:
             content="test content",
             type="note",
             references=[
-                {
+                {  # type: ignore[list-item]
                     "target_team_id": str(team_id),
                     "target_resource_type": "decision",
                     "target_slug": "my-decision",
@@ -89,6 +90,7 @@ class TestMemoryWriteReferences:
                 }
             ],
         )
+        assert inp.references is not None
         assert len(inp.references) == 1
         assert inp.references[0].target_team_id == team_id
 
@@ -101,7 +103,7 @@ class TestMemoryWriteReferences:
                 content="test content",
                 type="note",
                 references=[
-                    {
+                    {  # type: ignore[list-item]
                         "target_uuid": str(uuid4()),
                         "target_team_id": str(uuid4()),
                         "target_resource_type": "decision",
@@ -120,7 +122,7 @@ class TestMemoryWriteReferences:
                 content="test content",
                 type="note",
                 references=[
-                    {
+                    {  # type: ignore[list-item]
                         "reference_kind": "cites",
                     }
                 ],

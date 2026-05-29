@@ -5,11 +5,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-import asyncpg
+import asyncpg  # type: ignore[import-untyped]
 import pytest
 
 if TYPE_CHECKING:
-    from asyncpg import Pool  # type: ignore[import-untyped]
+    from asyncpg import Pool
 
 
 pytestmark = pytest.mark.asyncio
