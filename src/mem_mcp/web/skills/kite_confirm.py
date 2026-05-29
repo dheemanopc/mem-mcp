@@ -3,7 +3,11 @@
 GET /api/web/skills/kite/intent/{intent_id} — fetch intent summary (no secrets)
 POST /api/web/skills/kite/intent/{intent_id}/confirm — accept and store credentials
 POST /api/web/skills/kite/intent/{intent_id}/cancel — reject intent
+
+Note: Kite onboarding functions are now in mem-mcp-skill-kite plugin.
+This module keeps a defensive import for reference.
 """
+# mypy: disable-error-code="import-not-found"
 
 from __future__ import annotations
 
@@ -17,7 +21,18 @@ from pydantic import BaseModel
 
 from mem_mcp.audit.logger import DbAuditLogger
 from mem_mcp.db import system_tx
-from mem_mcp.skills.kite.onboarding import KiteOnboardingError, enable_kite_for_tenant
+
+# Kite onboarding functions extracted to mem-mcp-skill-kite plugin
+# Importing from here will fail; keep for reference in case legacy code calls it
+try:
+    from mem_mcp.skills.kite.onboarding import (
+        KiteOnboardingError,
+        enable_kite_for_tenant,
+    )
+except ImportError:
+    # Kite skill module not available; router will reject requests
+    KiteOnboardingError = Exception
+    enable_kite_for_tenant = None
 from mem_mcp.skills.vault import SkillVault, SkillVaultError
 from mem_mcp.web.sessions import lookup_session
 

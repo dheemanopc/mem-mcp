@@ -73,7 +73,8 @@ from mem_mcp.mcp.tools.write import MemoryWriteTool
 from mem_mcp.mcp.tools.write_batch import MemoryWriteBatchTool
 from mem_mcp.mcp.transport import make_mcp_router
 from mem_mcp.quotas.enforcer import QuotaEnforcer
-from mem_mcp.skills.kite.enable_tool import MemsysEnableKiteTool
+
+# Kite enable tool extracted to mem-mcp-skill-kite plugin (Phase 3 refactor)
 from mem_mcp.skills.vault import SkillVault, SkillVaultDisabledError
 from mem_mcp.web.csrf import CsrfMiddleware
 from mem_mcp.web.handlers.clients import make_clients_router
@@ -139,22 +140,14 @@ def _wire_skills(registry: ToolRegistry, log: Any) -> int:
 def _instantiate_skill(skill_name: str, log: Any) -> Any:
     """Construct a Skill instance by name. Returns None if unknown.
 
-    Phase 1 supports: kite. New skills added by extending this dispatch.
+    Phase 3 refactor: kite skill extracted to mem-mcp-skill-kite plugin repo.
+    This function is kept for backward compatibility and potential future skills.
     """
-    if skill_name == "kite":
-        # Kite skill is Phase 1.B — file not yet present in initial commit.
-        # Defensive import so the loader works even when KiteSkill module is absent.
-        try:
-            from mem_mcp.skills.kite.skill import KiteSkill
-        except ImportError:
-            log.warning(
-                "skill_module_missing",
-                skill_name="kite",
-                reason="mem_mcp.skills.kite.skill not importable",
-            )
-            return None
-        return KiteSkill()
-    log.warning("unknown_skill", skill_name=skill_name)
+    log.info(
+        "skill_deprecated",
+        skill_name=skill_name,
+        reason="skills now use Plugin SDK (entry-point based discovery)",
+    )
     return None
 
 
@@ -411,7 +404,7 @@ def _wire_routers(app: FastAPI) -> None:
         MemoryExportTool,
         MemoryFeedbackTool,
         MemoryStatsTool,
-        MemsysEnableKiteTool,
+        # MemsysEnableKiteTool moved to mem-mcp-skill-kite plugin
         ListMyTeamsTool,
         CreateTeamTool,
     ]
