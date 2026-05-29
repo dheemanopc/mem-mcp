@@ -56,6 +56,8 @@ from mem_mcp.health import (
 from mem_mcp.logging_setup import get_logger, setup_logging
 from mem_mcp.mcp.registry import ToolRegistry
 from mem_mcp.mcp.tools._deps import make_default_deps
+from mem_mcp.mcp.tools.add_team_member import AddTeamMemberTool
+from mem_mcp.mcp.tools.assign_role import AssignRoleTool
 from mem_mcp.mcp.tools.create_team import CreateTeamTool
 from mem_mcp.mcp.tools.delete import MemoryDeleteTool
 from mem_mcp.mcp.tools.export import MemoryExportTool
@@ -63,6 +65,7 @@ from mem_mcp.mcp.tools.feedback import MemoryFeedbackTool
 from mem_mcp.mcp.tools.get import MemoryGetTool
 from mem_mcp.mcp.tools.list import MemoryListTool
 from mem_mcp.mcp.tools.list_my_teams import ListMyTeamsTool
+from mem_mcp.mcp.tools.remove_team_member import RemoveTeamMemberTool
 from mem_mcp.mcp.tools.search import MemorySearchTool
 from mem_mcp.mcp.tools.stats import MemoryStatsTool
 from mem_mcp.mcp.tools.supersede import MemorySupersedeTool
@@ -392,7 +395,7 @@ def _wire_routers(app: FastAPI) -> None:
         quotas=quotas,
     )
 
-    # Build ToolRegistry with 15 tools (12 memory + 1 onboarding + 2 team)
+    # Build ToolRegistry with 18 tools (12 memory + 1 onboarding + 5 team)
     registry = ToolRegistry()
     tools_list: list = [
         MemoryWriteTool,
@@ -409,8 +412,11 @@ def _wire_routers(app: FastAPI) -> None:
         MemoryFeedbackTool,
         MemoryStatsTool,
         # MemsysEnableKiteTool moved to mem-mcp-skill-kite plugin
-        ListMyTeamsTool,
+        AddTeamMemberTool,
+        AssignRoleTool,
         CreateTeamTool,
+        ListMyTeamsTool,
+        RemoveTeamMemberTool,
     ]
     for tool_cls in tools_list:  # type: ignore[attr-defined]
         registry.register(tool_cls)  # type: ignore[arg-type]

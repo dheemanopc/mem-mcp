@@ -39,17 +39,18 @@ jobs:
         run: pip install poetry==1.8.4
       - name: Install dependencies
         run: poetry install
+      - name: Create mem_app PG role
+        env:
+          PGPASSWORD: mem_test
+        run: |
+          psql -h localhost -U mem_test -d mem_test -c "CREATE ROLE mem_app NOLOGIN"
+
       - name: Apply migrations
         env:
-          DATABASE_URL: postgresql://mem_test:mem_test@localhost:5432/mem_test
-        run: poetry run alembic upgrade head || true  # Allow until alembic env is wired for CI
+          MEM_MCP_DB_MAINT_DSN: postgresql+psycopg://mem_test:mem_test@localhost:5432/mem_test
+        run: poetry run alembic upgrade head
+
       - name: Run integration suite
         env:
           MEM_MCP_TEST_DSN: postgresql://mem_test:mem_test@localhost:5432/mem_test
-        # tests/integration may not exist yet; skip cleanly if not
-        run: |
-          if [ -d tests/integration ]; then
-            poetry run pytest tests/integration -v
-          else
-            echo "tests/integration not yet present; skipping integration suite"
-          fi
+        run: poetry run pytest tests/integration -v

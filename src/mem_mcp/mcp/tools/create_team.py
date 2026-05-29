@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import ClassVar
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -10,6 +11,7 @@ from mem_mcp.db import system_tx
 from mem_mcp.mcp.errors import JsonRpcError
 from mem_mcp.mcp.tool_descriptions import TOOL_DESCRIPTIONS
 from mem_mcp.mcp.tools._base import BaseTool, ToolContext
+from mem_mcp.teams.assignments import assign_role
 
 
 class CreateTeamInput(BaseModel):
@@ -18,6 +20,8 @@ class CreateTeamInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(..., min_length=1, max_length=255)
+    parent_team_id: UUID | None = None
+    role_in_parent: str = Field(default="member", min_length=1, max_length=64)
 
 
 class TeamInfo(BaseModel):
@@ -67,6 +71,22 @@ class CreateTeamTool(BaseTool):
 
             caller_workspace_domain = identity["workspace_domain"]
 
+            # Validate parent_team_id if provided
+            if inp.parent_team_id is not None:
+                parent_exists = await conn.fetchrow(
+                    """
+                    SELECT 1 FROM team_members
+                    WHERE team_id = $1 AND tenant_id = $2 AND status = 'active'
+                    """,
+                    inp.parent_team_id,
+                    ctx.tenant_id,
+                )
+                if parent_exists is None:
+                    raise JsonRpcError(
+                        -32602,
+                        "parent_team_not_accessible",
+                    )
+
             # Workspace user gets their domain; personal user gets None
             team_workspace_domain = caller_workspace_domain
 
@@ -82,7 +102,7 @@ class CreateTeamTool(BaseTool):
                 ctx.tenant_id,
             )
 
-            # Add creator as admin member
+            # Add creator as admin member (legacy table, back-compat)
             await conn.execute(
                 """
                 INSERT INTO team_members (team_id, tenant_id, role, status, added_by_tenant_id)
@@ -95,6 +115,27 @@ class CreateTeamTool(BaseTool):
                 ctx.tenant_id,
             )
 
+            # Add creator as owner in new table (Spec 1 amendment #3)
+            await assign_role(
+                conn,
+                parent_team_id=team["id"],
+                member_kind="user",
+                member_id=ctx.tenant_id,
+                role_key="owner",
+                assigned_by_user_id=ctx.tenant_id,
+            )
+
+            # If parent_team_id provided, add new team as member of parent
+            if inp.parent_team_id is not None:
+                await assign_role(
+                    conn,
+                    parent_team_id=inp.parent_team_id,
+                    member_kind="team",
+                    member_id=team["id"],
+                    role_key=inp.role_in_parent,
+                    assigned_by_user_id=ctx.tenant_id,
+                )
+
         return CreateTeamOutput(
             team=TeamInfo(
                 id=str(team["id"]),
@@ -102,5 +143,5 @@ class CreateTeamTool(BaseTool):
                 workspace_domain=team["workspace_domain"],
                 created_at=team["created_at"].isoformat(),
             ),
-            your_role="admin",
+            your_role="owner",
         )

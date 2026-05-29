@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import traceback
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ValidationError
 
@@ -33,27 +33,36 @@ class ToolRegistry:
 
         The adapter exposes the same interface as BaseTool so the dispatcher
         (dispatch method) can treat it uniformly with native tools.
+
+        Uses type() to dynamically construct the adapter class, avoiding Python's
+        class-body closure restrictions (class bodies cannot reference outer function locals).
         """
         rt = registered_tool
         required_scope = rt.required_permission.value if rt.required_permission else None
 
-        class _PluginToolAdapter:
-            name: ClassVar[str] = rt.namespaced_name
-            description: ClassVar[str] = rt.description
-            required_scope: ClassVar[str | None] = required_scope
-            InputModel: ClassVar[type[BaseModel]] = rt.input_schema
-            OutputModel: ClassVar[type[BaseModel]] = (
-                rt.input_schema
-            )  # TODO: store output schema in RegisteredTool
+        async def call_impl(self: Any, ctx: ToolContext, inp: BaseModel) -> BaseModel:
+            """Invoke the plugin handler with (inp, tenant_id, request_id)."""
+            result = await rt.handler(inp, ctx.tenant_id, ctx.request_id)
+            assert isinstance(result, BaseModel)
+            return result
 
-            async def __call__(self, ctx: ToolContext, inp: BaseModel) -> BaseModel:
-                """Invoke the plugin handler with (inp, tenant_id, request_id)."""
-                result = await rt.handler(inp, ctx.tenant_id, ctx.request_id)
-                assert isinstance(result, BaseModel)
-                return result
+        # Build adapter class using type() to capture rt and required_scope
+        # in the namespace dict (not via closure).
+        adapter = type(
+            f"PluginToolAdapter_{rt.namespaced_name.replace('.', '_')}",
+            (),
+            {
+                "name": rt.namespaced_name,
+                "description": rt.description,
+                "required_scope": required_scope,
+                "InputModel": rt.input_schema,
+                "OutputModel": rt.input_schema,  # TODO: store output schema in RegisteredTool
+                "__call__": call_impl,
+            },
+        )
 
         # Register the adapter
-        self.register(_PluginToolAdapter)  # type: ignore
+        self.register(adapter)
         _log.info(
             "plugin_tool_registered_in_mcp",
             tool_name=rt.namespaced_name,

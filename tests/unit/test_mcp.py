@@ -12,11 +12,13 @@ from fastapi.testclient import TestClient
 from pydantic import BaseModel, ConfigDict, Field
 
 from mem_mcp.auth.middleware import TenantContext
+from mem_mcp.auth.permissions import Permission
 from mem_mcp.mcp.errors import JsonRpcError, to_jsonrpc_error_response
 from mem_mcp.mcp.registry import ToolRegistry
 from mem_mcp.mcp.tools._base import BaseTool, ToolContext
 from mem_mcp.mcp.tools._test_echo import EchoTool
 from mem_mcp.mcp.transport import make_mcp_router
+from mem_mcp.plugins.integration import RegisteredTool
 
 # --------------------------------------------------------------------------
 # Helpers
@@ -187,6 +189,108 @@ class TestToolRegistry:
         assert exc_info.value.data is not None
         assert exc_info.value.data["exc_type"] == "RuntimeError"
         assert "oops" in exc_info.value.data["message"]
+
+    def test_register_plugin_tool_no_required_permission(self) -> None:
+        """Plugin tool without required_permission registers successfully."""
+
+        class _PluginInput(BaseModel):
+            message: str
+
+        class _PluginOutput(BaseModel):
+            result: str
+
+        async def plugin_handler(
+            inp: _PluginInput, tenant_id: Any, request_id: str
+        ) -> _PluginOutput:
+            return _PluginOutput(result=f"handled: {inp.message}")
+
+        registered = RegisteredTool(
+            plugin_id="test-plugin",
+            namespaced_name="test-plugin.echo",
+            description="Test echo tool",
+            input_schema=_PluginInput,
+            handler=plugin_handler,
+            required_permission=None,
+        )
+
+        r = ToolRegistry()
+        r.register_plugin_tool(registered)
+
+        # Verify tool was registered
+        assert "test-plugin.echo" in r.names()
+        defs = r.list_definitions()
+        assert len(defs) == 1
+        assert defs[0]["name"] == "test-plugin.echo"
+        assert defs[0]["required_scope"] is None
+
+    def test_register_plugin_tool_with_required_permission(self) -> None:
+        """Plugin tool with required_permission registers with scope."""
+
+        class _PluginInput(BaseModel):
+            value: str
+
+        class _PluginOutput(BaseModel):
+            ok: bool
+
+        async def plugin_handler(
+            inp: _PluginInput, tenant_id: Any, request_id: str
+        ) -> _PluginOutput:
+            return _PluginOutput(ok=True)
+
+        registered = RegisteredTool(
+            plugin_id="test-plugin",
+            namespaced_name="test-plugin.secure",
+            description="Test secure tool",
+            input_schema=_PluginInput,
+            handler=plugin_handler,
+            required_permission=Permission.TEAM_MANAGE_MEMBERS,
+        )
+
+        r = ToolRegistry()
+        r.register_plugin_tool(registered)
+
+        # Verify tool was registered with correct scope
+        assert "test-plugin.secure" in r.names()
+        defs = r.list_definitions()
+        assert len(defs) == 1
+        assert defs[0]["required_scope"] == "team.manage_members"
+
+    @pytest.mark.asyncio
+    async def test_register_plugin_tool_dispatch(self) -> None:
+        """Plugin tool adapter can be dispatched successfully."""
+
+        class _PluginInput(BaseModel):
+            message: str
+
+        class _PluginOutput(BaseModel):
+            echoed: str
+
+        call_count = 0
+
+        async def plugin_handler(
+            inp: _PluginInput, tenant_id: Any, request_id: str
+        ) -> _PluginOutput:
+            nonlocal call_count
+            call_count += 1
+            return _PluginOutput(echoed=inp.message)
+
+        registered = RegisteredTool(
+            plugin_id="test-plugin",
+            namespaced_name="test-plugin.call",
+            description="Test callable tool",
+            input_schema=_PluginInput,
+            handler=plugin_handler,
+            required_permission=None,
+        )
+
+        r = ToolRegistry()
+        r.register_plugin_tool(registered)
+
+        # Dispatch and verify handler was called
+        ctx = _ctx()
+        result = await r.dispatch(ctx, "test-plugin.call", {"message": "hello"})
+        assert result["echoed"] == "hello"
+        assert call_count == 1
 
 
 # --------------------------------------------------------------------------
