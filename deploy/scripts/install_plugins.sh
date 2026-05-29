@@ -51,4 +51,16 @@ while IFS= read -r line; do
     sudo -u memmcp "$POETRY" run pip install -e "$install_dir"
 done < "$PLUGINS_LIST"
 
+# Plugin pyprojects declare mem-mcp as a path dep ({ path = "../mem-mcp",
+# develop = true }). When pip resolves the plugin's deps it sees mem-mcp and
+# reinstalls it as a wheel build (not editable), silently breaking mem-mcp's
+# editable status — so any new module added to src/mem_mcp/ since the last
+# `poetry install` becomes invisible to the venv. Reset to editable at the
+# end so subsequent deploy.sh steps (generate_plugin_units etc.) can import
+# the fresh code on disk. See project memory: prior session note on
+# install_plugins side-effect.
+log "restoring mem-mcp editable install"
+cd /opt/mem-mcp
+sudo -u memmcp "$POETRY" run pip install -e /opt/mem-mcp
+
 log "done"
