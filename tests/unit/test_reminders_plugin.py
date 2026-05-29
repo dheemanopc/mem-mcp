@@ -1,5 +1,9 @@
 """Unit tests for reminders plugin metadata and registration."""
 
+from __future__ import annotations
+
+from typing import Any
+
 from mem_mcp.auth.permissions import Permission
 from mem_mcp.plugins.contract import Plugin
 from mem_mcp.plugins.integration import ToolRegistryImpl
@@ -63,13 +67,13 @@ class TestRemindersPlugin:
         # JobScheduler is a Protocol, so we'll mock it
         class MockJobScheduler:
             def __init__(self) -> None:
-                self.registered_jobs: list[tuple[str, str, object]] = []
+                self.registered_jobs: list[tuple[str, str, Any]] = []
 
-            def register(self, name: str, schedule: str, handler: object) -> None:
+            def register(self, name: str, schedule: str, handler: Any) -> None:
                 self.registered_jobs.append((name, schedule, handler))
 
-        scheduler = MockJobScheduler()  # type: ignore[assignment]
-        plugin.register_jobs(scheduler)  # type: ignore[arg-type]
+        scheduler: Any = MockJobScheduler()
+        plugin.register_jobs(scheduler)
 
         assert len(scheduler.registered_jobs) == 1
         assert scheduler.registered_jobs[0][0] == "fire_due_reminders"
