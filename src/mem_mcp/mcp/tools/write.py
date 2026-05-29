@@ -10,7 +10,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from mem_mcp.db import tenant_tx
+from mem_mcp.db import system_tx, tenant_tx
 from mem_mcp.embeddings.bedrock import EmbeddingError
 from mem_mcp.embeddings.embed_or_skip import embed_or_skip
 from mem_mcp.mcp.errors import JsonRpcError
@@ -19,6 +19,17 @@ from mem_mcp.mcp.tools._base import BaseTool, ToolContext
 from mem_mcp.memory.dedupe import check_dup
 from mem_mcp.memory.normalize import hash_content
 from mem_mcp.memory.versioning import VERSIONED_TYPES
+from mem_mcp.teams.references import (
+    ReferenceTargetNotFoundError,
+    insert_reference,
+    resolve_reference_target,
+)
+from mem_mcp.teams.slugs import (
+    SlugClueInvalidError,
+    SlugClueReservedError,
+    insert_slug_with_retry,
+    redirect_slug_on_supersession,
+)
 
 _TAG_RE = re.compile(r"^[a-zA-Z0-9_:.-]+$")
 MemoryType = Literal["note", "decision", "fact", "snippet", "question"]
@@ -34,6 +45,29 @@ CONTENT_MAX_CHARS = 200_000
 EMBED_MAX_INPUT_CHARS = 32_000
 
 
+class ReferenceInput(BaseModel):
+    """One reference entry in the references[] array."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    # Resolution: exactly one of the two shapes must be provided
+    target_uuid: UUID | None = None
+    target_team_id: UUID | None = None
+    target_resource_type: Literal["decision", "fact"] | None = None
+    target_slug: str | None = None
+    # Metadata
+    reference_kind: str = Field(..., min_length=1, max_length=128)
+    target_fragment: int | None = None
+    refs_version: Literal["pinned", "current"] = "pinned"
+
+    @field_validator("target_slug", mode="after")
+    @classmethod
+    def _validate_slug(cls, v: str | None) -> str | None:
+        if v is not None and not (1 <= len(v) <= 64):
+            raise ValueError(f"target_slug must be 1-64 chars, got {len(v)}")
+        return v
+
+
 class MemoryWriteInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -47,6 +81,12 @@ class MemoryWriteInput(BaseModel):
     expires_at: datetime | None = None
     ttl_seconds: int | None = None
     indexable: bool = True
+    # Teams + slug support
+    team_id: UUID | None = None
+    visibility: Literal["team", "external", "public"] = "team"
+    slug_clue: str | None = None
+    references: list[ReferenceInput] | None = None
+    fragment_id: int | None = None
 
     @field_validator("tags", mode="after")
     @classmethod
@@ -106,6 +146,43 @@ class MemoryWriteInput(BaseModel):
         elif info.field_name == "ttl_seconds" and v is not None:
             if info.data.get("expires_at") is not None:
                 raise ValueError("only one of expires_at or ttl_seconds allowed")
+        return v
+
+    @field_validator("slug_clue", mode="after")
+    @classmethod
+    def _validate_slug_clue(cls, v: str | None, info: Any) -> str | None:
+        """slug_clue is REQUIRED for decision/fact, REJECTED for note/snippet/question."""
+        type_ = info.data.get("type", "note")
+        if type_ in VERSIONED_TYPES:  # decision, fact
+            if not v:
+                raise ValueError("slug_clue is required for decision/fact types")
+        else:  # note, snippet, question
+            if v:
+                raise ValueError("slug_clue only valid for decision or fact types")
+        return v
+
+    @field_validator("references", mode="after")
+    @classmethod
+    def _validate_references(cls, v: list[ReferenceInput] | None) -> list[ReferenceInput] | None:
+        """Each reference must have exactly one resolution path."""
+        if v is None:
+            return v
+        for i, ref in enumerate(v):
+            has_uuid = ref.target_uuid is not None
+            has_slug = (
+                ref.target_team_id is not None
+                and ref.target_resource_type is not None
+                and ref.target_slug is not None
+            )
+            if not (has_uuid or has_slug):
+                raise ValueError(
+                    f"references[{i}]: must provide either target_uuid OR "
+                    "(target_team_id, target_resource_type, target_slug)"
+                )
+            if has_uuid and has_slug:
+                raise ValueError(
+                    f"references[{i}]: cannot provide both UUID and slug-based resolution"
+                )
         return v
 
 
@@ -169,6 +246,68 @@ class MemoryWriteTool(BaseTool):
             ) from exc
 
         async with tenant_tx(ctx.db_pool, ctx.tenant_id) as conn:
+            # Resolve effective team_id (from caller's default_team_id if not provided)
+            effective_team_id = inp.team_id
+            if effective_team_id is None:
+                effective_team_id = await conn.fetchval(
+                    """
+                    SELECT default_team_id FROM tenant_identities
+                    WHERE tenant_id = $1 AND is_primary = true LIMIT 1
+                    """,
+                    ctx.tenant_id,
+                )
+            if effective_team_id is None:
+                raise JsonRpcError(
+                    -32602,
+                    "no team_id and caller has no default_team_id; pass team_id explicitly",
+                    data={
+                        "errors": [
+                            {
+                                "path": "team_id",
+                                "message": "team_id required but not provided and no default available",
+                            }
+                        ]
+                    },
+                )
+
+            # Resolve and validate references FIRST (before memory INSERT).
+            # On any miss or access error, reject the entire write.
+            resolved_refs: list[dict[str, Any]] = []
+            if inp.references:
+                async with system_tx(ctx.db_pool) as sys_conn:
+                    for i, ref in enumerate(inp.references):
+                        try:
+                            resolved = await resolve_reference_target(
+                                sys_conn,
+                                target_uuid=ref.target_uuid,
+                                target_team_id=ref.target_team_id,
+                                target_resource_type=ref.target_resource_type,
+                                target_slug=ref.target_slug,
+                                caller_user_id=ctx.tenant_id,
+                            )
+                            resolved_refs.append(
+                                {
+                                    "resolved_memory_id": resolved["memory_id"],
+                                    "resolved_team_id": resolved["team_id"],
+                                    "reference_kind": ref.reference_kind,
+                                    "target_fragment": ref.target_fragment,
+                                    "refs_version": ref.refs_version,
+                                }
+                            )
+                        except ReferenceTargetNotFoundError as exc:
+                            raise JsonRpcError(
+                                -32602,
+                                "reference target not found or not accessible",
+                                data={
+                                    "errors": [
+                                        {
+                                            "path": f"references[{i}]",
+                                            "message": "reference target not found or not accessible",
+                                        }
+                                    ]
+                                },
+                            ) from exc
+
             # Dedupe (unless caller forced new or parent_id set)
             existing = None
             if not inp.force_new and inp.parent_id is None:
@@ -288,8 +427,8 @@ class MemoryWriteTool(BaseTool):
                         tenant_id, content, content_hash, embedding,
                         source_client_id, source_kind,
                         type, tags, metadata, version, is_current, parent_id,
-                        expires_at, indexable, embedding_status
-                    ) VALUES ($1, $2, $3, $4::vector, $5, 'api', $6, $7, $8::jsonb, 1, true, $9, $10, $11, $12)
+                        expires_at, indexable, embedding_status, team_id, visibility, fragment_id
+                    ) VALUES ($1, $2, $3, $4::vector, $5, 'api', $6, $7, $8::jsonb, 1, true, $9, $10, $11, $12, $13, $14, $15)
                     RETURNING id, version, created_at
                     """,
                     ctx.tenant_id,
@@ -304,7 +443,21 @@ class MemoryWriteTool(BaseTool):
                     expires_at,
                     inp.indexable,
                     embedding_status,
+                    effective_team_id,
+                    inp.visibility,
+                    inp.fragment_id,
                 )
+                # Insert references for reply
+                for resolved in resolved_refs:
+                    await insert_reference(
+                        conn,
+                        source_memory_id=reply_row["id"],
+                        target_memory_id=resolved["resolved_memory_id"],
+                        target_team_id=resolved["resolved_team_id"],
+                        reference_kind=resolved["reference_kind"],
+                        target_fragment=resolved["target_fragment"],
+                        refs_version=resolved["refs_version"],
+                    )
                 await ctx.deps.audit.audit(
                     conn,
                     action="memory.write",
@@ -323,6 +476,9 @@ class MemoryWriteTool(BaseTool):
                         "content_length": len(inp.content),
                         "type": inp.type,
                         "deduped": False,
+                        "team_id": str(effective_team_id),
+                        "visibility": inp.visibility,
+                        "references_count": len(resolved_refs),
                     },
                 )
                 await ctx.deps.quotas.increment_write(ctx.tenant_id, embed_tokens)
@@ -389,8 +545,8 @@ class MemoryWriteTool(BaseTool):
                         source_client_id, source_kind,
                         type, tags, metadata,
                         version, supersedes, is_current,
-                        expires_at, indexable, embedding_status
-                    ) VALUES ($1, $2, $3, $4::vector, $5, 'api', $6, $7, $8::jsonb, $9, $10, true, $11, $12, $13)
+                        expires_at, indexable, embedding_status, team_id, visibility, fragment_id
+                    ) VALUES ($1, $2, $3, $4::vector, $5, 'api', $6, $7, $8::jsonb, $9, $10, true, $11, $12, $13, $14, $15, $16)
                     RETURNING id, version, created_at
                     """,
                     ctx.tenant_id,
@@ -406,6 +562,9 @@ class MemoryWriteTool(BaseTool):
                     expires_at,
                     inp.indexable,
                     embedding_status,
+                    effective_team_id,
+                    inp.visibility,
+                    inp.fragment_id,
                 )
                 # Mark old as superseded
                 await conn.execute(
@@ -414,6 +573,23 @@ class MemoryWriteTool(BaseTool):
                     inp.supersedes,
                     ctx.tenant_id,
                 )
+                # Redirect slug from old to new (if a slug exists for old)
+                await redirect_slug_on_supersession(
+                    conn,
+                    old_memory_id=inp.supersedes,
+                    new_memory_id=new_row["id"],
+                )
+                # Insert references for new version
+                for resolved in resolved_refs:
+                    await insert_reference(
+                        conn,
+                        source_memory_id=new_row["id"],
+                        target_memory_id=resolved["resolved_memory_id"],
+                        target_team_id=resolved["resolved_team_id"],
+                        reference_kind=resolved["reference_kind"],
+                        target_fragment=resolved["target_fragment"],
+                        refs_version=resolved["refs_version"],
+                    )
                 await ctx.deps.audit.audit(
                     conn,
                     action="memory.supersede",
@@ -427,6 +603,10 @@ class MemoryWriteTool(BaseTool):
                     details={
                         "old_id": str(inp.supersedes),
                         "embed_tokens": embed_tokens,
+                        "team_id": str(effective_team_id),
+                        "visibility": inp.visibility,
+                        "slug": None,  # slug redirected, not newly created
+                        "references_count": len(resolved_refs),
                     },
                 )
                 await ctx.deps.quotas.increment_write(ctx.tenant_id, embed_tokens)
@@ -447,8 +627,8 @@ class MemoryWriteTool(BaseTool):
                     tenant_id, content, content_hash, embedding,
                     source_client_id, source_kind,
                     type, tags, metadata, version, is_current,
-                    expires_at, indexable, embedding_status
-                ) VALUES ($1, $2, $3, $4::vector, $5, 'api', $6, $7, $8::jsonb, 1, true, $9, $10, $11)
+                    expires_at, indexable, embedding_status, team_id, visibility, fragment_id
+                ) VALUES ($1, $2, $3, $4::vector, $5, 'api', $6, $7, $8::jsonb, 1, true, $9, $10, $11, $12, $13, $14)
                 RETURNING id, version, created_at
                 """,
                 ctx.tenant_id,
@@ -462,7 +642,50 @@ class MemoryWriteTool(BaseTool):
                 expires_at,
                 inp.indexable,
                 embedding_status,
+                effective_team_id,
+                inp.visibility,
+                inp.fragment_id,
             )
+
+            # Insert slug for decision/fact types
+            actual_slug: str | None = None
+            if inp.type in VERSIONED_TYPES and inp.slug_clue:
+                try:
+                    title = inp.content[:64]
+                    actual_slug = await insert_slug_with_retry(
+                        conn,
+                        team_id=effective_team_id,
+                        resource_type=inp.type,  # type: ignore[arg-type]
+                        clue=inp.slug_clue,
+                        memory_id=row["id"],
+                        title=title,
+                    )
+                except (SlugClueInvalidError, SlugClueReservedError) as exc:
+                    raise JsonRpcError(
+                        -32602,
+                        str(exc),
+                        data={
+                            "errors": [
+                                {
+                                    "path": "slug_clue",
+                                    "message": str(exc),
+                                }
+                            ]
+                        },
+                    ) from exc
+
+            # Insert references
+            for resolved in resolved_refs:
+                await insert_reference(
+                    conn,
+                    source_memory_id=row["id"],
+                    target_memory_id=resolved["resolved_memory_id"],
+                    target_team_id=resolved["resolved_team_id"],
+                    reference_kind=resolved["reference_kind"],
+                    target_fragment=resolved["target_fragment"],
+                    refs_version=resolved["refs_version"],
+                )
+
             await ctx.deps.audit.audit(
                 conn,
                 action="memory.write",
@@ -479,6 +702,10 @@ class MemoryWriteTool(BaseTool):
                     "deduped": False,
                     "embed_tokens": embed_tokens,
                     "content_length": len(inp.content),
+                    "team_id": str(effective_team_id),
+                    "visibility": inp.visibility,
+                    "slug": actual_slug,
+                    "references_count": len(resolved_refs),
                 },
             )
             await ctx.deps.quotas.increment_write(ctx.tenant_id, embed_tokens)

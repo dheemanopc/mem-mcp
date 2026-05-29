@@ -27,6 +27,18 @@
           "title": "Force New",
           "type": "boolean"
         },
+        "fragment_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fragment Id"
+        },
         "indexable": {
           "default": true,
           "title": "Indexable",
@@ -50,6 +62,33 @@
           "default": null,
           "title": "Parent Id"
         },
+        "references": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/ReferenceInput"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "References"
+        },
+        "slug_clue": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Slug Clue"
+        },
         "supersedes": {
           "anyOf": [
             {
@@ -70,6 +109,19 @@
           "maxItems": 32,
           "title": "Tags",
           "type": "array"
+        },
+        "team_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Team Id"
         },
         "ttl_seconds": {
           "anyOf": [
@@ -94,12 +146,114 @@
           ],
           "title": "Type",
           "type": "string"
+        },
+        "visibility": {
+          "default": "team",
+          "enum": [
+            "team",
+            "external",
+            "public"
+          ],
+          "title": "Visibility",
+          "type": "string"
         }
       },
       "required": [
         "content"
       ],
       "title": "MemoryWriteInput",
+      "type": "object"
+    },
+    "ReferenceInput": {
+      "additionalProperties": false,
+      "description": "One reference entry in the references[] array.",
+      "properties": {
+        "reference_kind": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Reference Kind",
+          "type": "string"
+        },
+        "refs_version": {
+          "default": "pinned",
+          "enum": [
+            "pinned",
+            "current"
+          ],
+          "title": "Refs Version",
+          "type": "string"
+        },
+        "target_fragment": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Fragment"
+        },
+        "target_resource_type": {
+          "anyOf": [
+            {
+              "enum": [
+                "decision",
+                "fact"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Resource Type"
+        },
+        "target_slug": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Slug"
+        },
+        "target_team_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Team Id"
+        },
+        "target_uuid": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Uuid"
+        }
+      },
+      "required": [
+        "reference_kind"
+      ],
+      "title": "ReferenceInput",
       "type": "object"
     }
   },

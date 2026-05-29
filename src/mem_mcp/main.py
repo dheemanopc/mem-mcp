@@ -69,6 +69,7 @@ from mem_mcp.mcp.tools.refs_in import RefsInTool
 from mem_mcp.mcp.tools.refs_out import RefsOutTool
 from mem_mcp.mcp.tools.remove_team_member import RemoveTeamMemberTool
 from mem_mcp.mcp.tools.search import MemorySearchTool
+from mem_mcp.mcp.tools.slug_lookup import MemsysSlugLookupTool
 from mem_mcp.mcp.tools.stats import MemoryStatsTool
 from mem_mcp.mcp.tools.supersede import MemorySupersedeTool
 from mem_mcp.mcp.tools.thread_get import MemoryThreadGetTool
@@ -397,7 +398,7 @@ def _wire_routers(app: FastAPI) -> None:
         quotas=quotas,
     )
 
-    # Build ToolRegistry with 18 tools (12 memory + 1 onboarding + 5 team)
+    # Build ToolRegistry with 19 tools (12 memory + 1 onboarding + 6 team)
     registry = ToolRegistry()
     tools_list: list = [
         MemoryWriteTool,
@@ -418,6 +419,7 @@ def _wire_routers(app: FastAPI) -> None:
         AssignRoleTool,
         CreateTeamTool,
         ListMyTeamsTool,
+        MemsysSlugLookupTool,
         RefsInTool,
         RefsOutTool,
         RemoveTeamMemberTool,

@@ -2,19 +2,65 @@
   "additionalProperties": false,
   "properties": {
     "id": {
-      "format": "uuid",
-      "title": "Id",
-      "type": "string"
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Id"
     },
     "include_history": {
       "default": false,
       "title": "Include History",
       "type": "boolean"
+    },
+    "resource_type": {
+      "anyOf": [
+        {
+          "enum": [
+            "decision",
+            "fact"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Resource Type"
+    },
+    "slug": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Slug"
+    },
+    "team_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Team Id"
     }
   },
-  "required": [
-    "id"
-  ],
   "title": "MemoryGetInput",
   "type": "object"
 }
