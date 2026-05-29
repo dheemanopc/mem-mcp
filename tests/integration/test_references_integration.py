@@ -59,7 +59,6 @@ class TestIt08OpaqueResolutionFailures:
                         conn,
                         target_uuid=mem,
                         caller_user_id=tenant_b,
-                        tenant_id=tenant_a,
                     )
                 except ReferenceTargetNotFoundError as e:
                     err_no_access = str(e)
@@ -71,7 +70,6 @@ class TestIt08OpaqueResolutionFailures:
                         conn,
                         target_uuid=uuid4(),
                         caller_user_id=tenant_b,
-                        tenant_id=tenant_a,
                     )
                 except ReferenceTargetNotFoundError as e:
                     err_miss = str(e)
@@ -163,7 +161,6 @@ class TestIt09FilteredCitersOnHardDelete:
                         conn,
                         target_memory_id=target_mem,
                         caller_user_id=caller,
-                        tenant_id=caller,
                     )
 
                 # Caller sees the 2 accessible-team UUIDs + count of 1 inaccessible

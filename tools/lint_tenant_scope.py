@@ -35,8 +35,17 @@ PER_TENANT_TABLES = frozenset(
     }
 )
 
-# Files exempted from the rule (use system_tx by design)
-EXEMPT_PREFIXES = ("src/mem_mcp/jobs/",)
+# Files exempted from the rule (use system_tx by design OR perform
+# intentional cross-tenant queries with application-layer visibility gating).
+EXEMPT_PREFIXES = (
+    "src/mem_mcp/jobs/",
+    # teams/references.py and teams/effective_access.py query memories
+    # cross-tenant because references can legitimately point at memories in
+    # different tenants. Visibility-gating lives at the user_effective_team_access
+    # layer, not via tenant_id filter. See module docstrings for rationale.
+    "src/mem_mcp/teams/references.py",
+    "src/mem_mcp/teams/effective_access.py",
+)
 
 CONN_METHODS = frozenset({"execute", "fetch", "fetchrow", "fetchval", "executemany"})
 

@@ -64,7 +64,6 @@ class TestResolveByUuid:
                     conn,
                     target_uuid=s["memory_id"],
                     caller_user_id=s["tenant_id"],
-                    tenant_id=s["tenant_id"],
                 )
                 assert got["memory_id"] == s["memory_id"]
                 assert got["team_id"] == s["team_id"]
@@ -78,7 +77,6 @@ class TestResolveByUuid:
                         conn,
                         target_uuid=uuid4(),
                         caller_user_id=s["tenant_id"],
-                        tenant_id=s["tenant_id"],
                     )
                 # Same message used for both not-found AND no-access (opaque per amendment IT-08)
                 assert "not found or not accessible" in str(exc.value)
@@ -98,7 +96,6 @@ class TestResolveByUuid:
                         conn,
                         target_uuid=s["memory_id"],
                         caller_user_id=outsider,
-                        tenant_id=s["tenant_id"],
                     )
                 assert "not found or not accessible" in str(exc.value)
 
@@ -122,7 +119,6 @@ class TestResolveBySlug:
                     target_resource_type="decision",
                     target_slug="naming-conv",
                     caller_user_id=s["tenant_id"],
-                    tenant_id=s["tenant_id"],
                 )
                 assert got["memory_id"] == s["memory_id"]
 
@@ -137,7 +133,6 @@ class TestResolveBySlug:
                         target_resource_type="decision",
                         target_slug="does-not-exist",
                         caller_user_id=s["tenant_id"],
-                        tenant_id=s["tenant_id"],
                     )
 
 
@@ -176,7 +171,6 @@ class TestHardDeleteFilteredCiters:
                     conn,
                     target_memory_id=s["memory_id"],
                     caller_user_id=s["tenant_id"],
-                    tenant_id=s["tenant_id"],
                 )  # no raise
 
     async def test_accessible_citer_uuid_in_list(self, pg_pool: Any) -> None:
@@ -202,7 +196,6 @@ class TestHardDeleteFilteredCiters:
                         conn,
                         target_memory_id=s["memory_id"],
                         caller_user_id=s["tenant_id"],
-                        tenant_id=s["tenant_id"],
                     )
                 assert src in exc.value.accessible_citers
                 assert exc.value.inaccessible_count == 0
