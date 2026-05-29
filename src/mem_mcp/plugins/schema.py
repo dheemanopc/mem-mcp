@@ -29,11 +29,15 @@ def schema_name_for(plugin_id: str) -> str:
     return f"plugin_{safe}"
 
 
-async def ensure_plugin_schemas(pool: asyncpg.Pool, registry: PluginRegistry) -> None:
-    """Create per-plugin schemas if missing. Idempotent."""
+async def ensure_plugin_schemas(maint_pool: asyncpg.Pool, registry: PluginRegistry) -> None:
+    """Create per-plugin schemas if missing. Idempotent.
+
+    Must use a maint-privileged connection (mem_maint role with CREATE privilege on mem_mcp DB).
+    The app pool (mem_app role) lacks these DDL privs and will raise InsufficientPrivilegeError.
+    """
     for plugin in registry.all():
         schema = schema_name_for(plugin.id)
-        async with pool.acquire() as conn:
+        async with maint_pool.acquire() as conn:
             await conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
             await conn.execute(f'GRANT USAGE ON SCHEMA "{schema}" TO mem_app')
             await conn.execute(f'GRANT ALL ON SCHEMA "{schema}" TO mem_maint')
