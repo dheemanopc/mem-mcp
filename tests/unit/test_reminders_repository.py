@@ -29,18 +29,14 @@ async def test_tenant_id(pg_pool: Any) -> AsyncIterator[UUID]:
     yield tenant_id
     # Cleanup: delete all reminders for this tenant
     async with system_tx(pg_pool) as conn:
-        await conn.execute(
-            "DELETE FROM reminder_items WHERE tenant_id = $1", tenant_id
-        )
+        await conn.execute("DELETE FROM reminder_items WHERE tenant_id = $1", tenant_id)
 
 
 @pytest.mark.integration
 class TestRemindersRepository:
     """Test reminders repository with live DB."""
 
-    async def test_create_and_get_item(
-        self, pg_pool: Any, test_tenant_id: UUID
-    ) -> None:
+    async def test_create_and_get_item(self, pg_pool: Any, test_tenant_id: UUID) -> None:
         """Create and fetch a reminder item."""
         async with system_tx(pg_pool) as conn:
             item_id = await repository.create_item(
@@ -58,9 +54,7 @@ class TestRemindersRepository:
             assert item["state"] == ReminderState.ACTIVE.value
             assert item["tenant_id"] == test_tenant_id
 
-    async def test_get_item_wrong_tenant(
-        self, pg_pool: Any, test_tenant_id: UUID
-    ) -> None:
+    async def test_get_item_wrong_tenant(self, pg_pool: Any, test_tenant_id: UUID) -> None:
         """Getting an item from wrong tenant returns None."""
         other_tenant_id = uuid4()
         async with system_tx(pg_pool) as conn:
@@ -80,9 +74,7 @@ class TestRemindersRepository:
             item = await repository.get_item(conn, other_tenant_id, item_id)
             assert item is None
 
-    async def test_list_items_filtered_by_state(
-        self, pg_pool: Any, test_tenant_id: UUID
-    ) -> None:
+    async def test_list_items_filtered_by_state(self, pg_pool: Any, test_tenant_id: UUID) -> None:
         """List items filtered by state."""
         async with system_tx(pg_pool) as conn:
             id1 = await repository.create_item(conn, test_tenant_id, "Item 1", None, None)
@@ -111,14 +103,10 @@ class TestRemindersRepository:
             assert len(dismissed) == 1
             assert dismissed[0]["id"] == id2
 
-    async def test_update_state_records_event(
-        self, pg_pool: Any, test_tenant_id: UUID
-    ) -> None:
+    async def test_update_state_records_event(self, pg_pool: Any, test_tenant_id: UUID) -> None:
         """State updates are recorded as events."""
         async with system_tx(pg_pool) as conn:
-            item_id = await repository.create_item(
-                conn, test_tenant_id, "Test", None, None
-            )
+            item_id = await repository.create_item(conn, test_tenant_id, "Test", None, None)
 
             # Update to resolved
             await repository.update_state(
@@ -155,9 +143,7 @@ class TestRemindersRepository:
             )
 
             # Snooze one into the future
-            await repository.update_state(
-                conn, test_tenant_id, id2, snooze_until=future
-            )
+            await repository.update_state(conn, test_tenant_id, id2, snooze_until=future)
 
             # list_due_items (cross-tenant, no scoping)
             due = await repository.list_due_items(conn)
@@ -205,9 +191,7 @@ class TestRemindersRepository:
             assert id2 not in due_ids
             assert id3 not in due_ids
 
-    async def test_tenant_isolation(
-        self, pg_pool: Any, test_tenant_id: UUID
-    ) -> None:
+    async def test_tenant_isolation(self, pg_pool: Any, test_tenant_id: UUID) -> None:
         """Items from one tenant invisible to another."""
         other_tenant_id = uuid4()
         async with system_tx(pg_pool) as conn:
@@ -217,12 +201,8 @@ class TestRemindersRepository:
                 "other-tenant",
             )
 
-            id1 = await repository.create_item(
-                conn, test_tenant_id, "Item 1", None, None
-            )
-            id2 = await repository.create_item(
-                conn, other_tenant_id, "Item 2", None, None
-            )
+            id1 = await repository.create_item(conn, test_tenant_id, "Item 1", None, None)
+            id2 = await repository.create_item(conn, other_tenant_id, "Item 2", None, None)
 
             # List from first tenant
             items = await repository.list_items(conn, test_tenant_id)

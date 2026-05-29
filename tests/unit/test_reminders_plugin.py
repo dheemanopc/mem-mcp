@@ -65,9 +65,7 @@ class TestRemindersPlugin:
             def __init__(self) -> None:
                 self.registered_jobs: list[tuple[str, str, object]] = []
 
-            def register(
-                self, name: str, schedule: str, handler: object
-            ) -> None:
+            def register(self, name: str, schedule: str, handler: object) -> None:
                 self.registered_jobs.append((name, schedule, handler))
 
         scheduler = MockJobScheduler()  # type: ignore[assignment]
