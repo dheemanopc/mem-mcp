@@ -80,6 +80,7 @@ addopts = "-ra --strict-markers"
 
 [tool.poetry.plugins."mem_mcp.skills"]
 kite = "mem_mcp.skills.kite.plugin:KitePlugin"
+reminders = "mem_mcp.skills.reminders.plugin:RemindersPlugin"
 
 [build-system]
 requires = ["poetry-core"]

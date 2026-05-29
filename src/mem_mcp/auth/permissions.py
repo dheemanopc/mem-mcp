@@ -35,6 +35,10 @@ class Permission(StrEnum):
     TEAM_WRITE_MEMORY = "team.write_memory"
     TEAM_READ_MEMORY = "team.read_memory"
 
+    # Plugin: Reminders
+    REMINDERS_MANAGE_OWN = "reminders.manage_own"
+    REMINDERS_VIEW_OWN = "reminders.view_own"
+
 
 _ALL_SYSTEM = {p for p in Permission if p.value.startswith("system.")}
 _ALL_TEAM = {p for p in Permission if p.value.startswith("team.")}
