@@ -16,7 +16,9 @@ pytestmark = pytest.mark.asyncio
 class TestMemsysSlugLookup:
     """Tests for memsys_slug_lookup tool."""
 
-    async def test_lookup_hit_on_existing_slug(self, pg_pool: Pool, populate_user_effective_access) -> None:
+    async def test_lookup_hit_on_existing_slug(
+        self, pg_pool: Pool, populate_user_effective_access
+    ) -> None:
         """Slug lookup returns memory_id, title, updated_at when slug exists and user has access."""
         async with pg_pool.acquire() as conn:
             async with conn.transaction():
