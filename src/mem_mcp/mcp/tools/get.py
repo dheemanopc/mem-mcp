@@ -140,7 +140,7 @@ class MemoryGetTool(BaseTool):
                             ]
                         },
                     )
-                lookup_id = slug_row["memory_id"]
+                lookup_id = slug_row["memory_id"]  # type: ignore[assignment]
 
         async with tenant_tx(ctx.db_pool, ctx.tenant_id) as conn:
             row = await conn.fetchrow(
@@ -213,6 +213,7 @@ class MemoryGetTool(BaseTool):
 
         # Bump access-time so the stale-detection UI can find untouched
         # memories. Fire-and-forget; throttled at 5min per row.
+        assert lookup_id is not None  # one of id-path or slug-path always set
         await bump_access(ctx.db_pool, ctx.tenant_id, [lookup_id])
 
         return MemoryGetOutput(
