@@ -199,7 +199,7 @@ class MemoryGetTool(BaseTool):
                     SELECT * FROM chain WHERE id <> $1
                     ORDER BY version DESC
                     """,
-                    inp.id,
+                    lookup_id,
                     ctx.tenant_id,
                 )
                 history = [dict(h) for h in hrows]
@@ -211,7 +211,7 @@ class MemoryGetTool(BaseTool):
                 tenant_id=ctx.tenant_id,
                 identity_id=ctx.identity_id,
                 client_id=ctx.client_id,
-                target_id=inp.id,
+                target_id=lookup_id,
                 target_kind="memory",
                 request_id=ctx.request_id,
                 details={
@@ -222,7 +222,7 @@ class MemoryGetTool(BaseTool):
 
         # Bump access-time so the stale-detection UI can find untouched
         # memories. Fire-and-forget; throttled at 5min per row.
-        await bump_access(ctx.db_pool, ctx.tenant_id, [inp.id])
+        await bump_access(ctx.db_pool, ctx.tenant_id, [lookup_id])
 
         return MemoryGetOutput(
             memory=MemoryRecord(**dict(row)),
