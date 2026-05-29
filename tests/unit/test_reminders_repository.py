@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
@@ -143,7 +143,7 @@ class TestRemindersRepository:
         self, pg_pool: Any, test_tenant_id: UUID
     ) -> None:
         """list_due_items excludes items snoozed into the future."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         future = (now + timedelta(hours=1)).isoformat()
 
         async with system_tx(pg_pool) as conn:
@@ -169,7 +169,7 @@ class TestRemindersRepository:
         self, pg_pool: Any, test_tenant_id: UUID
     ) -> None:
         """list_due_items excludes dismissed and resolved items."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         async with system_tx(pg_pool) as conn:
             id1 = await repository.create_item(
