@@ -41,6 +41,15 @@ class TestIT06_Spec2WriteGetSlugLookup:  # noqa: N801
         # Setup
         async with pg_pool.acquire() as conn:
             async with conn.transaction():
+                # Ensure oauth_client exists for MemoryWriteTool's source_client_id constraint
+                await conn.execute(
+                    """
+                    INSERT INTO oauth_clients (id, display_name)
+                    VALUES ($1, 'test-client')
+                    ON CONFLICT DO NOTHING
+                    """,
+                    "test-client",
+                )
                 tenant_id = await conn.fetchval(
                     "INSERT INTO tenants (email) VALUES ($1) RETURNING id",
                     f"test-{uuid4()}@example.test",
@@ -123,6 +132,7 @@ class TestIT06_Spec2WriteGetSlugLookup:  # noqa: N801
             references=[],
             team_id=personal_team_id,
             visibility="team",
+            indexable=False,
         )
         write_output: MemoryWriteOutput = await write_tool(ctx, write_input)  # type: ignore[assignment]
         memory_id = write_output.id
