@@ -26,6 +26,7 @@ class AddTeamMemberInput(BaseModel):
     )
     member_email: str | None = None  # for member_kind='user' add-by-email path
     role_key: str = Field(..., min_length=1, max_length=64)
+    force_sync: bool = False  # opt-in synchronous cascade for team-as-member
 
 
 class AddTeamMemberOutput(BaseModel):
@@ -88,6 +89,7 @@ class AddTeamMemberTool(BaseTool):
                     member_id=resolved_member_id,
                     role_key=inp.role_key,
                     assigned_by_user_id=ctx.tenant_id,
+                    force_sync=inp.force_sync,
                 )
             except RoleNotFoundError as e:
                 raise JsonRpcError(-32602, f"invalid role_key: {e}") from e

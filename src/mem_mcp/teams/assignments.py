@@ -9,6 +9,10 @@ from typing import TYPE_CHECKING, Literal
 from uuid import UUID
 
 from mem_mcp.teams.dag import acquire_dag_lock, can_add_team_as_member
+from mem_mcp.teams.effective_access import (
+    cascade_on_team_member_change,
+    sync_refresh_on_user_assignment,
+)
 from mem_mcp.teams.roles import get_role_by_key
 
 if TYPE_CHECKING:
@@ -31,6 +35,7 @@ async def assign_role(
     role_key: str,
     assigned_by_user_id: UUID,
     plugin_id: str | None = None,
+    force_sync: bool = False,
 ) -> None:
     """Add or update a role assignment.
 
@@ -64,6 +69,20 @@ async def assign_role(
         assigned_by_user_id,
     )
 
+    # Stage B: sync-refresh on direct user assignments.
+    # For member_kind='team', stage C ships sync cascade as opt-in via force_sync;
+    # default async behavior (LISTEN/NOTIFY) deferred to future PR.
+    if member_kind == "user":
+        await sync_refresh_on_user_assignment(
+            conn, user_id=member_id, parent_team_id=parent_team_id
+        )
+    elif member_kind == "team":
+        if force_sync:
+            # Per amendment #24: opt-in synchronous cascade. Recompute UEA for every
+            # user transitively reachable via this edge.
+            await cascade_on_team_member_change(conn, parent_team_id, member_id)
+        # else: lag acceptable; reconciler (jobs/refresh_team_access) will catch up.
+
 
 async def remove_member(
     conn: asyncpg.Connection,
@@ -71,6 +90,7 @@ async def remove_member(
     parent_team_id: UUID,
     member_kind: MemberKind,
     member_id: UUID,
+    force_sync: bool = False,
 ) -> None:
     """Remove a member from a team.
 
@@ -110,3 +130,15 @@ async def remove_member(
         member_kind,
         member_id,
     )
+
+    # Stage B: sync-refresh on direct user removals.
+    # For member_kind='team', stage C ships sync cascade as opt-in via force_sync.
+    if member_kind == "user":
+        await sync_refresh_on_user_assignment(
+            conn, user_id=member_id, parent_team_id=parent_team_id
+        )
+    elif member_kind == "team":
+        if force_sync:
+            # Per amendment #24: opt-in synchronous cascade.
+            await cascade_on_team_member_change(conn, parent_team_id, member_id)
+        # else: lag acceptable; reconciler will catch up.

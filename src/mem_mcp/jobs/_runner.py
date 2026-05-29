@@ -12,6 +12,7 @@ Currently registers:
     retention_tokens      — purge expired link_state + web_sessions (T-7.14)
     retention_audit       — anonymize + hard-delete audit log (T-7.15)
     retention_deletion    — finalize pending tenant deletions (T-7.14)
+    refresh_team_access   — reconcile user_effective_team_access rows (Spec 5)
 
 Future jobs will land here as separate handlers per LLD §4.12.
 """
@@ -30,6 +31,7 @@ from mem_mcp.jobs.cluster_build import main as cluster_build_main
 from mem_mcp.jobs.embedding_backfill import main as embedding_backfill_main
 from mem_mcp.jobs.expire_transient import main as expire_transient_main
 from mem_mcp.jobs.reconcile_signups import main as reconcile_signups_main
+from mem_mcp.jobs.refresh_team_access import main as refresh_team_access_main
 from mem_mcp.jobs.retention_audit import main as retention_audit_main
 from mem_mcp.jobs.retention_deletion import main as retention_deletion_main
 from mem_mcp.jobs.retention_memories import main as retention_memories_main
@@ -45,6 +47,7 @@ _JOBS: dict[str, _JobMain] = {
     "embedding_backfill": embedding_backfill_main,
     "expire_transient": expire_transient_main,
     "reconcile_signups": reconcile_signups_main,
+    "refresh_team_access": refresh_team_access_main,
     "retention_audit": retention_audit_main,
     "retention_deletion": retention_deletion_main,
     "retention_memories": retention_memories_main,
