@@ -12,7 +12,7 @@ Three coupled changes (single migration; rollback also single-step):
    rows: visibility='private' → 'team' scoped to author's personal team.
 3. memories.fragment_id INT NULL added for thread-reply addressing.
 
-Revision ID: 0026_personal_teams_visibility_fragments
+Revision ID: 0026_personal_teams_widen
 Revises: 0025_memory_references
 Create Date: 2026-05-29
 """
@@ -23,7 +23,7 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision = "0026_personal_teams_visibility_fragments"
+revision = "0026_personal_teams_widen"
 down_revision = "0025_memory_references"
 branch_labels = None
 depends_on = None

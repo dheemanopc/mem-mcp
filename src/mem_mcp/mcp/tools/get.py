@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Any, ClassVar, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 from mem_mcp.db import system_tx, tenant_tx
 from mem_mcp.mcp.errors import JsonRpcError
@@ -27,29 +27,20 @@ class MemoryGetInput(BaseModel):
     resource_type: Literal["decision", "fact"] | None = None
     slug: str | None = None
 
-    @field_validator("id", "team_id", "resource_type", "slug", mode="after")
-    @classmethod
-    def _validate_lookup_path(cls, v: Any, info: Any) -> Any:
+    @model_validator(mode="after")
+    def _validate_lookup_path(self) -> MemoryGetInput:
         """Either id alone, OR all three of (team_id, resource_type, slug)."""
-        data = info.data
-        has_id = data.get("id") is not None
+        has_id = self.id is not None
         has_slug_tuple = (
-            data.get("team_id") is not None
-            and data.get("resource_type") is not None
-            and data.get("slug") is not None
+            self.team_id is not None and self.resource_type is not None and self.slug is not None
         )
-
-        if info.field_name == "id":
-            if has_id and has_slug_tuple:
-                raise ValueError("cannot provide both id and (team_id, resource_type, slug)")
-            if not has_id and not has_slug_tuple:
-                raise ValueError("must provide either id OR (team_id, resource_type, slug)")
-        elif info.field_name in ("team_id", "resource_type", "slug"):
-            # Already checked above; just validate this specific field
-            if info.field_name == "slug" and v is not None and not (1 <= len(v) <= 64):
-                raise ValueError(f"slug must be 1-64 chars, got {len(v)}")
-
-        return v
+        if has_id and has_slug_tuple:
+            raise ValueError("cannot provide both id and (team_id, resource_type, slug)")
+        if not has_id and not has_slug_tuple:
+            raise ValueError("must provide either id OR (team_id, resource_type, slug)")
+        if self.slug is not None and not (1 <= len(self.slug) <= 64):
+            raise ValueError(f"slug must be 1-64 chars, got {len(self.slug)}")
+        return self
 
 
 class MemoryRecord(BaseModel):

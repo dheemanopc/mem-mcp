@@ -213,31 +213,6 @@ class MemoryWriteTool(BaseTool):
         # Quota check (NoopQuotas is the v1 default; real enforcer in T-7.9)
         await ctx.deps.quotas.check_write(ctx.tenant_id, len(inp.content))
 
-        # Resolve effective team_id (from caller's default_team_id if not provided)
-        effective_team_id = inp.team_id
-        if effective_team_id is None:
-            async with system_tx(ctx.db_pool) as conn:
-                effective_team_id = await conn.fetchval(
-                    """
-                    SELECT default_team_id FROM tenant_identities
-                    WHERE tenant_id = $1 AND is_primary = true LIMIT 1
-                    """,
-                    ctx.tenant_id,
-                )
-        if effective_team_id is None:
-            raise JsonRpcError(
-                -32602,
-                "no team_id and caller has no default_team_id; pass team_id explicitly",
-                data={
-                    "errors": [
-                        {
-                            "path": "team_id",
-                            "message": "team_id required but not provided and no default available",
-                        }
-                    ]
-                },
-            )
-
         content_hash = hash_content(inp.content)
 
         # Compute expires_at if ttl_seconds provided
@@ -271,6 +246,30 @@ class MemoryWriteTool(BaseTool):
             ) from exc
 
         async with tenant_tx(ctx.db_pool, ctx.tenant_id) as conn:
+            # Resolve effective team_id (from caller's default_team_id if not provided)
+            effective_team_id = inp.team_id
+            if effective_team_id is None:
+                effective_team_id = await conn.fetchval(
+                    """
+                    SELECT default_team_id FROM tenant_identities
+                    WHERE tenant_id = $1 AND is_primary = true LIMIT 1
+                    """,
+                    ctx.tenant_id,
+                )
+            if effective_team_id is None:
+                raise JsonRpcError(
+                    -32602,
+                    "no team_id and caller has no default_team_id; pass team_id explicitly",
+                    data={
+                        "errors": [
+                            {
+                                "path": "team_id",
+                                "message": "team_id required but not provided and no default available",
+                            }
+                        ]
+                    },
+                )
+
             # Resolve and validate references FIRST (before memory INSERT).
             # On any miss or access error, reject the entire write.
             resolved_refs: list[dict[str, Any]] = []
