@@ -523,10 +523,10 @@ async def setup_dag_5_levels(pg_pool: Any) -> AsyncIterator[dict[str, Any]]:
     """
     async with pg_pool.acquire() as conn:
         async with conn.transaction():
-            tenant_row = await conn.fetchrow("SELECT id FROM tenants LIMIT 1")
-            if tenant_row is None:
-                pytest.skip("no tenants in test db")
-            tenant_id = tenant_row["id"]
+            tenant_id = await conn.fetchval(
+                "INSERT INTO tenants (email) VALUES ($1) RETURNING id",
+                f"test-{uuid4()}@example.test",
+            )
 
             member_role_id = await conn.fetchval(
                 "SELECT id FROM roles_catalog WHERE role_key='member' AND plugin_id IS NULL"

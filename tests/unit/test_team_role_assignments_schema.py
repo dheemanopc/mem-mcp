@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-import asyncpg
+import asyncpg  # type: ignore[import-untyped]
 import pytest
 
 pytestmark = pytest.mark.asyncio
@@ -26,7 +26,7 @@ class TestPolymorphicFKTrigger:
 
             # member_kind='user' with non-existent member_id → FK violation
             async with conn.transaction():
-                with pytest.raises(asyncpg.PostgresError):  # type: ignore[attr-defined]
+                with pytest.raises(asyncpg.PostgresError):
                     await conn.execute(
                         """
                         INSERT INTO team_role_assignments
@@ -52,7 +52,7 @@ class TestPolymorphicFKTrigger:
                 pytest.skip("no tenants in test db")
 
             async with conn.transaction():
-                with pytest.raises(asyncpg.PostgresError):  # type: ignore[attr-defined]
+                with pytest.raises(asyncpg.PostgresError):
                     await conn.execute(
                         """
                         INSERT INTO team_role_assignments

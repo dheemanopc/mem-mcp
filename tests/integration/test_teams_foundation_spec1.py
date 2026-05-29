@@ -39,10 +39,10 @@ class TestIT01_DeepDAG:  # noqa: N801
         """T5's ancestors must include T1, T2, T3, T4 (transitive chain)."""
         async with pg_pool.acquire() as conn:
             async with conn.transaction():
-                tenant_row = await conn.fetchrow("SELECT id FROM tenants LIMIT 1")
-                if tenant_row is None:
-                    pytest.skip("no tenants")
-                tenant_id = tenant_row["id"]
+                tenant_id = await conn.fetchval(
+                    "INSERT INTO tenants (email) VALUES ($1) RETURNING id",
+                    f"test-{uuid4()}@example.test",
+                )
                 member_role_id = await conn.fetchval(
                     "SELECT id FROM roles_catalog WHERE role_key='member' AND plugin_id IS NULL"
                 )
@@ -76,10 +76,10 @@ class TestIT02_CyclePrevention:  # noqa: N801
     async def test_rejects_cycle_creating_edge(self, pg_pool: Any) -> None:
         async with pg_pool.acquire() as conn:
             async with conn.transaction():
-                tenant_row = await conn.fetchrow("SELECT id FROM tenants LIMIT 1")
-                if tenant_row is None:
-                    pytest.skip("no tenants")
-                tenant_id = tenant_row["id"]
+                tenant_id = await conn.fetchval(
+                    "INSERT INTO tenants (email) VALUES ($1) RETURNING id",
+                    f"test-{uuid4()}@example.test",
+                )
                 member_role_id = await conn.fetchval(
                     "SELECT id FROM roles_catalog WHERE role_key='member' AND plugin_id IS NULL"
                 )
@@ -132,10 +132,10 @@ class TestIT03_FoundingScenario:  # noqa: N801
     async def test_dual_path_exists(self, pg_pool: Any) -> None:
         async with pg_pool.acquire() as conn:
             async with conn.transaction():
-                tenant_row = await conn.fetchrow("SELECT id FROM tenants LIMIT 1")
-                if tenant_row is None:
-                    pytest.skip("no tenants")
-                p = tenant_row["id"]
+                p = await conn.fetchval(
+                    "INSERT INTO tenants (email) VALUES ($1) RETURNING id",
+                    f"test-{uuid4()}@example.test",
+                )
 
                 team_a = await conn.fetchval(
                     "INSERT INTO teams (name, created_by_tenant_id) VALUES ('it03-A', $1) RETURNING id",
@@ -196,10 +196,10 @@ class TestIT04_ConcurrentAddRace:  # noqa: N801
         """Two concurrent txns each try to add an edge; only one succeeds."""
         async with pg_pool.acquire() as setup_conn:
             async with setup_conn.transaction():
-                tenant_row = await setup_conn.fetchrow("SELECT id FROM tenants LIMIT 1")
-                if tenant_row is None:
-                    pytest.skip("no tenants")
-                tenant_id = tenant_row["id"]
+                tenant_id = await setup_conn.fetchval(
+                    "INSERT INTO tenants (email) VALUES ($1) RETURNING id",
+                    f"test-{uuid4()}@example.test",
+                )
                 member_role_id = await setup_conn.fetchval(
                     "SELECT id FROM roles_catalog WHERE role_key='member' AND plugin_id IS NULL"
                 )
@@ -261,10 +261,10 @@ class TestIT11_OwnerSelfRemoveBlocked:  # noqa: N801
     async def test_sole_owner_blocked(self, pg_pool: Any) -> None:
         async with pg_pool.acquire() as conn:
             async with conn.transaction():
-                tenant_row = await conn.fetchrow("SELECT id FROM tenants LIMIT 1")
-                if tenant_row is None:
-                    pytest.skip("no tenants")
-                tenant_id = tenant_row["id"]
+                tenant_id = await conn.fetchval(
+                    "INSERT INTO tenants (email) VALUES ($1) RETURNING id",
+                    f"test-{uuid4()}@example.test",
+                )
                 team = await conn.fetchval(
                     "INSERT INTO teams (name, created_by_tenant_id) VALUES ('it11', $1) RETURNING id",
                     tenant_id,
@@ -294,10 +294,10 @@ class TestIT12_PluginRoleGate:  # noqa: N801
     async def test_unknown_plugin_role_rejected(self, pg_pool: Any) -> None:
         async with pg_pool.acquire() as conn:
             async with conn.transaction():
-                tenant_row = await conn.fetchrow("SELECT id FROM tenants LIMIT 1")
-                if tenant_row is None:
-                    pytest.skip("no tenants")
-                tenant_id = tenant_row["id"]
+                tenant_id = await conn.fetchval(
+                    "INSERT INTO tenants (email) VALUES ($1) RETURNING id",
+                    f"test-{uuid4()}@example.test",
+                )
                 team = await conn.fetchval(
                     "INSERT INTO teams (name, created_by_tenant_id) VALUES ('it12', $1) RETURNING id",
                     tenant_id,
