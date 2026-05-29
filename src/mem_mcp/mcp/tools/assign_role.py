@@ -22,6 +22,7 @@ class AssignRoleInput(BaseModel):
     member_kind: Literal["user", "team"]
     member_id: UUID
     new_role_key: str = Field(..., min_length=1, max_length=64)
+    force_sync: bool = False  # opt-in synchronous cascade for team-as-member
 
 
 class AssignRoleOutput(BaseModel):
@@ -49,6 +50,7 @@ class AssignRoleTool(BaseTool):
                     member_id=inp.member_id,
                     role_key=inp.new_role_key,
                     assigned_by_user_id=ctx.tenant_id,
+                    force_sync=inp.force_sync,
                 )
             except RoleNotFoundError as e:
                 raise JsonRpcError(-32602, f"invalid_role: {e}") from e

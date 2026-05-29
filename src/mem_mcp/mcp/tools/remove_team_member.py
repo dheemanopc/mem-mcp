@@ -20,6 +20,7 @@ class RemoveTeamMemberInput(BaseModel):
     team_id: UUID
     member_kind: Literal["user", "team"]
     member_id: UUID
+    force_sync: bool = False  # opt-in synchronous cascade for team-as-member
 
 
 class RemoveTeamMemberOutput(BaseModel):
@@ -45,6 +46,7 @@ class RemoveTeamMemberTool(BaseTool):
                     parent_team_id=inp.team_id,
                     member_kind=inp.member_kind,
                     member_id=inp.member_id,
+                    force_sync=inp.force_sync,
                 )
             except SoleOwnerCannotSelfRemoveError as e:
                 raise JsonRpcError(-32000, f"sole_owner_cannot_self_remove: {e}") from e

@@ -177,3 +177,61 @@ async def sync_refresh_on_user_assignment(
     ancestors = await walk_ancestors(conn, parent_team_id)
     for ancestor_team_id in ancestors:
         await upsert_effective_access(conn, user_id, ancestor_team_id)
+
+
+async def cascade_on_team_member_change(
+    conn: asyncpg.Connection,
+    parent_team_id: UUID,
+    member_team_id: UUID,
+) -> int:
+    """Recompute user_effective_team_access for every user transitively affected
+    by adding/removing/changing a team-as-member relationship.
+
+    Affected users = all users transitively reachable from member_team_id
+        (i.e., users in member_team_id, in member_team_id's descendant teams,
+         in users-of-teams-that-are-members-of-those, etc.).
+
+    Affected target teams = parent_team_id AND all of parent_team_id's ancestors.
+
+    For each (affected_user, affected_target) pair, run upsert_effective_access.
+
+    Returns: count of (user, target_team) rows refreshed.
+
+    Default behavior (per ratification amendment #24): this is the SYNCHRONOUS
+    path. Async LISTEN/NOTIFY worker that calls this on a NOTIFY event is
+    deferred to a future PR; for now, callers use force_sync=True to invoke
+    this directly, OR the periodic reconciler job catches any drift within
+    ~1 minute.
+    """
+    from mem_mcp.teams.dag import walk_ancestors, walk_descendants
+
+    # All target teams: parent_team_id + its ancestors
+    target_teams = {parent_team_id}
+    target_teams.update(await walk_ancestors(conn, parent_team_id))
+
+    # All affected users: any user with a direct membership in member_team_id
+    # OR in any descendant team of member_team_id
+    candidate_teams = {member_team_id}
+    candidate_teams.update(await walk_descendants(conn, member_team_id))
+
+    if not candidate_teams:
+        return 0
+
+    user_rows = await conn.fetch(
+        """
+        SELECT DISTINCT member_id AS user_id
+        FROM team_role_assignments
+        WHERE parent_team_id = ANY($1::uuid[])
+          AND member_kind = 'user'
+          AND status = 'active'
+        """,
+        list(candidate_teams),
+    )
+    affected_users = [r["user_id"] for r in user_rows]
+
+    refreshed = 0
+    for user_id in affected_users:
+        for target in target_teams:
+            await upsert_effective_access(conn, user_id, target)
+            refreshed += 1
+    return refreshed
