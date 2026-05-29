@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import traceback
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ValidationError
 
