@@ -4,23 +4,52 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from mem_mcp.db import tenant_tx
+from mem_mcp.db import system_tx, tenant_tx
 from mem_mcp.mcp.errors import JsonRpcError
 from mem_mcp.mcp.tool_descriptions import TOOL_DESCRIPTIONS
 from mem_mcp.mcp.tools._base import BaseTool, ToolContext
 from mem_mcp.memory.access_tracking import bump_access
+from mem_mcp.teams.slugs import lookup_slug
 
 
 class MemoryGetInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    id: UUID
+    id: UUID | None = None
     include_history: bool = False
+    # Slug-based lookup (alternative to id)
+    team_id: UUID | None = None
+    resource_type: Literal["decision", "fact"] | None = None
+    slug: str | None = None
+
+    @field_validator("id", "team_id", "resource_type", "slug", mode="after")
+    @classmethod
+    def _validate_lookup_path(cls, v: Any, info: Any) -> Any:
+        """Either id alone, OR all three of (team_id, resource_type, slug)."""
+        data = info.data
+        has_id = data.get("id") is not None
+        has_slug_tuple = (
+            data.get("team_id") is not None
+            and data.get("resource_type") is not None
+            and data.get("slug") is not None
+        )
+
+        if info.field_name == "id":
+            if has_id and has_slug_tuple:
+                raise ValueError("cannot provide both id and (team_id, resource_type, slug)")
+            if not has_id and not has_slug_tuple:
+                raise ValueError("must provide either id OR (team_id, resource_type, slug)")
+        elif info.field_name in ("team_id", "resource_type", "slug"):
+            # Already checked above; just validate this specific field
+            if info.field_name == "slug" and v is not None and not (1 <= len(v) <= 64):
+                raise ValueError(f"slug must be 1-64 chars, got {len(v)}")
+
+        return v
 
 
 class MemoryRecord(BaseModel):
@@ -73,6 +102,55 @@ class MemoryGetTool(BaseTool):
         if ctx.deps is None:
             raise JsonRpcError(-32603, "tool deps not wired")
 
+        # Resolve memory_id from slug if needed
+        lookup_id = inp.id
+        if lookup_id is None:
+            # Slug-based lookup — must check access first
+            async with system_tx(ctx.db_pool) as sys_conn:
+                access = await sys_conn.fetchval(
+                    """
+                    SELECT 1 FROM user_effective_team_access
+                     WHERE user_id = $1 AND resource_team_id = $2
+                    """,
+                    ctx.tenant_id,
+                    inp.team_id,
+                )
+                if access is None:
+                    # No access — opaque 404
+                    raise JsonRpcError(
+                        -32602,
+                        "memory not found via slug",
+                        data={
+                            "errors": [
+                                {
+                                    "path": "slug",
+                                    "message": "not found or not accessible",
+                                }
+                            ]
+                        },
+                    )
+                # Access granted — lookup
+                slug_row = await lookup_slug(
+                    sys_conn,
+                    team_id=inp.team_id,  # type: ignore[arg-type]
+                    resource_type=inp.resource_type,  # type: ignore[arg-type]
+                    slug=inp.slug,  # type: ignore[arg-type]
+                )
+                if slug_row is None:
+                    raise JsonRpcError(
+                        -32602,
+                        "memory not found via slug",
+                        data={
+                            "errors": [
+                                {
+                                    "path": "slug",
+                                    "message": "not found or not accessible",
+                                }
+                            ]
+                        },
+                    )
+                lookup_id = slug_row["memory_id"]
+
         async with tenant_tx(ctx.db_pool, ctx.tenant_id) as conn:
             row = await conn.fetchrow(
                 """
@@ -82,7 +160,7 @@ class MemoryGetTool(BaseTool):
                 FROM memories
                 WHERE id = $1 AND tenant_id = $2
                 """,
-                inp.id,
+                lookup_id,
                 ctx.tenant_id,
             )
             if row is None:

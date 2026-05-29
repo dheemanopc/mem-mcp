@@ -20,7 +20,9 @@ Types: note (general), decision (architectural or product choices), fact (object
 
 Threading: pass parent_id (UUID of an existing root memory) to write this memory as a reply rather than a standalone entry. Replies inherit the parent's tags automatically at write time; you may add reply-only tags via the tags field. Replies cannot have their own replies (flat hierarchy) — pass parent_id only if you have a root id. parent_id cannot be combined with supersedes in the same call.
 
-Multi-team users: pass `team_id` (UUID or team name) to set the team scope; pass `visibility="team"` to make the memory shared with team members. If you receive a `team_required` error, ask the user which team to work in (or use `user_default_team_id` from the error data). **Remember the chosen team for the rest of this conversation and pass it on every subsequent memory_* call** unless the user explicitly switches contexts.
+Teams & slug support: pass `team_id` (UUID) to set the team scope (or omit to use your default_team_id). For decision/fact types, pass `slug_clue` to auto-generate a short lookup slug. Pass `references` list to cite other memories. Pass `visibility` (team/external/public) to set sharing scope.
+
+Multi-team users: **Remember the chosen team for the rest of this conversation and pass it on every subsequent memory_* call** unless the user explicitly switches contexts.
 
 Examples: "Remember we chose PostgreSQL over MySQL." → type=decision. "Save this retry snippet." → type=snippet. "Note: deadline is March 15." → type=fact. "We're going freemium." → type=decision, tags=["pricing"]. "Add my comment on that trade memory: SL too tight." → type=note, parent_id="<trade-uuid>". "Save this for the team" → team_id=<uuid>, visibility="team".
 
@@ -40,13 +42,15 @@ Multi-team users: pass `team_id` (UUID or team name) to scope the call. If you r
 Examples: "What did we decide about authentication?" → query="authentication decision". "Remind me of our pricing strategy." → query="pricing strategy". "What snippets do I have for retries?" → query="retry snippet", type=snippet. "What's our database?" → query="database choice decision". "Find the most relevant comments about RECLTD on this trade" → query="RECLTD slippage", parent_id="<trade-uuid>".
 
 Note: returned `content` may be truncated for very large memories; call `memory_get(id)` to fetch the full body.""",
-    "memory_get": """Fetch a single memory by its UUID — call this when you have a specific memory ID and need its complete, untruncated content or full metadata.
+    "memory_get": """Fetch a single memory by its UUID or slug — call this when you have a specific memory ID and need its complete, untruncated content or full metadata.
 
 Call when: user references a specific memory ID explicitly; you found a result via memory_search and need the full content (search may truncate); you need to verify current state of a specific memory before updating or superseding it; user says "show me that memory" after you displayed an ID.
 
-Do not call without a known memory ID — use memory_search to find memories by content first. Do not call repeatedly for the same ID within one conversation turn. Do not call to list or browse — use memory_list for that.
+Slug lookup: pass (team_id, resource_type, slug) instead of id to fetch a decision/fact by its slug (opaque cross-team access control — caller must have read access to the team).
 
-Examples: User says "show me memory abc-123-..." → get id="abc-123-...". You found a truncated search result and need the full text → get its id. You want to confirm a memory exists before superseding → get its id to verify type and version.""",
+Do not call without either a known memory ID OR a slug-tuple — use memory_search to find memories by content first. Do not call repeatedly for the same ID within one conversation turn. Do not call to list or browse — use memory_list for that.
+
+Examples: User says "show me memory abc-123-..." → get id="abc-123-...". You found a truncated search result and need the full text → get its id. "Fetch the decision 'pricing-strategy' from team X" → memory_get(team_id="<team-uuid>", resource_type="decision", slug="pricing-strategy").""",
     "memory_list": """List memories with filtering and pagination — call this when the user wants to browse their memory store by type, tag, or date range without a specific search query.
 
 Call when: user says "show me all my decisions", "list my snippets", "what memories do I have tagged python", "show everything from last week", "what have I saved recently", "browse my memories"; user wants to audit or review stored memories; user asks for a count or overview.
@@ -330,6 +334,17 @@ The (team, member_kind, member_id) tuple is unique; this UPSERTs the role_id. Co
 Required scope: memory.write.
 
 Examples: "Promote user X to admin in team T" → memsys_assign_role(team_id="T", member_kind="user", member_id="X", new_role_key="admin").""",
+    "memsys_slug_lookup": """Look up a memory by slug (short human-readable identifier) within a team.
+
+Call when: you have a slug from another memory's reference or from earlier context; you need to resolve a slug-based identifier to a memory UUID for further operations.
+
+Do not call for: browsing or searching by content — use memory_search instead. Slug lookup requires you to know the exact team_id, resource_type (decision/fact), and slug beforehand.
+
+Access control: opaque cross-team model. If you don't have read access to the team, slug lookup returns all-null trio (memory_id, title, updated_at = None) — caller cannot distinguish "not found" from "not accessible".
+
+Required scope: memory.read.
+
+Example: "Look up the decision 'market-analysis' in team X" → memsys_slug_lookup(team_id="<uuid>", resource_type="decision", slug="market-analysis").""",
     "memsys_refs_in": """Backward citation graph: list memories that cite the given memory.
 
 Results are FILTERED to citers in teams the caller can read. Citers in inaccessible teams are aggregated as inaccessible_count (no UUIDs leaked across team boundaries — preserves the opaque-cross-team model from PR #270's slug design).
