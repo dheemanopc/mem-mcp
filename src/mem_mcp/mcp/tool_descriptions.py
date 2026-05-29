@@ -330,4 +330,18 @@ The (team, member_kind, member_id) tuple is unique; this UPSERTs the role_id. Co
 Required scope: memory.write.
 
 Examples: "Promote user X to admin in team T" → memsys_assign_role(team_id="T", member_kind="user", member_id="X", new_role_key="admin").""",
+    "memsys_refs_in": """Backward citation graph: list memories that cite the given memory.
+
+Results are FILTERED to citers in teams the caller can read. Citers in inaccessible teams are aggregated as inaccessible_count (no UUIDs leaked across team boundaries — preserves the opaque-cross-team model from PR #270's slug design).
+
+Required scope: memory.read.
+
+Example: "Show me what depends on decision X" → memsys_refs_in(memory_id="X").""",
+    "memsys_refs_out": """Forward citation graph: list memories that the given memory cites.
+
+Results filtered the same way as memsys_refs_in: refs to inaccessible target teams aggregated as inaccessible_count.
+
+Required scope: memory.read.
+
+Example: "What does this decision cite?" → memsys_refs_out(memory_id="X").""",
 }
