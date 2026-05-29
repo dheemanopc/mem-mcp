@@ -20,6 +20,11 @@ sudo -u memmcp git pull --ff-only origin "$REF"
 log "Installing Python deps"
 sudo -u memmcp ~memmcp/.local/bin/poetry install --without dev
 
+log "Installing/updating skill plugins"
+if [[ -x "$REPO_DIR/deploy/scripts/install_plugins.sh" ]]; then
+    "$REPO_DIR/deploy/scripts/install_plugins.sh" || log "install_plugins.sh failed; continuing"
+fi
+
 log "Running migrations"
 sudo -u memmcp bash -c "set -a && source $ENV_FILE && set +a && \
   ~memmcp/.local/bin/poetry run alembic upgrade head"
