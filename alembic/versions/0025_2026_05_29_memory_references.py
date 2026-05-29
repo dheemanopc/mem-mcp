@@ -42,12 +42,15 @@ def upgrade() -> None:
             source_memory_id   UUID NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
             target_memory_id   UUID NOT NULL REFERENCES memories(id) ON DELETE RESTRICT,
             target_team_id     UUID NOT NULL REFERENCES teams(id) ON DELETE RESTRICT,
-            target_fragment    INT NULL,
+            -- NOT NULL with sentinel -1 for "no fragment" (vs a specific reply index).
+            -- PG PRIMARY KEY columns cannot contain function expressions like
+            -- COALESCE, so a sentinel lets all 4 columns participate directly.
+            target_fragment    INT NOT NULL DEFAULT -1,
             reference_kind     TEXT NOT NULL,
             refs_version       TEXT NOT NULL DEFAULT 'pinned'
                 CHECK (refs_version IN ('pinned', 'current')),
             created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
-            PRIMARY KEY (source_memory_id, target_memory_id, COALESCE(target_fragment, -1), reference_kind)
+            PRIMARY KEY (source_memory_id, target_memory_id, target_fragment, reference_kind)
         )
     """)
     )

@@ -130,6 +130,8 @@ async def insert_reference(
     refs_version: RefsVersion = "pinned",
 ) -> None:
     """Insert a memory_references row. Caller is responsible for resolution + access checks."""
+    # Coerce None → -1 sentinel (DB column is NOT NULL for PK participation).
+    fragment_for_db = -1 if target_fragment is None else target_fragment
     await conn.execute(
         """
         INSERT INTO memory_references
@@ -141,7 +143,7 @@ async def insert_reference(
         source_memory_id,
         target_memory_id,
         target_team_id,
-        target_fragment,
+        fragment_for_db,
         reference_kind,
         refs_version,
     )
