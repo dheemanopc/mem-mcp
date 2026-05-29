@@ -65,6 +65,8 @@ from mem_mcp.mcp.tools.feedback import MemoryFeedbackTool
 from mem_mcp.mcp.tools.get import MemoryGetTool
 from mem_mcp.mcp.tools.list import MemoryListTool
 from mem_mcp.mcp.tools.list_my_teams import ListMyTeamsTool
+from mem_mcp.mcp.tools.refs_in import RefsInTool
+from mem_mcp.mcp.tools.refs_out import RefsOutTool
 from mem_mcp.mcp.tools.remove_team_member import RemoveTeamMemberTool
 from mem_mcp.mcp.tools.search import MemorySearchTool
 from mem_mcp.mcp.tools.stats import MemoryStatsTool
@@ -416,6 +418,8 @@ def _wire_routers(app: FastAPI) -> None:
         AssignRoleTool,
         CreateTeamTool,
         ListMyTeamsTool,
+        RefsInTool,
+        RefsOutTool,
         RemoveTeamMemberTool,
     ]
     for tool_cls in tools_list:  # type: ignore[attr-defined]
