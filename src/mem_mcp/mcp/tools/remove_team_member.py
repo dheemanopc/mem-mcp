@@ -1,4 +1,5 @@
 """memsys_remove_team_member — remove a user or team from a team."""
+
 from __future__ import annotations
 
 from typing import ClassVar, Literal

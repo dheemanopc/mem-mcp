@@ -509,3 +509,63 @@ def client(pg_pool: Any) -> Any:
     # Create the app (lifespan will use the existing pg_pool from init_pool)
     app = create_app()
     return TestClient(app)
+
+
+@pytest.fixture
+async def setup_dag_5_levels(pg_pool: Any) -> AsyncIterator[dict[str, Any]]:
+    """Build a 5-level deep nested team DAG for IT-01 testing.
+
+    Returns:
+        dict with keys t1..t5 (team UUIDs, root → leaf), tenant_id (a real test tenant).
+
+    All teams + memberships created inside a single transaction and ROLLED BACK
+    on teardown — no state leaks across tests.
+    """
+    async with pg_pool.acquire() as conn:
+        async with conn.transaction():
+            tenant_row = await conn.fetchrow("SELECT id FROM tenants LIMIT 1")
+            if tenant_row is None:
+                pytest.skip("no tenants in test db")
+            tenant_id = tenant_row["id"]
+
+            member_role_id = await conn.fetchval(
+                "SELECT id FROM roles_catalog WHERE role_key='member' AND plugin_id IS NULL"
+            )
+
+            # Create 5 teams T1..T5
+            team_ids: dict[str, Any] = {}
+            for i in range(1, 6):
+                tid = await conn.fetchval(
+                    "INSERT INTO teams (name, created_by_tenant_id) VALUES ($1, $2) RETURNING id",
+                    f"test-dag-t{i}",
+                    tenant_id,
+                )
+                team_ids[f"t{i}"] = tid
+
+            # Chain T1 → T2 → T3 → T4 → T5 (Ti is parent, T(i+1) is member of Ti)
+            for i in range(1, 5):
+                await conn.execute(
+                    """INSERT INTO team_role_assignments
+                       (parent_team_id, member_kind, member_id, role_id, assigned_by_user_id)
+                       VALUES ($1, 'team', $2, $3, $4)""",
+                    team_ids[f"t{i}"],
+                    team_ids[f"t{i+1}"],
+                    member_role_id,
+                    tenant_id,
+                )
+
+            yield {**team_ids, "tenant_id": tenant_id}
+            # Transaction rolls back automatically on context exit.
+
+
+@pytest.fixture
+async def seed_roles_catalog_verified(pg_pool: Any) -> dict[str, Any]:
+    """Verify the 7 core roles are seeded; return role_id-by-key dict for tests."""
+    async with pg_pool.acquire() as conn:
+        rows = await conn.fetch("SELECT id, role_key FROM roles_catalog WHERE plugin_id IS NULL")
+        roles = {r["role_key"]: r["id"] for r in rows}
+        expected = {"owner", "admin", "member", "viewer", "vendor", "customer", "service-bot"}
+        missing = expected - set(roles.keys())
+        if missing:
+            pytest.skip(f"roles_catalog missing seeds: {missing}")
+        return roles

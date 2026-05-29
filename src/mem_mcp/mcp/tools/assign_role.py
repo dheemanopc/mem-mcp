@@ -1,4 +1,5 @@
 """memsys_assign_role — change a member's role in a team."""
+
 from __future__ import annotations
 
 from typing import ClassVar, Literal

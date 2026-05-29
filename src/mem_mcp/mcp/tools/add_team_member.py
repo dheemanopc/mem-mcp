@@ -1,4 +1,5 @@
 """memsys_add_team_member — add a user or team as member of a team."""
+
 from __future__ import annotations
 
 from typing import ClassVar, Literal
@@ -20,7 +21,9 @@ class AddTeamMemberInput(BaseModel):
 
     team_id: UUID
     member_kind: Literal["user", "team"]
-    member_id: UUID | None = None  # required when member_kind='team', or when adding existing user by id
+    member_id: UUID | None = (
+        None  # required when member_kind='team', or when adding existing user by id
+    )
     member_email: str | None = None  # for member_kind='user' add-by-email path
     role_key: str = Field(..., min_length=1, max_length=64)
 
@@ -51,7 +54,9 @@ class AddTeamMemberTool(BaseTool):
                 raise JsonRpcError(-32602, "member_email not allowed when member_kind='team'")
         else:  # user
             if inp.member_id is None and inp.member_email is None:
-                raise JsonRpcError(-32602, "either member_id or member_email required for member_kind='user'")
+                raise JsonRpcError(
+                    -32602, "either member_id or member_email required for member_kind='user'"
+                )
             if inp.member_id is not None and inp.member_email is not None:
                 raise JsonRpcError(-32602, "provide either member_id or member_email, not both")
 
