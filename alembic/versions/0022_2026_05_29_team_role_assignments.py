@@ -118,7 +118,7 @@ def upgrade() -> None:
     op.execute(
         sa.text("""
         INSERT INTO team_role_assignments
-            (parent_team_id, member_kind, member_id, role_id, status, assigned_at, assigned_by_user_id, invited_email)
+            (parent_team_id, member_kind, member_id, role_id, status, assigned_at, assigned_by_user_id)
         SELECT
             tm.team_id,
             'user',
@@ -126,8 +126,7 @@ def upgrade() -> None:
             (SELECT id FROM roles_catalog WHERE role_key = tm.role AND plugin_id IS NULL),
             tm.status,
             tm.added_at,
-            tm.added_by_tenant_id,
-            tm.invited_email
+            tm.added_by_tenant_id
         FROM team_members tm
         ON CONFLICT (parent_team_id, member_kind, member_id) DO NOTHING
     """)
