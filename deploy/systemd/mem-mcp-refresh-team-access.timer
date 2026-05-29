@@ -1,0 +1,11 @@
+[Unit]
+Description=Run mem-mcp user_effective_team_access reconciler every minute
+Requires=mem-mcp-refresh-team-access.service
+
+[Timer]
+OnCalendar=*-*-* *:*:00
+Persistent=true
+RandomizedDelaySec=10
+
+[Install]
+WantedBy=timers.target
