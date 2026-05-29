@@ -44,7 +44,7 @@ from mem_mcp.cognito_clients import (
     IdTokenUserInfoFetcher,
 )
 from mem_mcp.config import get_settings
-from mem_mcp.db import close_pool, init_pool
+from mem_mcp.db import close_maint_pool, close_pool, init_maint_pool, init_pool
 from mem_mcp.embeddings.bedrock import BedrockEmbeddingClient
 from mem_mcp.health import (
     BedrockHealthChecker,
@@ -212,8 +212,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
             pool = get_pool()
 
-            # 1. Create per-plugin PG schemas
-            await ensure_plugin_schemas(pool, app.state.plugin_registry)
+            # 1. Create per-plugin PG schemas — uses short-lived maint pool for DDL privs
+            maint_pool = await init_maint_pool()
+            try:
+                await ensure_plugin_schemas(maint_pool, app.state.plugin_registry)
+            finally:
+                await close_maint_pool()
 
             # 2. Mount plugin web routes under /skills/<id>
             mount_plugin_routes(app, app.state.plugin_registry)

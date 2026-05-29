@@ -38,6 +38,7 @@ async def _init_connection(conn: asyncpg.Connection) -> None:
 
 
 _pool: asyncpg.Pool | None = None
+_maint_pool: asyncpg.Pool | None = None
 
 
 async def init_pool(dsn: str | None = None) -> asyncpg.Pool:
@@ -76,7 +77,44 @@ def get_pool() -> asyncpg.Pool:
     return _pool
 
 
+async def init_maint_pool(dsn: str | None = None) -> asyncpg.Pool:
+    """Create the global maint asyncpg pool (mem_maint role with full DDL privs). Idempotent."""
+    global _maint_pool
+    if _maint_pool is not None:
+        return _maint_pool
+
+    if dsn is None:
+        dsn = get_settings().db_maint_dsn_asyncpg
+
+    _maint_pool = await asyncpg.create_pool(
+        dsn=dsn,
+        min_size=1,
+        max_size=2,
+        command_timeout=30,
+        server_settings={"application_name": "mem-mcp-maint"},
+        init=_init_connection,
+    )
+    return _maint_pool
+
+
+async def close_maint_pool() -> None:
+    """Close the global maint pool and clear the reference. Idempotent."""
+    global _maint_pool
+    if _maint_pool is None:
+        return
+    await _maint_pool.close()
+    _maint_pool = None
+
+
+def get_maint_pool() -> asyncpg.Pool:
+    """Return the global maint pool. Raises ``RuntimeError`` if not initialized."""
+    if _maint_pool is None:
+        raise RuntimeError("Maint database pool not initialized. Call init_maint_pool() first.")
+    return _maint_pool
+
+
 def _reset_for_tests() -> None:
-    """Test-only: clear the global pool reference (does NOT close)."""
-    global _pool
+    """Test-only: clear the global pool references (does NOT close)."""
+    global _pool, _maint_pool
     _pool = None
+    _maint_pool = None
