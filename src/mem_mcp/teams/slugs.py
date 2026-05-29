@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING, Literal
 from uuid import UUID
 
 if TYPE_CHECKING:
-    import asyncpg
+    import asyncpg  # type: ignore[import-untyped]
 
 
 # Per amendment #15 — v1 reserved slug list. Owner may amend later.
@@ -166,18 +166,25 @@ async def insert_slug_with_retry(
             # Truncate base to make room for the -N suffix.
             suffix = f"-{attempt}"
             candidate = base[: MAX_SLUG_LEN - len(suffix)].rstrip("-") + suffix
+        # SAVEPOINT per attempt: a UniqueViolationError under a concurrent
+        # writer aborts the OUTER txn unless we wrap each INSERT in a nested
+        # transaction (asyncpg's `conn.transaction()` issues SAVEPOINT when
+        # already inside a txn). Without this, retry within the same outer
+        # txn is impossible — the outer txn enters error state on first
+        # collision and rejects all subsequent commands.
         try:
-            await conn.execute(
-                """
-                INSERT INTO slugs (team_id, resource_type, slug, memory_id, title)
-                VALUES ($1, $2, $3, $4, $5)
-                """,
-                team_id,
-                resource_type,
-                candidate,
-                memory_id,
-                title,
-            )
+            async with conn.transaction():
+                await conn.execute(
+                    """
+                    INSERT INTO slugs (team_id, resource_type, slug, memory_id, title)
+                    VALUES ($1, $2, $3, $4, $5)
+                    """,
+                    team_id,
+                    resource_type,
+                    candidate,
+                    memory_id,
+                    title,
+                )
             return candidate
         except ap_module.exceptions.UniqueViolationError:
             continue

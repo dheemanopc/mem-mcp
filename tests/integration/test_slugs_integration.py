@@ -17,7 +17,7 @@ import pytest
 from mem_mcp.teams.slugs import insert_slug_with_retry
 
 if TYPE_CHECKING:
-    from asyncpg import Pool
+    from asyncpg import Pool  # type: ignore[import-untyped]
 
 pytestmark = pytest.mark.asyncio
 

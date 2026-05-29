@@ -19,7 +19,7 @@ from mem_mcp.teams.slugs import (
 )
 
 if TYPE_CHECKING:
-    from asyncpg import Connection, Pool
+    from asyncpg import Connection, Pool  # type: ignore[import-untyped]
 
 
 pytestmark = pytest.mark.asyncio
