@@ -92,20 +92,24 @@ async def recompute_effective_access(
             JOIN roles_catalog rc3 ON rc3.id = tra3.role_id
             WHERE tra3.status = 'active' AND rm.depth < $3
         )
+        ,
+        all_paths AS (
+            SELECT role_class, permissions FROM paths
+            UNION ALL
+            SELECT role_class, permissions FROM recursive_membership WHERE team_id = $1
+        ),
+        flat_perms AS (
+            SELECT unnest(permissions) AS perm FROM all_paths
+        )
         SELECT
             CASE
                 WHEN bool_or(role_class = 'internal') THEN 'internal'
                 WHEN bool_or(role_class = 'external') THEN 'external'
                 ELSE 'service'
             END AS effective_role_class,
-            (SELECT array_agg(DISTINCT p)
-             FROM unnest(array_agg(permissions)) p) AS effective_perms,
+            (SELECT array_agg(DISTINCT perm) FROM flat_perms) AS effective_perms,
             COUNT(*) AS path_count
-        FROM (
-            SELECT role_class, permissions FROM paths
-            UNION ALL
-            SELECT role_class, permissions FROM recursive_membership WHERE team_id = $1
-        ) all_paths
+        FROM all_paths
         WHERE TRUE
         HAVING COUNT(*) > 0
         """,
