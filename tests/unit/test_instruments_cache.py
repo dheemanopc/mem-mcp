@@ -178,8 +178,11 @@ class TestCacheRefresh:
         assert call_count["value"] == 2
 
     @pytest.mark.asyncio
-    async def test_cache_hit_same_day(self) -> None:
-        """Test that cache is not refreshed on same IST day."""
+    async def test_cache_hit_same_day(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that cache is not refreshed on same IST day.
+
+        Uses fixed datetimes to avoid crossing IST midnight boundary.
+        """
         cache = InstrumentsCache()
         call_count = {"value": 0}
 
@@ -191,7 +194,29 @@ class TestCacheRefresh:
 
         client = KiteClient(http=_make_mock_client(handler))
 
-        # First fetch
+        # Use fixed datetimes safely within the same IST day.
+        # Both are on 2026-05-28 IST, with "now" several hours after "earlier_today".
+        earlier_today = datetime(2026, 5, 28, 10, 0, tzinfo=IST)
+        fixed_now = datetime(2026, 5, 28, 13, 0, tzinfo=IST)
+
+        # Mock datetime.now(IST) to return fixed_now during _is_cache_stale() check.
+        from mem_mcp.skills.kite import instruments_cache
+
+        monkeypatch.setattr(
+            instruments_cache,
+            "datetime",
+            type(
+                "MockDateTime",
+                (),
+                {
+                    "now": staticmethod(
+                        lambda tz=None: fixed_now if tz == IST else datetime.now(tz)
+                    ),
+                },
+            )(),
+        )
+
+        # First fetch (uses fixed_now, so cache is set to fixed_now)
         await cache.get_token(
             tenant_id="tenant1",
             symbol="RELIANCE",
@@ -201,14 +226,13 @@ class TestCacheRefresh:
         )
         assert call_count["value"] == 1
 
-        # Set cache to earlier today (but same date)
+        # Set cache to earlier_today (same IST date, but 3 hours earlier)
         key = ("tenant1", "NSE")
         if key in cache._cache:
             symbol_to_token, _fetched_at = cache._cache[key]
-            earlier_today = datetime.now(IST) - timedelta(hours=2)
             cache._cache[key] = (symbol_to_token, earlier_today)
 
-        # Next lookup should NOT trigger refresh
+        # Next lookup should NOT trigger refresh (same day check should pass)
         await cache.get_token(
             tenant_id="tenant1",
             symbol="WIPRO",
