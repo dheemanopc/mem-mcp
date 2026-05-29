@@ -296,15 +296,38 @@ Do not call repeatedly in the same conversation — cache the result locally.
 Inputs: none. Output: teams (array of {id, name, workspace_domain, role, member_count}), default_team_id (UUID or null).
 
 Examples: "What teams do I have?" → memsys_list_my_teams(). After team_required error → show the available_teams from error.data instead of calling this.""",
-    "memsys_create_team": """Create a new team (workspace or personal) with the caller as admin.
+    "memsys_create_team": """Create a new team (workspace or personal) with the caller as owner.
 
 Call when: user says "create a team", "start a new team", "set up a workspace"; caller is a workspace user (domain auto-derived); caller is a personal user (no domain).
 
 Do not call without explicit user instruction.
 
-Inputs: name (string). Workspace domain is auto-derived from caller's identity.workspace_domain if set.
+Inputs: name (string). Optional parent_team_id (UUID) to create as sub-team of an existing team; role_in_parent (default "member") sets the new team's role within the parent.
 
-Output: team (with id, name, workspace_domain, created_at), your_role="admin".
+Output: team (with id, name, workspace_domain, created_at), your_role="owner".
 
-Examples: "Create a team called Engineering" → memsys_create_team(name="Engineering"). Workspace user creates team → domain auto-set to their workspace_domain.""",
+Examples: "Create a team called Engineering" → memsys_create_team(name="Engineering"). Workspace user creates team → domain auto-set to their workspace_domain. "Create sub-team T2 under T1 as vendor" → memsys_create_team(name="T2", parent_team_id="T1-uuid", role_in_parent="vendor").""",
+    "memsys_add_team_member": """Add a user or sub-team as a member of an existing team.
+
+Roles come from the global role catalog (call memsys_list_roles when that ships; for now, common values: 'owner', 'admin', 'member', 'viewer', 'vendor', 'customer'). When member_kind='team', cycle prevention + max-depth-5 are enforced; cycle-creating adds reject with code -32000.
+
+For member_kind='user': provide EITHER member_id (UUID, existing user) OR member_email (string, existing user). Cross-org invitation by email of a non-existent user is not yet supported and returns -32000.
+
+Required scope: memory.write. Caller must have admin-level access to the team (enforced once Spec 5's effective-access table ships; for now this is a placeholder).
+
+Examples: "Add user with email alice@example.com as member" → memsys_add_team_member(team_id="...", member_kind="user", member_email="alice@example.com", role_key="member"). "Add sub-team T2 to T1 as vendor" → memsys_add_team_member(team_id="T1-uuid", member_kind="team", member_id="T2-uuid", role_key="vendor").""",
+    "memsys_remove_team_member": """Remove a user or sub-team from a team.
+
+Sole owner of a team cannot be removed (raises sole_owner_cannot_self_remove); assign another owner first.
+
+Required scope: memory.write. Caller must have admin-level access to the team.
+
+Examples: "Remove user X from team T" → memsys_remove_team_member(team_id="T", member_kind="user", member_id="X").""",
+    "memsys_assign_role": """Change a member's role in a team (user or sub-team).
+
+The (team, member_kind, member_id) tuple is unique; this UPSERTs the role_id. Common role_key values: owner, admin, member, viewer, vendor, customer.
+
+Required scope: memory.write.
+
+Examples: "Promote user X to admin in team T" → memsys_assign_role(team_id="T", member_kind="user", member_id="X", new_role_key="admin").""",
 }
