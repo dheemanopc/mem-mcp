@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Literal
 from uuid import UUID
 
 from mem_mcp.teams.dag import acquire_dag_lock, can_add_team_as_member
+from mem_mcp.teams.effective_access import sync_refresh_on_user_assignment
 from mem_mcp.teams.roles import get_role_by_key
 
 if TYPE_CHECKING:
@@ -64,6 +65,13 @@ async def assign_role(
         assigned_by_user_id,
     )
 
+    # Stage B: sync-refresh on direct user assignments.
+    # For member_kind='team', async cascade (LISTEN/NOTIFY) ships in stage C;
+    # meanwhile downstream user_effective_team_access rows reachable via team-edges
+    # will be stale until cascade lands.
+    if member_kind == "user":
+        await sync_refresh_on_user_assignment(conn, user_id=member_id, parent_team_id=parent_team_id)
+
 
 async def remove_member(
     conn: asyncpg.Connection,
@@ -110,3 +118,8 @@ async def remove_member(
         member_kind,
         member_id,
     )
+
+    # Stage B: sync-refresh on direct user removals.
+    # For member_kind='team', async cascade ships in stage C.
+    if member_kind == "user":
+        await sync_refresh_on_user_assignment(conn, user_id=member_id, parent_team_id=parent_team_id)
