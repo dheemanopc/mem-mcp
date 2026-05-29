@@ -9,6 +9,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from mem_mcp.db import system_tx
+from mem_mcp.mcp.errors import JsonRpcError
 from mem_mcp.mcp.tool_descriptions import TOOL_DESCRIPTIONS
 from mem_mcp.mcp.tools._base import BaseTool, ToolContext
 from mem_mcp.teams.slugs import lookup_slug
@@ -39,6 +40,8 @@ class MemsysSlugLookupTool(BaseTool):
 
     async def __call__(self, ctx: ToolContext, inp: BaseModel) -> BaseModel:
         assert isinstance(inp, MemsysSlugLookupInput)
+        if ctx.deps is None:
+            raise JsonRpcError(-32603, "tool deps not wired")
 
         async with system_tx(ctx.db_pool) as conn:
             # Access check: caller must have access to team_id via user_effective_team_access
@@ -55,7 +58,7 @@ class MemsysSlugLookupTool(BaseTool):
                 await ctx.deps.audit.audit(
                     conn,
                     action="memsys.slug_lookup",
-                    result="access_denied",
+                    result="denied",
                     tenant_id=ctx.tenant_id,
                     identity_id=ctx.identity_id,
                     client_id=ctx.client_id,
@@ -80,9 +83,9 @@ class MemsysSlugLookupTool(BaseTool):
             )
 
             found = row is not None
-            memory_id = row["memory_id"] if row else None
-            title = row["title"] if row else None
-            updated_at = row["updated_at"] if row else None
+            memory_id: UUID | None = row["memory_id"] if row else None  # type: ignore[assignment]
+            title: str | None = row["title"] if row else None  # type: ignore[assignment]
+            updated_at: datetime | None = row["updated_at"] if row else None  # type: ignore[assignment]
 
             await ctx.deps.audit.audit(
                 conn,
