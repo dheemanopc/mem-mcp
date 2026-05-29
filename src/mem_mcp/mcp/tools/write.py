@@ -448,15 +448,15 @@ class MemoryWriteTool(BaseTool):
                     inp.fragment_id,
                 )
                 # Insert references for reply
-                for ref in resolved_refs:
+                for resolved in resolved_refs:
                     await insert_reference(
                         conn,
                         source_memory_id=reply_row["id"],
-                        target_memory_id=ref["resolved_memory_id"],
-                        target_team_id=ref["resolved_team_id"],
-                        reference_kind=ref["reference_kind"],
-                        target_fragment=ref["target_fragment"],
-                        refs_version=ref["refs_version"],
+                        target_memory_id=resolved["resolved_memory_id"],
+                        target_team_id=resolved["resolved_team_id"],
+                        reference_kind=resolved["reference_kind"],
+                        target_fragment=resolved["target_fragment"],
+                        refs_version=resolved["refs_version"],
                     )
                 await ctx.deps.audit.audit(
                     conn,
@@ -580,15 +580,15 @@ class MemoryWriteTool(BaseTool):
                     new_memory_id=new_row["id"],
                 )
                 # Insert references for new version
-                for ref in resolved_refs:
+                for resolved in resolved_refs:
                     await insert_reference(
                         conn,
                         source_memory_id=new_row["id"],
-                        target_memory_id=ref["resolved_memory_id"],
-                        target_team_id=ref["resolved_team_id"],
-                        reference_kind=ref["reference_kind"],
-                        target_fragment=ref["target_fragment"],
-                        refs_version=ref["refs_version"],
+                        target_memory_id=resolved["resolved_memory_id"],
+                        target_team_id=resolved["resolved_team_id"],
+                        reference_kind=resolved["reference_kind"],
+                        target_fragment=resolved["target_fragment"],
+                        refs_version=resolved["refs_version"],
                     )
                 await ctx.deps.audit.audit(
                     conn,
@@ -675,15 +675,15 @@ class MemoryWriteTool(BaseTool):
                     ) from exc
 
             # Insert references
-            for ref in resolved_refs:
+            for resolved in resolved_refs:
                 await insert_reference(
                     conn,
                     source_memory_id=row["id"],
-                    target_memory_id=ref["resolved_memory_id"],
-                    target_team_id=ref["resolved_team_id"],
-                    reference_kind=ref["reference_kind"],
-                    target_fragment=ref["target_fragment"],
-                    refs_version=ref["refs_version"],
+                    target_memory_id=resolved["resolved_memory_id"],
+                    target_team_id=resolved["resolved_team_id"],
+                    reference_kind=resolved["reference_kind"],
+                    target_fragment=resolved["target_fragment"],
+                    refs_version=resolved["refs_version"],
                 )
 
             await ctx.deps.audit.audit(
