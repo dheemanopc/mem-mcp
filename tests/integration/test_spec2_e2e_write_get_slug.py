@@ -91,10 +91,11 @@ class TestIT06_Spec2WriteGetSlugLookup:  # noqa: N801
                     """
                     INSERT INTO user_effective_team_access
                     (user_id, resource_team_id, effective_role_class, effective_perms, path_count)
-                    VALUES ($1, $2, 'internal', ARRAY['read', 'write', 'delete'], 1)
+                    VALUES ($1, $2, 'internal', $3, 1)
                     """,
                     tenant_id,
                     personal_team_id,
+                    ["read", "write", "delete"],
                 )
 
         # Build minimal ToolContext with real deps
