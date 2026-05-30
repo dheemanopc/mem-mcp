@@ -42,6 +42,17 @@ Multi-team users: pass `team_id` (UUID or team name) to scope the call. If you r
 Examples: "What did we decide about authentication?" → query="authentication decision". "Remind me of our pricing strategy." → query="pricing strategy". "What snippets do I have for retries?" → query="retry snippet", type=snippet. "What's our database?" → query="database choice decision". "Find the most relevant comments about RECLTD on this trade" → query="RECLTD slippage", parent_id="<trade-uuid>".
 
 Note: returned `content` may be truncated for very large memories; call `memory_get(id)` to fetch the full body.""",
+    "memory_get_batch": """Fetch up to 50 specific memories in one round-trip — call this when you have a list of known memory IDs (or slug-tuples) and want to load them all together instead of N sequential memory_get calls.
+
+Call when: session-start load (role definition + project_brief + recent dialogue exchanges + referenced decisions); any workflow where N specific memories are known up-front and must be loaded together.
+
+Do not call for: search-by-content (use memory_search) or filter-by-tag (use memory_list) — those are different intents. Do not call for fetching a single memory — use memory_get.
+
+Inputs: requests array of up to 50 entries, each shaped like memory_get input — either `{"id": "<uuid>"}` OR `{"team_id": "<uuid>", "resource_type": "decision|fact", "slug": "<slug>"}`. Mixed shapes in one batch are allowed.
+
+Output: results array in submission order. Each entry: `{"ok": true, "memory": {...}}` on success, or `{"ok": false, "error": {"code": "memory_not_accessible", "message": "memory not found or not accessible"}}` on miss. The error envelope is intentionally opaque per the cross-team access contract — "not found" and "no access" are indistinguishable.
+
+Examples: load PMO session start → memory_get_batch(requests=[{id: "role-uuid"}, {team_id: "...", resource_type: "decision", slug: "project-brief"}, {id: "..."} ...]).""",
     "memory_get": """Fetch a single memory by its UUID or slug — call this when you have a specific memory ID and need its complete, untruncated content or full metadata.
 
 Call when: user references a specific memory ID explicitly; you found a result via memory_search and need the full content (search may truncate); you need to verify current state of a specific memory before updating or superseding it; user says "show me that memory" after you displayed an ID.
