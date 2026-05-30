@@ -5,6 +5,8 @@
 
 import { serverApiFetch } from "@/lib/server-api";
 
+import { NoticesBanner } from "./notices-banner";
+
 interface Stats {
   total_memories: number;
   by_type: Record<string, number>;
@@ -75,6 +77,8 @@ export default async function DashboardPage() {
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-12 space-y-8">
+      <NoticesBanner />
+
       <h1 className="text-3xl font-bold">Dashboard</h1>
 
       <section className="grid grid-cols-2 gap-4">
