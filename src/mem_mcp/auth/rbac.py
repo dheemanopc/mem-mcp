@@ -26,8 +26,31 @@ async def get_system_roles(conn: asyncpg.Connection, tenant_id: UUID) -> set[str
 
 
 async def get_team_role(conn: asyncpg.Connection, tenant_id: UUID, team_id: UUID) -> str | None:
-    """Fetch the team role for a tenant in a specific team."""
+    """Fetch the team role for a tenant in a specific team.
+
+    Queries `team_role_assignments` (RBAC table from teams-foundation Spec 1).
+    Falls back to legacy `team_members` table for tenants whose membership
+    pre-dates the teams-foundation migration (0026 backfilled the new table
+    for everyone, so this fallback is mostly defensive).
+    """
     result = await conn.fetchval(
+        """
+        SELECT rc.role_key
+        FROM team_role_assignments tra
+        JOIN roles_catalog rc ON rc.id = tra.role_id
+        WHERE tra.parent_team_id = $2
+          AND tra.member_kind = 'user'
+          AND tra.member_id = $1
+          AND tra.status = 'active'
+        LIMIT 1
+        """,
+        tenant_id,
+        team_id,
+    )
+    if result is not None:
+        return result  # type: ignore[no-any-return]
+    # Legacy fallback
+    legacy = await conn.fetchval(
         """
         SELECT role FROM team_members
         WHERE tenant_id = $1 AND team_id = $2 AND status = 'active'
@@ -35,7 +58,7 @@ async def get_team_role(conn: asyncpg.Connection, tenant_id: UUID, team_id: UUID
         tenant_id,
         team_id,
     )
-    return result  # type: ignore[no-any-return]
+    return legacy  # type: ignore[no-any-return]
 
 
 async def has_permission(
@@ -84,8 +107,20 @@ async def has_permission(
         return any(p.value == perm_key for p in ROLE_PERMISSIONS.get(team_role, set()))
 
     # No team_id: caller can use the perm if ANY team they belong to grants it.
+    # Query the new team_role_assignments (RBAC source of truth post-Spec 1) +
+    # the legacy team_members table for back-compat.
     rows = await conn.fetch(
-        "SELECT DISTINCT role FROM team_members WHERE tenant_id = $1 AND status = 'active'",
+        """
+        SELECT DISTINCT rc.role_key AS role
+        FROM team_role_assignments tra
+        JOIN roles_catalog rc ON rc.id = tra.role_id
+        WHERE tra.member_kind = 'user'
+          AND tra.member_id = $1
+          AND tra.status = 'active'
+        UNION
+        SELECT DISTINCT role FROM team_members
+        WHERE tenant_id = $1 AND status = 'active'
+        """,
         tenant_id,
     )
     for r in rows:
