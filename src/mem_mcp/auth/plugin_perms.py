@@ -19,7 +19,6 @@ import logging
 from typing import TYPE_CHECKING
 
 from mem_mcp.auth.permissions import Permission
-from mem_mcp.plugins.contract import PluginPermission
 
 if TYPE_CHECKING:
     from mem_mcp.plugins.registry import PluginRegistry
