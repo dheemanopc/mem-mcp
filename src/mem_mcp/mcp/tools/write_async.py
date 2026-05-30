@@ -87,14 +87,17 @@ class MemoryWriteAsyncTool(BaseTool):
             await conn.execute(
                 """
                 INSERT INTO async_write_queue
-                    (request_id, tenant_id, team_id, payload, submitted_at, state)
-                VALUES ($1, $2, $3, $4::jsonb, $5, 'queued')
+                    (request_id, tenant_id, team_id, payload, submitted_at, state,
+                     client_id, identity_id)
+                VALUES ($1, $2, $3, $4::jsonb, $5, 'queued', $6, $7)
                 """,
                 request_id,
                 ctx.tenant_id,
                 inp.team_id,  # may be None; drain will resolve default_team_id
                 payload_json,
                 now,
+                ctx.client_id,
+                ctx.identity_id,
             )
             await ctx.deps.audit.audit(
                 conn,
