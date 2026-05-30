@@ -19,7 +19,7 @@ log = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class RegisteredTool:
     plugin_id: str
-    namespaced_name: str  # e.g. "kite.ta_session_open"
+    namespaced_name: str  # e.g. "kite_ta_session_open" (underscore — MCP client charset)
     description: str
     input_schema: type[BaseModel]
     handler: Callable[..., Awaitable[Any]]
@@ -42,8 +42,12 @@ class ToolRegistryImpl:
         input_schema: type[BaseModel],
         required_permission: str | Permission | None = None,
     ) -> None:
-        # Tool name is plugin_id.name; plugin cannot register in another namespace
-        namespaced = f"{self._plugin_id}.{name}"
+        # Tool name is plugin_id_name (underscore separator). MCP clients
+        # validate against Anthropic's tool_use regex ^[a-zA-Z0-9_-]{1,64}$
+        # which rejects dots, so a "kite.get_holdings"-shaped name silently
+        # disappears from tools/list on the claude.ai side. Underscore keeps
+        # the namespacing intent and stays within the safe charset.
+        namespaced = f"{self._plugin_id}_{name}"
         # Normalize Permission enum → string. Plugins should pass strings; the
         # enum path is kept transitional while plugins migrate.
         perm_str: str | None = (
