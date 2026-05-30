@@ -7,7 +7,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from mem_mcp.db import system_tx
+from mem_mcp.db import tenant_tx
 from mem_mcp.mcp.errors import JsonRpcError
 from mem_mcp.mcp.tool_descriptions import TOOL_DESCRIPTIONS
 from mem_mcp.mcp.tools._base import BaseTool, ToolContext
@@ -52,7 +52,13 @@ class CreateTeamTool(BaseTool):
     async def __call__(self, ctx: ToolContext, inp: BaseModel) -> BaseModel:
         assert isinstance(inp, CreateTeamInput)
 
-        async with system_tx(ctx.db_pool) as conn:
+        # tenant_tx — NOT system_tx — so app.current_tenant_id is SET LOCAL.
+        # The teams_insert RLS policy requires it:
+        #   WITH CHECK (created_by_tenant_id = current_setting(...)::uuid)
+        # Under system_tx the GUC is empty string; `''::uuid` crashes with
+        # InvalidTextRepresentationError. See bug memsys:c1d61a0e (top-level
+        # team creation blocked PMO bootstrap simulation).
+        async with tenant_tx(ctx.db_pool, ctx.tenant_id) as conn:
             # Get caller's identity info (must be primary)
             identity = await conn.fetchrow(
                 """
