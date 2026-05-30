@@ -85,7 +85,7 @@ class TestToolRegistryImpl:
 
         tools = registry.list_tools()
         assert len(tools) == 1
-        assert tools[0].namespaced_name == "kite.ta_session_open"
+        assert tools[0].namespaced_name == "kite_ta_session_open"
 
     def test_multiple_tools_all_namespaced(self) -> None:
         """Test that multiple tools are all namespaced correctly."""
@@ -104,7 +104,7 @@ class TestToolRegistryImpl:
 
         tools = registry.list_tools()
         assert len(tools) == 3
-        assert all(t.namespaced_name.startswith("reminders.") for t in tools)
+        assert all(t.namespaced_name.startswith("reminders_") for t in tools)
 
 
 class TestCollectPluginTools:
@@ -118,7 +118,7 @@ class TestCollectPluginTools:
         tools = collect_plugin_tools(registry)
         assert len(tools) == 1
         assert tools[0].plugin_id == "fake-test-skill"
-        assert tools[0].namespaced_name == "fake-test-skill.echo"
+        assert tools[0].namespaced_name == "fake-test-skill_echo"
         assert tools[0].description == "Echo back the message"
 
     def test_collect_handles_plugin_registration_error(self) -> None:
