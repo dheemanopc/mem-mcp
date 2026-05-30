@@ -35,6 +35,13 @@ class Permission(StrEnum):
     TEAM_WRITE_MEMORY = "team.write_memory"
     TEAM_READ_MEMORY = "team.read_memory"
 
+    # Plugin: reminders (declared here so plugin's register_tools() can reference
+    # them via Permission.REMINDERS_*). Long-term these should move to a
+    # plugin-declared string-keyed permission system so core isn't coupled to
+    # every plugin's enum surface.
+    REMINDERS_MANAGE_OWN = "reminders.manage_own"
+    REMINDERS_VIEW_OWN = "reminders.view_own"
+
 
 _ALL_SYSTEM = {p for p in Permission if p.value.startswith("system.")}
 _ALL_TEAM = {p for p in Permission if p.value.startswith("team.")}
@@ -46,11 +53,15 @@ _TEAM_ADMIN_PERMS = {
     Permission.TEAM_DELETE,
     Permission.TEAM_WRITE_MEMORY,
     Permission.TEAM_READ_MEMORY,
+    Permission.REMINDERS_MANAGE_OWN,
+    Permission.REMINDERS_VIEW_OWN,
 }
 _TEAM_MEMBER_PERMS = {
     Permission.TEAM_VIEW,
     Permission.TEAM_WRITE_MEMORY,
     Permission.TEAM_READ_MEMORY,
+    Permission.REMINDERS_MANAGE_OWN,
+    Permission.REMINDERS_VIEW_OWN,
 }
 
 # System roles: keys are Role enum values. Team roles: keys are 'admin'/'member'.
