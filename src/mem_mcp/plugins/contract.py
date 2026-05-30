@@ -184,6 +184,22 @@ class Plugin(ABC):
 
     # ── Runtime hooks (called per-request or per-startup) ──────────────────
 
+    async def surface_pending_state(self, tenant_id: UUID, conn: Any) -> list[str]:
+        """Return strings to inject into EVERY successful tools/call response.
+
+        Called per-request by the MCP transport. Use it for sticky state
+        the user should see until they act on it (the reminders plugin
+        returns pending reminders so they stay visible until snoozed /
+        dismissed / resolved).
+
+        For one-shot notices use `ctx.notices.queue(...)` instead — those
+        are delivered at-most-once and don't re-surface.
+
+        Default: empty list (plugin contributes nothing to responses).
+        Expected to be a cheap query — runs on the hot path.
+        """
+        return []
+
     async def on_startup(self, ctx: PluginContext) -> None:
         """Called once after all plugins have registered. Default: no-op."""
         return None

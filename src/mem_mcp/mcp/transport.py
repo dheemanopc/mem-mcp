@@ -206,8 +206,30 @@ def make_mcp_router(
 
                 async with system_tx(db_pool) as nconn:
                     notices = await deliver_pending(nconn, tenant_ctx.tenant_id)
-                for n in notices:
-                    content_items.append({"type": "text", "text": n.text})
+                    for n in notices:
+                        content_items.append({"type": "text", "text": n.text})
+
+                    # Sticky surface: each plugin's surface_pending_state hook
+                    # re-runs on every response so stuck-pending items (e.g.
+                    # un-acked reminders) stay visible until the user snoozes /
+                    # dismisses / resolves them. Plugins default to []; only the
+                    # reminders plugin contributes today.
+                    plugin_registry = getattr(request.app.state, "plugin_registry", None)
+                    if plugin_registry is not None:
+                        for plugin in plugin_registry.all():
+                            try:
+                                stuck = await plugin.surface_pending_state(
+                                    tenant_ctx.tenant_id, nconn
+                                )
+                            except Exception:
+                                _log.exception(
+                                    "surface_pending_state_failed",
+                                    plugin_id=plugin.id,
+                                    request_id=req_id,
+                                )
+                                continue
+                            for text in stuck:
+                                content_items.append({"type": "text", "text": text})
             except Exception:
                 # Notice delivery must never break tool responses.
                 _log.exception("notice_delivery_failed", request_id=req_id)
