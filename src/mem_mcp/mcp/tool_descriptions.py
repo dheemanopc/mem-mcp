@@ -42,6 +42,17 @@ Multi-team users: pass `team_id` (UUID or team name) to scope the call. If you r
 Examples: "What did we decide about authentication?" → query="authentication decision". "Remind me of our pricing strategy." → query="pricing strategy". "What snippets do I have for retries?" → query="retry snippet", type=snippet. "What's our database?" → query="database choice decision". "Find the most relevant comments about RECLTD on this trade" → query="RECLTD slippage", parent_id="<trade-uuid>".
 
 Note: returned `content` may be truncated for very large memories; call `memory_get(id)` to fetch the full body.""",
+    "memory_write_async": """Submit a memory write fire-and-forget — call this when you want to persist a memory WITHOUT blocking the conversation turn on the synchronous write latency (300ms–2s with embedding).
+
+Call when: persisting a dialogue exchange mid-conversation where the user feels the wait of sync memory_write; PMO role-prompts persisting working notes/ambiguity captures during dialogue; any "log this and keep moving" pattern.
+
+Do not call when: you need the memory id in the same turn for a downstream operation (read-your-own-write is NOT guaranteed in the same session — use sync memory_write); the content is required to be immediately searchable by the same caller before they end the turn.
+
+Same input shape as memory_write (content, type, tags, team_id, slug_clue, references, visibility, parent_id, supersedes, fragment_id, expires_at, ttl_seconds, indexable, metadata, force_new). Submit-time validation: shape + quota + bare reference-existence. Quota counts at submission (no bypass via async). Deferred to drain: embedding, full reference access-check, dedup, slug allocation, parent/supersedes validation.
+
+Returns: `{request_id, queued_at, estimated_consistency_by}` immediately. The resulting memory's `created_at` equals `submitted_at` (queued-at), preserving per-tenant ordering across an asynchronous drain. Eventual consistency target: ≤5s under nominal load. Drain failures surface via a notice on the caller's next MCP response.
+
+Examples: "Capture this working note while we continue" → memory_write_async(content="...", type="note"). PM persisting a stabilized hypothesis mid-dialogue → memory_write_async(content="...", tags=["working-note"]).""",
     "memory_get_batch": """Fetch up to 50 specific memories in one round-trip — call this when you have a list of known memory IDs (or slug-tuples) and want to load them all together instead of N sequential memory_get calls.
 
 Call when: session-start load (role definition + project_brief + recent dialogue exchanges + referenced decisions); any workflow where N specific memories are known up-front and must be loaded together.
