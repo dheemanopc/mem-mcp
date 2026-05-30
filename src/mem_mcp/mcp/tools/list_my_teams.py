@@ -47,16 +47,33 @@ class ListMyTeamsTool(BaseTool):
         assert isinstance(inp, ListMyTeamsInput)
 
         async with tenant_tx(ctx.db_pool, ctx.tenant_id) as conn:
-            # Fetch all teams where caller is an active member
+            # Fetch every team where the caller is an active member, via the
+            # canonical team_role_assignments + roles_catalog tables (Spec 1).
+            # Personal teams backfilled by migration 0026 land here, NOT in
+            # the legacy team_members table — querying the new table is what
+            # makes them appear in the listing per owner decision memsys:5d3247db.
+            #
+            # member_count is the count of distinct user+team members in the
+            # new table; matches roles users see in the dashboard.
             team_rows = await conn.fetch(
                 """
                 SELECT t.id, t.name, t.workspace_domain, t.created_at,
-                       tm.role, tm.added_at,
-                       (SELECT COUNT(*) FROM team_members WHERE team_id = t.id AND status = 'active') as member_count
+                       rc.role_key AS role,
+                       tra.assigned_at AS added_at,
+                       (
+                           SELECT COUNT(*)
+                           FROM team_role_assignments inner_tra
+                           WHERE inner_tra.parent_team_id = t.id
+                             AND inner_tra.status = 'active'
+                       ) AS member_count
                 FROM teams t
-                INNER JOIN team_members tm ON t.id = tm.team_id
-                WHERE tm.tenant_id = $1 AND tm.status = 'active' AND t.deleted_at IS NULL
-                ORDER BY tm.added_at DESC
+                INNER JOIN team_role_assignments tra ON tra.parent_team_id = t.id
+                INNER JOIN roles_catalog rc ON rc.id = tra.role_id
+                WHERE tra.member_kind = 'user'
+                  AND tra.member_id = $1
+                  AND tra.status = 'active'
+                  AND t.deleted_at IS NULL
+                ORDER BY tra.assigned_at DESC
                 """,
                 ctx.tenant_id,
             )

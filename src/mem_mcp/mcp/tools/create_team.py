@@ -77,12 +77,18 @@ class CreateTeamTool(BaseTool):
 
             caller_workspace_domain = identity["workspace_domain"]
 
-            # Validate parent_team_id if provided
+            # Validate parent_team_id if provided. Query the NEW
+            # team_role_assignments table (RBAC source of truth) — the legacy
+            # team_members table doesn't have rows for personal teams that
+            # migration 0026 backfilled.
             if inp.parent_team_id is not None:
                 parent_exists = await conn.fetchrow(
                     """
-                    SELECT 1 FROM team_members
-                    WHERE team_id = $1 AND tenant_id = $2 AND status = 'active'
+                    SELECT 1 FROM team_role_assignments
+                    WHERE parent_team_id = $1
+                      AND member_kind = 'user'
+                      AND member_id = $2
+                      AND status = 'active'
                     """,
                     inp.parent_team_id,
                     ctx.tenant_id,
@@ -108,20 +114,21 @@ class CreateTeamTool(BaseTool):
                 ctx.tenant_id,
             )
 
-            # Add creator as admin member (legacy table, back-compat)
-            await conn.execute(
-                """
-                INSERT INTO team_members (team_id, tenant_id, role, status, added_by_tenant_id)
-                VALUES ($1, $2, $3, $4, $5)
-                """,
-                team["id"],
-                ctx.tenant_id,
-                "admin",
-                "active",
-                ctx.tenant_id,
-            )
+            # NOTE on the LEGACY team_members back-compat INSERT (removed):
+            # The previous version of this tool ALSO inserted into team_members
+            # ('admin' role). That table is the legacy enterprise PR 1.B path.
+            # The new RBAC source-of-truth is team_role_assignments (assigned
+            # below via assign_role). Personal teams created by migration 0026
+            # already skipped team_members; surviving rows there are pre-Spec 1
+            # only.
+            #
+            # Why removed: team_members_insert RLS requires the inserter to
+            # already be an admin of the team. That's a chicken-and-egg for a
+            # brand-new team. Rather than relax the legacy RLS, drop the legacy
+            # write entirely — rbac.has_permission already UNIONs both tables
+            # for backward read compat. Migration 0028 will drop team_members.
 
-            # Add creator as owner in new table (Spec 1 amendment #3)
+            # Add creator as owner in team_role_assignments (Spec 1 amendment #3)
             await assign_role(
                 conn,
                 parent_team_id=team["id"],
