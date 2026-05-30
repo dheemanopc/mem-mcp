@@ -12,7 +12,7 @@ Fix: mirror the UPDATE policy's escape clause on the SELECT policy so
 system_tx (empty GUC) sees all rows. Caller visibility (mem_app with a
 GUC set) is unchanged.
 
-Revision ID: 0029_async_write_queue_select_drain_fix
+Revision ID: 0029_aq_select_drain_fix
 Revises: 0028_async_write_queue
 Create Date: 2026-05-31
 """
@@ -23,7 +23,7 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision = "0029_async_write_queue_select_drain_fix"
+revision = "0029_aq_select_drain_fix"
 down_revision = "0028_async_write_queue"
 branch_labels = None
 depends_on = None
