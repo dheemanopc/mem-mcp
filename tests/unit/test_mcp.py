@@ -221,7 +221,10 @@ class TestToolRegistry:
         defs = r.list_definitions()
         assert len(defs) == 1
         assert defs[0]["name"] == "test-plugin.echo"
-        assert defs[0]["required_scope"] is None
+        # Plugin tools are gated by coarse "memory.write" OAuth scope at the
+        # transport layer; fine permission key (when provided) is enforced
+        # role-side inside the adapter's __call__.
+        assert defs[0]["required_scope"] == "memory.write"
 
     def test_register_plugin_tool_with_required_permission(self) -> None:
         """Plugin tool with required_permission registers with scope."""
@@ -253,7 +256,11 @@ class TestToolRegistry:
         assert "test-plugin.secure" in r.names()
         defs = r.list_definitions()
         assert len(defs) == 1
-        assert defs[0]["required_scope"] == "team.manage_members"
+        # Plugin perm key ("team.manage_members") is no longer exposed as the
+        # OAuth scope (those would have to be provisioned in Cognito). All
+        # plugin tools use coarse "memory.write" at the transport layer; the
+        # fine perm is checked role-side inside the adapter's __call__.
+        assert defs[0]["required_scope"] == "memory.write"
 
     @pytest.mark.asyncio
     async def test_register_plugin_tool_dispatch(self) -> None:

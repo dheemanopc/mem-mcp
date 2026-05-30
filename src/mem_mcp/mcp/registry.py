@@ -34,15 +34,40 @@ class ToolRegistry:
         The adapter exposes the same interface as BaseTool so the dispatcher
         (dispatch method) can treat it uniformly with native tools.
 
+        Authorization model:
+          - OAuth `required_scope` is set to "memory.write" — a coarse "this client
+            is allowed to use plugin tools" gate. Token-level scope advertising
+            (`well_known.DEFAULT_MCP_SCOPES`) intentionally does not enumerate
+            every plugin's permission keys, because each one would also need to
+            be provisioned in Cognito's resource server (CFN change). Coarse
+            gate keeps the OAuth surface minimal.
+          - The fine-grained permission key from `rt.required_permission` (e.g.
+            "reminders.manage_own") is enforced inside `call_impl` via
+            `has_permission()` against the caller's roles (system + team +
+            plugin catalog). Failure raises -32603 with the missing key.
+
         Uses type() to dynamically construct the adapter class, avoiding Python's
         class-body closure restrictions (class bodies cannot reference outer function locals).
         """
         rt = registered_tool
-        # rt.required_permission is already a string (normalized in ToolRegistryImpl).
-        required_scope = rt.required_permission
+        plugin_perm_key = rt.required_permission  # may be None
+        # Coarse OAuth gate; fine gate lives in call_impl below.
+        required_scope = "memory.write"
 
         async def call_impl(self: Any, ctx: ToolContext, inp: BaseModel) -> BaseModel:
-            """Invoke the plugin handler with (inp, tenant_id, request_id)."""
+            """Role-gate, then invoke the plugin handler."""
+            if plugin_perm_key:
+                from mem_mcp.auth.rbac import has_permission
+                from mem_mcp.db import system_tx
+
+                async with system_tx(ctx.db_pool) as conn:
+                    ok = await has_permission(conn, ctx.tenant_id, plugin_perm_key)
+                if not ok:
+                    raise JsonRpcError(
+                        -32603,
+                        f"caller lacks required permission: {plugin_perm_key}",
+                        data={"missing_permission": plugin_perm_key},
+                    )
             result = await rt.handler(inp, ctx.tenant_id, ctx.request_id)
             assert isinstance(result, BaseModel)
             return result
