@@ -74,9 +74,19 @@ for t in /etc/systemd/system/mem-mcp-*.timer; do
   [[ -e "$t" ]] && systemctl enable --now "$(basename "$t")" || true
 done
 
+# Long-running daemons (Type=simple) need explicit enable + restart on deploy.
+# Timers above are oneshot; these are continuous workers (e.g. async-write-drain)
+# whose process must pick up new code after a release.
+for d in /etc/systemd/system/mem-mcp-*-drain.service; do
+  [[ -e "$d" ]] && systemctl enable --now "$(basename "$d")" || true
+done
+
 log "Restarting services"
 systemctl restart mem-mcp.service
 [[ -f /etc/systemd/system/mem-web.service ]] && systemctl restart mem-web.service || true
+for d in /etc/systemd/system/mem-mcp-*-drain.service; do
+  [[ -e "$d" ]] && systemctl restart "$(basename "$d")" || true
+done
 
 log "Waiting for /readyz (30s)"
 for i in {1..30}; do
