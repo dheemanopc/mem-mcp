@@ -63,6 +63,7 @@ from mem_mcp.mcp.tools.delete import MemoryDeleteTool
 from mem_mcp.mcp.tools.export import MemoryExportTool
 from mem_mcp.mcp.tools.feedback import MemoryFeedbackTool
 from mem_mcp.mcp.tools.get import MemoryGetTool
+from mem_mcp.mcp.tools.get_batch import MemoryGetBatchTool
 from mem_mcp.mcp.tools.list import MemoryListTool
 from mem_mcp.mcp.tools.list_my_teams import ListMyTeamsTool
 from mem_mcp.mcp.tools.refs_in import RefsInTool
@@ -404,13 +405,14 @@ def _wire_routers(app: FastAPI) -> None:
         quotas=quotas,
     )
 
-    # Build ToolRegistry with 19 tools (12 memory + 1 onboarding + 6 team)
+    # Build ToolRegistry with 20 tools (13 memory + 1 onboarding + 6 team)
     registry = ToolRegistry()
     tools_list: list = [
         MemoryWriteTool,
         MemoryWriteBatchTool,
         MemorySearchTool,
         MemoryGetTool,
+        MemoryGetBatchTool,
         MemoryListTool,
         MemoryUpdateTool,
         MemoryDeleteTool,
