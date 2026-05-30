@@ -74,7 +74,8 @@ async def _claim_batch(pool: asyncpg.Pool) -> list[dict[str, Any]]:
                  LIMIT $1
                  FOR UPDATE SKIP LOCKED
              )
-            RETURNING request_id, tenant_id, payload, submitted_at
+            RETURNING request_id, tenant_id, payload, submitted_at,
+                      client_id, identity_id
             """,
             DRAIN_BATCH_SIZE,
         )
@@ -92,13 +93,17 @@ async def _process_one(pool: asyncpg.Pool, row: dict[str, Any]) -> None:
     request_id: UUID = row["request_id"]
     tenant_id: UUID = row["tenant_id"]
     submitted_at = row["submitted_at"]
+    client_id: str | None = row.get("client_id")
+    identity_id: UUID | None = row.get("identity_id")
     raw_payload = row["payload"]
     payload: dict[str, Any] = (
         json.loads(raw_payload) if isinstance(raw_payload, str) else raw_payload
     )
 
     try:
-        result_memory_id = await _execute_memory_write(pool, tenant_id, payload, submitted_at)
+        result_memory_id = await _execute_memory_write(
+            pool, tenant_id, payload, submitted_at, client_id, identity_id
+        )
         await _mark_succeeded(pool, request_id, result_memory_id)
         log.info(
             "async_write_succeeded",
@@ -121,6 +126,8 @@ async def _execute_memory_write(
     tenant_id: UUID,
     payload: dict[str, Any],
     submitted_at: Any,
+    client_id: str | None,
+    identity_id: UUID | None,
 ) -> UUID:
     """Run memory_write tool logic against a tenant_tx then override created_at.
 
@@ -139,11 +146,17 @@ async def _execute_memory_write(
     s = get_settings()
     embeddings = BedrockEmbeddingClient(region=s.region, model_id=s.bedrock_model_id)
     deps = make_default_deps(embeddings=embeddings)
+    # Replay the original caller's identity so the memories.source_client_id
+    # FK (oauth_clients) resolves and audit attribution stays accurate.
+    # Legacy rows (pre-0032) may have NULL — fall back to the historical
+    # sentinel which is known to FK-fail, surfacing them as drain failures.
+    effective_client_id = client_id if client_id is not None else "async-drain"
+    effective_identity_id = identity_id if identity_id is not None else tenant_id
     ctx = ToolContext(
         request_id=f"async-drain-{tenant_id}",
         tenant_id=tenant_id,
-        identity_id=tenant_id,  # drain has no separate identity; use tenant_id
-        client_id="async-drain",
+        identity_id=effective_identity_id,
+        client_id=effective_client_id,
         scopes=frozenset({"memory.write"}),
         db_pool=pool,
         deps=deps,
