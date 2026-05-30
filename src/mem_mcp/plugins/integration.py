@@ -23,7 +23,7 @@ class RegisteredTool:
     description: str
     input_schema: type[BaseModel]
     handler: Callable[..., Awaitable[Any]]
-    required_permission: Permission | None
+    required_permission: str | None  # string permission key, e.g. "team.read_memory"
 
 
 class ToolRegistryImpl:
@@ -40,10 +40,17 @@ class ToolRegistryImpl:
         *,
         description: str,
         input_schema: type[BaseModel],
-        required_permission: Permission | None = None,
+        required_permission: str | Permission | None = None,
     ) -> None:
         # Tool name is plugin_id.name; plugin cannot register in another namespace
         namespaced = f"{self._plugin_id}.{name}"
+        # Normalize Permission enum → string. Plugins should pass strings; the
+        # enum path is kept transitional while plugins migrate.
+        perm_str: str | None = (
+            required_permission.value
+            if isinstance(required_permission, Permission)
+            else required_permission
+        )
         self._tools.append(
             RegisteredTool(
                 plugin_id=self._plugin_id,
@@ -51,7 +58,7 @@ class ToolRegistryImpl:
                 description=description,
                 input_schema=input_schema,
                 handler=handler,
-                required_permission=required_permission,
+                required_permission=perm_str,
             )
         )
         log.info("plugin_tool_registered", extra={"plugin_id": self._plugin_id, "tool": namespaced})

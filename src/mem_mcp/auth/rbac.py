@@ -8,6 +8,7 @@ from uuid import UUID
 from fastapi import Cookie, HTTPException, Request
 
 from mem_mcp.auth.permissions import ROLE_PERMISSIONS, Permission
+from mem_mcp.auth.plugin_perms import role_has_plugin_permission
 from mem_mcp.db import get_pool, system_tx
 from mem_mcp.web.sessions import lookup_session
 
@@ -40,32 +41,64 @@ async def get_team_role(conn: asyncpg.Connection, tenant_id: UUID, team_id: UUID
 async def has_permission(
     conn: asyncpg.Connection,
     tenant_id: UUID,
-    permission: Permission,
+    permission: str | Permission,
     *,
     team_id: UUID | None = None,
 ) -> bool:
-    """Resolve a permission across system + team scopes.
+    """Resolve a permission across system + team + plugin scopes.
 
-    System perms: any of caller's system roles grant the perm.
-    Team perms: requires team_id; caller's team role grants the perm.
+    System perms (key starts with "system."): any of caller's system roles grants.
+    Team perms (key starts with "team."): requires team_id; caller's team role grants.
+    Plugin perms (any other namespace, e.g. "reminders.manage_own"):
+        - If `team_id` is provided, check the caller's team role against the plugin's
+          declared default_grants.
+        - If not, check against any team the caller belongs to — plugin perms are
+          treated as personal-scope by default ("manage_own" semantics).
     """
-    if permission.value.startswith("system."):
-        sys_roles = await get_system_roles(conn, tenant_id)
-        return any(permission in ROLE_PERMISSIONS.get(r, set()) for r in sys_roles)
+    perm_key = permission.value if isinstance(permission, Permission) else permission
 
-    if permission.value.startswith("team."):
+    if perm_key.startswith("system."):
+        sys_roles = await get_system_roles(conn, tenant_id)
+        # ROLE_PERMISSIONS stores Permission enum values; compare by string key.
+        return any(
+            any(p.value == perm_key for p in ROLE_PERMISSIONS.get(r, set())) for r in sys_roles
+        )
+
+    if perm_key.startswith("team."):
         if team_id is None:
             return False
         team_role = await get_team_role(conn, tenant_id, team_id)
         if team_role is None:
             return False
-        return permission in ROLE_PERMISSIONS.get(team_role, set())
+        return any(p.value == perm_key for p in ROLE_PERMISSIONS.get(team_role, set()))
 
+    # Plugin-declared permission. Check plugin registry first (preferred path),
+    # then fall back to core's ROLE_PERMISSIONS for legacy plugin perms still
+    # declared via the Permission enum.
+    if team_id is not None:
+        team_role = await get_team_role(conn, tenant_id, team_id)
+        if team_role is None:
+            return False
+        if role_has_plugin_permission(team_role, perm_key):
+            return True
+        return any(p.value == perm_key for p in ROLE_PERMISSIONS.get(team_role, set()))
+
+    # No team_id: caller can use the perm if ANY team they belong to grants it.
+    rows = await conn.fetch(
+        "SELECT DISTINCT role FROM team_members WHERE tenant_id = $1 AND status = 'active'",
+        tenant_id,
+    )
+    for r in rows:
+        role = r["role"]
+        if role_has_plugin_permission(role, perm_key):
+            return True
+        if any(p.value == perm_key for p in ROLE_PERMISSIONS.get(role, set())):
+            return True
     return False
 
 
 def require_permission(
-    permission: Permission,
+    permission: str | Permission,
     *,
     team_id_param: str | None = None,
 ) -> Any:
@@ -102,7 +135,12 @@ def require_permission(
         if not ok:
             raise HTTPException(
                 status_code=403,
-                detail={"error": "forbidden", "missing_permission": permission.value},
+                detail={
+                    "error": "forbidden",
+                    "missing_permission": (
+                        permission.value if isinstance(permission, Permission) else permission
+                    ),
+                },
             )
         return sess.tenant_id
 

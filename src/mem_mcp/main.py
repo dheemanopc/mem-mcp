@@ -182,10 +182,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # Plugin discovery — load entry-point plugins
     try:
+        from mem_mcp.auth.plugin_perms import register_plugin_permissions
         from mem_mcp.plugins.registry import PluginRegistry
 
         plugin_registry = PluginRegistry()
         plugin_registry.discover()
+        # Pull each plugin's declared permissions into the runtime grant catalog
+        # BEFORE register_tools runs, so RBAC checks against the new perms work
+        # from the first request onward.
+        register_plugin_permissions(plugin_registry)
         log.info(
             "plugin_discovery_complete",
             extra={
