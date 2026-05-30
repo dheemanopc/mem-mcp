@@ -38,7 +38,8 @@ class ToolRegistry:
         class-body closure restrictions (class bodies cannot reference outer function locals).
         """
         rt = registered_tool
-        required_scope = rt.required_permission.value if rt.required_permission else None
+        # rt.required_permission is already a string (normalized in ToolRegistryImpl).
+        required_scope = rt.required_permission
 
         async def call_impl(self: Any, ctx: ToolContext, inp: BaseModel) -> BaseModel:
             """Invoke the plugin handler with (inp, tenant_id, request_id)."""

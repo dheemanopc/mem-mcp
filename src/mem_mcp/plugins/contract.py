@@ -29,6 +29,24 @@ SDK_API_VERSION = "1"
 # ── Plugin-facing Protocols ─────────────────────────────────────────────────
 
 
+@dataclass(frozen=True)
+class PluginPermission:
+    """A permission declared by a plugin.
+
+    Plugins return these from `declare_permissions()` instead of referencing
+    core's `Permission` enum. The key is the wire-level string used in tool
+    `required_permission`, RBAC checks, and grant lookups.
+
+    `default_grants` names the team-role keys that should automatically hold
+    this permission at startup ('admin', 'member', etc). This lets a plugin
+    install without core code changes.
+    """
+
+    key: str  # e.g. "reminders.manage_own"
+    description: str
+    default_grants: frozenset[str] = frozenset()  # role keys, e.g. {"admin", "member"}
+
+
 @runtime_checkable
 class ToolRegistry(Protocol):
     """Where plugins declare their MCP tools. Names are auto-namespaced as <plugin_id>.<tool>."""
@@ -40,7 +58,7 @@ class ToolRegistry(Protocol):
         *,
         description: str,
         input_schema: type[BaseModel],
-        required_permission: Permission | None = None,
+        required_permission: str | Permission | None = None,
     ) -> None: ...
 
 
@@ -111,7 +129,7 @@ class MemoryClient(Protocol):
 class PermissionResolver(Protocol):
     """RBAC check for the calling tenant. Wraps mem_mcp.auth.rbac.has_permission."""
 
-    async def has(self, permission: Permission, *, team_id: UUID | None = None) -> bool: ...
+    async def has(self, permission: str | Permission, *, team_id: UUID | None = None) -> bool: ...
 
 
 # ── Plugin base class ──────────────────────────────────────────────────────
@@ -144,8 +162,12 @@ class Plugin(ABC):
         """Path to the plugin's own alembic versions directory, or None."""
         return None
 
-    def declare_permissions(self) -> list[Permission]:
-        """Permissions this plugin contributes to the core RBAC matrix."""
+    def declare_permissions(self) -> list[PluginPermission | Permission]:
+        """Permissions this plugin contributes to the core RBAC matrix.
+
+        Prefer returning `PluginPermission` instances; the `Permission` enum
+        path is kept for back-compat while plugins migrate to string keys.
+        """
         return []
 
     def register_tools(self, registry: ToolRegistry) -> None:
