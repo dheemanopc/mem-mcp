@@ -1,0 +1,23 @@
+[Unit]
+Description=mem-mcp async_write_queue drain daemon
+After=network.target postgresql.service mem-mcp.service
+Requires=postgresql.service
+
+[Service]
+Type=simple
+User=memmcp
+Group=memmcp
+WorkingDirectory=/opt/mem-mcp
+EnvironmentFile=/etc/mem-mcp/env
+ExecStart=/home/memmcp/.local/bin/poetry run python -m mem_mcp.jobs.async_write_drain
+Restart=always
+RestartSec=5
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target
