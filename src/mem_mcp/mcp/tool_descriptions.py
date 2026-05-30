@@ -42,7 +42,7 @@ Multi-team users: pass `team_id` (UUID or team name) to scope the call. If you r
 Examples: "What did we decide about authentication?" → query="authentication decision". "Remind me of our pricing strategy." → query="pricing strategy". "What snippets do I have for retries?" → query="retry snippet", type=snippet. "What's our database?" → query="database choice decision". "Find the most relevant comments about RECLTD on this trade" → query="RECLTD slippage", parent_id="<trade-uuid>".
 
 Note: returned `content` may be truncated for very large memories; call `memory_get(id)` to fetch the full body.""",
-    "memory_write_async": """Submit a memory write fire-and-forget — call this when you want to persist a memory WITHOUT blocking the conversation turn on the synchronous write latency (300ms–2s with embedding).
+    "memory_write_async": """Submit a memory write fire-and-forget — call this when you want to persist a memory WITHOUT blocking the conversation turn on the synchronous write latency (300ms-2s with embedding).
 
 Call when: persisting a dialogue exchange mid-conversation where the user feels the wait of sync memory_write; PMO role-prompts persisting working notes/ambiguity captures during dialogue; any "log this and keep moving" pattern.
 
