@@ -27,6 +27,12 @@ class MemoryListInput(BaseModel):
     type: MemoryType | None = None
     since: datetime | None = None
     until: datetime | None = None
+    # F-7 fold + SDK-parity additions (DA `336346ef` §1) — filter params for
+    # team scope, indexability, and thread parent. Each is a strict additional
+    # AND on the WHERE clause; RLS policy (memories_select) still gates first.
+    team_id: UUID | None = None
+    indexable: bool | None = None
+    parent_id: UUID | None = None
     include_deleted: bool = False
     include_expired: bool = False
     include_history: bool = False
@@ -135,6 +141,21 @@ class MemoryListTool(BaseTool):
         if inp.until:
             where_clauses.append(f"created_at <= ${len(params) + 1}")
             params.append(inp.until)
+
+        # F-7 fold + SDK-parity additions per DA `336346ef` §1. RLS-safe: each
+        # is a strict additional AND that can only narrow what the
+        # memories_select policy already permits; cannot widen access.
+        if inp.team_id is not None:
+            where_clauses.append(f"team_id = ${len(params) + 1}")
+            params.append(inp.team_id)
+
+        if inp.indexable is not None:
+            where_clauses.append(f"indexable = ${len(params) + 1}")
+            params.append(inp.indexable)
+
+        if inp.parent_id is not None:
+            where_clauses.append(f"parent_id = ${len(params) + 1}")
+            params.append(inp.parent_id)
 
         # Keyset pagination: build cursor predicate
         if cursor_order_value_iso and cursor_id:

@@ -29,6 +29,18 @@
       "title": "Include History",
       "type": "boolean"
     },
+    "indexable": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Indexable"
+    },
     "limit": {
       "default": 25,
       "maximum": 100,
@@ -53,6 +65,19 @@
       ],
       "title": "Order By",
       "type": "string"
+    },
+    "parent_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Parent Id"
     },
     "since": {
       "anyOf": [
@@ -81,6 +106,19 @@
       ],
       "default": null,
       "title": "Tags"
+    },
+    "team_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Team Id"
     },
     "type": {
       "anyOf": [
