@@ -221,6 +221,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 collect_plugin_tools,
                 mount_plugin_routes,
                 run_plugin_jobs_setup,
+                run_plugin_startup_hooks,
             )
             from mem_mcp.plugins.schema import ensure_plugin_schemas
 
@@ -254,11 +255,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             # 4. Collect job declarations (real firing is later PR)
             app.state.plugin_jobs = await run_plugin_jobs_setup(app.state.plugin_registry)
 
+            # 5. Fire plugin on_startup hooks now that every plugin has been
+            # registered, mounted, and had its tools + jobs collected. Done
+            # after step 4 so a startup hook can safely assume the rest of
+            # the plugin lifecycle is in place. Per-plugin try/except inside
+            # the hook runner means one plugin's failure can't kill startup.
+            # Closes memsys:36ac16a1 (on_startup never invoked).
+            app.state.plugin_startup_results = await run_plugin_startup_hooks(
+                app.state.plugin_registry, pool
+            )
+
             log.info(
                 "plugin_wiring_complete",
                 extra={
                     "tool_count": len(app.state.plugin_tools),
                     "job_plugin_count": len(app.state.plugin_jobs),
+                    "startup_results": app.state.plugin_startup_results,
                 },
             )
         except Exception:

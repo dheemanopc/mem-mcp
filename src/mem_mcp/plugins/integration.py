@@ -129,3 +129,73 @@ async def run_plugin_jobs_setup(registry: PluginRegistry) -> dict[str, list[Any]
             continue
         result[plugin.id] = sched.list_jobs()
     return result
+
+
+async def run_plugin_startup_hooks(registry: PluginRegistry, pool: Any) -> dict[str, str]:
+    """Invoke `Plugin.on_startup(ctx)` for every plugin, once at lifespan startup.
+
+    Closes the contract/implementation mismatch documented in memsys:36ac16a1:
+    the SDK advertises `on_startup` but core never invoked it, leaving plugin
+    startup logic silently dead.
+
+    Context shape: cross-tenant by definition (startup is once per app, not
+    per tenant). Mirrors `mem_mcp.jobs.plugin_job._build_job_context` —
+    NIL_UUID tenant, real `pool` + real `config`, stub per-tenant clients
+    (memories/notices/credentials) that raise on use. Plugins that need to
+    iterate over tenants at startup must build per-tenant clients inline via
+    `system_tx(ctx.pool)` (same pattern as plugin jobs).
+
+    Per-plugin try/except so one plugin's startup failure can't break the
+    lifespan or starve other plugins' startups.
+
+    Returns: dict of plugin_id → "ok" | "error: <type>" — useful for tests
+    and for a future readiness probe.
+    """
+    from uuid import UUID, uuid4
+
+    from pydantic import BaseModel
+
+    from mem_mcp.audit.logger import NoopAuditLogger
+    from mem_mcp.plugins.contract import PluginContext
+
+    nil_uuid = UUID("00000000-0000-0000-0000-000000000000")
+
+    class _StubClient:
+        def __getattr__(self, name: str) -> Any:
+            raise NotImplementedError(
+                f"plugin startup tried to use per-tenant client method {name!r}; "
+                "startup is cross-tenant — build per-tenant clients inline if needed"
+            )
+
+    class _EmptyConfig(BaseModel):
+        pass
+
+    class _StubPermissions:
+        def resolve(self, *args: Any, **kwargs: Any) -> Any:
+            raise NotImplementedError("plugin startup context has no permission resolver")
+
+    result: dict[str, str] = {}
+    for plugin in registry.all():
+        config_cls = plugin.get_config_schema()
+        config = config_cls() if config_cls else _EmptyConfig()
+        ctx = PluginContext(
+            plugin_id=plugin.id,
+            tenant_id=nil_uuid,
+            request_id=f"plugin-startup-{uuid4()}",
+            pool=pool,
+            memories=_StubClient(),
+            notices=_StubClient(),
+            scheduler=_StubClient(),
+            credentials=_StubClient(),
+            config=config,
+            audit=NoopAuditLogger(),
+            permissions=_StubPermissions(),  # type: ignore[arg-type]
+        )
+        try:
+            await plugin.on_startup(ctx)
+            log.info("plugin_on_startup_ok", extra={"plugin_id": plugin.id})
+            result[plugin.id] = "ok"
+        except Exception as exc:
+            log.exception("plugin_on_startup_failed", extra={"plugin_id": plugin.id})
+            result[plugin.id] = f"error: {type(exc).__name__}"
+    return result
