@@ -135,10 +135,19 @@ class MemoryGetBatchTool(BaseTool):
                     if row is not None:
                         uuid_results[orig_idx] = MemoryRecord(**dict(row))
 
-        # Slug path: lookup_slug is cross-tenant by design (Spec 2). Need a
-        # per-entry user_effective_team_access check to gate visibility — same
-        # opacity contract as memsys_slug_lookup.
+        # Slug path: lookup_slug is cross-tenant by design (Spec 2). The access
+        # check + slug-lookup queries hit RLS-free tables (user_effective_team_access,
+        # slugs) so run under system_tx. The memories fetch MUST run under tenant_tx
+        # — memories has an RLS policy that bare-casts the app.current_tenant_id
+        # GUC to UUID. Under system_tx the GUC is NULL on fresh conns and '' on
+        # conns recycled from a rolled-back tenant_tx (PG custom-GUC quirk; see
+        # migration 0031 for the same cluster on async_write_queue). The cast
+        # crashes on '', and returns 0 rows on NULL. Tenant_tx sets the GUC to a
+        # real UUID and lets the policy's tenant-scope + visibility='team' clauses
+        # fire correctly — same semantic as sync memory_get.
         if slug_lookups:
+            # First pass under system_tx: access-check + slug→memory_id resolution.
+            resolved: dict[int, UUID] = {}
             async with system_tx(ctx.db_pool) as conn:
                 for orig_idx, team_id, resource_type, slug in slug_lookups:
                     access = await conn.fetchval(
@@ -159,19 +168,29 @@ class MemoryGetBatchTool(BaseTool):
                     )
                     if slug_row is None:
                         continue
-                    mem_id = slug_row["memory_id"]
-                    row = await conn.fetchrow(
+                    resolved[orig_idx] = slug_row["memory_id"]  # type: ignore[assignment]
+
+            # Second pass under tenant_tx: fetch memory rows. The memories RLS
+            # policy fires against the caller's tenant GUC and matches both
+            # caller-tenant rows and cross-team rows with visibility='team'.
+            if resolved:
+                async with tenant_tx(ctx.db_pool, ctx.tenant_id) as conn:
+                    mem_ids = list(resolved.values())
+                    rows = await conn.fetch(
                         """
                         SELECT id, content, type, tags, metadata, version, is_current,
                                supersedes, superseded_by, created_at, updated_at,
                                deleted_at, expires_at, indexable, embedding_status
                         FROM memories
-                        WHERE id = $1 AND deleted_at IS NULL
+                        WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL
                         """,
-                        mem_id,
+                        mem_ids,
                     )
-                    if row is not None:
-                        slug_results[orig_idx] = MemoryRecord(**dict(row))
+                    by_id = {row["id"]: row for row in rows}
+                    for orig_idx, mem_id in resolved.items():
+                        row = by_id.get(mem_id)
+                        if row is not None:
+                            slug_results[orig_idx] = MemoryRecord(**dict(row))
 
         # Walk original requests; assemble results in submission order.
         results: list[MemoryGetBatchResultEntry] = []
