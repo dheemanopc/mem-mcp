@@ -45,6 +45,12 @@ EXEMPT_PREFIXES = (
     # layer, not via tenant_id filter. See module docstrings for rationale.
     "src/mem_mcp/teams/references.py",
     "src/mem_mcp/teams/effective_access.py",
+    # mcp/tools/get_batch.py — the slug-tuple branch fetches memories cross-team
+    # after an application-layer user_effective_team_access check. The memories
+    # SELECT runs under tenant_tx so the memories_select RLS policy fires
+    # (matches caller-tenant rows AND cross-team rows with visibility='team').
+    # Same cross-team gating pattern as teams/effective_access.py.
+    "src/mem_mcp/mcp/tools/get_batch.py",
 )
 
 CONN_METHODS = frozenset({"execute", "fetch", "fetchrow", "fetchval", "executemany"})
