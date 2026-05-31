@@ -148,7 +148,7 @@ async def test_per_tenant_clients_raise_in_startup_context() -> None:
 
         async def on_startup(self, ctx: PluginContext) -> None:
             try:
-                await ctx.memories.write(content="x")  # type: ignore[call-arg]
+                await ctx.memories.write(content="x")
             except NotImplementedError as exc:
                 type(self).captured_error = exc
                 raise
