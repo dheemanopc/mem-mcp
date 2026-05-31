@@ -295,16 +295,23 @@ class MemoryWriteTool(BaseTool):
                                 }
                             )
                         except ReferenceTargetNotFoundError as exc:
+                            # IT-08 opaque error per ratification 70b43c08:
+                            # not-found and no-access return identical envelopes.
+                            # `code` in data lets the Plugin SDK's _invoke_tool
+                            # wrapper produce a clean PluginValidationError(code=
+                            # "memory_not_accessible") instead of falling back
+                            # to the "jsonrpc_-32602" code-stringification.
                             raise JsonRpcError(
                                 -32602,
                                 "reference target not found or not accessible",
                                 data={
+                                    "code": "memory_not_accessible",
                                     "errors": [
                                         {
                                             "path": f"references[{i}]",
                                             "message": "reference target not found or not accessible",
                                         }
-                                    ]
+                                    ],
                                 },
                             ) from exc
 

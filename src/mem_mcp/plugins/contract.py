@@ -10,6 +10,7 @@ from __future__ import annotations
 from abc import ABC
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol, runtime_checkable
 from uuid import UUID
@@ -21,6 +22,7 @@ if TYPE_CHECKING:
 
     from mem_mcp.audit.logger import AuditLogger
     from mem_mcp.auth.permissions import Permission
+    from mem_mcp.mcp.tools.write import ReferenceInput
 
 # Current SDK major version. Plugins declare api_version="1"; mismatch refuses to load.
 SDK_API_VERSION = "1"
@@ -99,7 +101,19 @@ class CredentialStore(Protocol):
 
 @runtime_checkable
 class MemoryClient(Protocol):
-    """Cross-plugin data plane. Plugins read/write memories via this — NOT direct DB."""
+    """Cross-plugin data plane. Plugins read/write memories via this — NOT direct DB.
+
+    SDK-layer error contract (per DA `336346ef` §2): tool-layer failures
+    surface as `PluginValidationError` with a structured `code` + `message`
+    + `data`. Known `code` values shipped today:
+      - "invalid_params"            — Pydantic input validation
+      - "memory_not_accessible"     — IT-08 opaque (not-found or no-access)
+      - "update_not_allowed_for_type" — content edit attempted on decision/fact
+      - "jsonrpc_<n>"               — fallback for substrate JsonRpcError
+                                       without a structured `data["code"]`
+
+    Future codes are additive — existing codes are stable.
+    """
 
     async def write(
         self,
@@ -108,6 +122,9 @@ class MemoryClient(Protocol):
         type: str = "note",
         tags: list[str] | None = None,
         metadata: dict[str, Any] | None = None,
+        parent_id: UUID | None = None,
+        indexable: bool = True,
+        references: list[ReferenceInput] | None = None,
     ) -> UUID: ...
 
     async def search(
@@ -123,6 +140,71 @@ class MemoryClient(Protocol):
 
     async def get(self, memory_id: UUID) -> dict[str, Any] | None: ...
     async def supersede(self, memory_id: UUID, content: str) -> UUID: ...
+
+    async def thread_get(self, root_id: UUID) -> list[dict[str, Any]]: ...
+
+    async def get_batch(
+        self,
+        requests: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]: ...
+
+    async def list_memories(
+        self,
+        *,
+        tags: list[str] | None = None,
+        indexable: bool | None = None,
+        team_id: UUID | None = None,
+        type: str | None = None,
+        parent_id: UUID | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        limit: int = 25,
+    ) -> list[dict[str, Any]]:
+        """Wraps the substrate `memory_list` tool. Named `list_memories` to avoid
+        shadowing the `list` builtin inside the class's annotation scope."""
+        ...
+
+    async def update(
+        self,
+        memory_id: UUID,
+        *,
+        content: str | None = None,
+        tags: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
+        tags_op: Literal["replace", "add", "remove"] = "replace",
+        type: str | None = None,
+    ) -> dict[str, Any]: ...
+
+
+class PluginValidationError(Exception):
+    """Structured validation error raised by Plugin SDK calls.
+
+    Per DA `336346ef` §2 (dual-layer error surfacing): plugins should
+    `except PluginValidationError as e` and inspect `e.code` + `e.message`
+    + `e.data` to produce caller-facing feedback. Distinct from generic
+    Exception so plugins can handle it explicitly without masking real bugs.
+
+    Raised by:
+    - MemoryClient.update — when in-place content edit attempted on
+      decision/fact (use supersede() instead). code="update_not_allowed_for_type".
+    - Any MemoryClient.* — when underlying tool raises pydantic.ValidationError
+      (e.g. slug_clue on type=note — F-9). code="invalid_params".
+    - Any MemoryClient.* — when underlying tool raises a JsonRpcError with a
+      structured data["code"] (e.g. references cross-team-no-access per IT-08).
+      code echoed from data["code"]; falls back to f"jsonrpc_{exc.code}".
+    """
+
+    def __init__(
+        self,
+        *,
+        code: str,
+        message: str,
+        data: dict[str, Any] | None = None,
+    ):
+        self.code = code
+        self.message = message
+        self.data = data or {}
+        super().__init__(f"{code}: {message}")
 
 
 @runtime_checkable

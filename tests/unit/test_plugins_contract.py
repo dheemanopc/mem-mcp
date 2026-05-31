@@ -145,6 +145,9 @@ class TestProtocolsRuntimeCheckable:
             type: str = "note",
             tags: list[str] | None = None,
             metadata: dict[str, Any] | None = None,
+            parent_id: UUID | None = None,
+            indexable: bool = True,
+            references: Any = None,
         ) -> UUID:
             return uuid4()
 
@@ -165,6 +168,40 @@ class TestProtocolsRuntimeCheckable:
 
         async def supersede(self, memory_id: UUID, content: str) -> UUID:
             return uuid4()
+
+        # T8 Tier-1 additions per DA `336346ef` — stub must satisfy the
+        # extended Protocol for the runtime isinstance() check below.
+        async def thread_get(self, root_id: UUID) -> list[dict[str, Any]]:
+            return []
+
+        async def get_batch(self, requests: list[dict[str, Any]]) -> list[dict[str, Any]]:
+            return []
+
+        async def list_memories(
+            self,
+            *,
+            tags: list[str] | None = None,
+            indexable: bool | None = None,
+            team_id: UUID | None = None,
+            type: str | None = None,
+            parent_id: UUID | None = None,
+            since: Any = None,
+            until: Any = None,
+            limit: int = 25,
+        ) -> list[dict[str, Any]]:
+            return []
+
+        async def update(
+            self,
+            memory_id: UUID,
+            *,
+            content: str | None = None,
+            tags: list[str] | None = None,
+            metadata: dict[str, Any] | None = None,
+            tags_op: str = "replace",
+            type: str | None = None,
+        ) -> dict[str, Any]:
+            return {}
 
     class StubPermissionResolver:
         async def has(self, permission: Permission, *, team_id: UUID | None = None) -> bool:
