@@ -156,7 +156,16 @@ class TestSignatures:
 
     def test_list_memories_signature(self) -> None:
         params = inspect.signature(MemoryClient.list_memories).parameters
-        for name in ("tags", "indexable", "team_id", "type", "parent_id", "since", "until", "limit"):
+        for name in (
+            "tags",
+            "indexable",
+            "team_id",
+            "type",
+            "parent_id",
+            "since",
+            "until",
+            "limit",
+        ):
             assert name in params
             assert params[name].kind == inspect.Parameter.KEYWORD_ONLY
 
@@ -362,7 +371,9 @@ class TestUpdateTypeRestriction:
         get_called.assert_called_once()
         update_called.assert_not_called()
 
-    async def test_allows_tags_on_decision_no_prefetch(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_allows_tags_on_decision_no_prefetch(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """U18 — tags-only edit on decision: succeeds, NO pre-fetch (cost discipline)."""
         impl = _make_impl()
         memory_id = uuid4()

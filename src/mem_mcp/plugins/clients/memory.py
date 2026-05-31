@@ -229,9 +229,7 @@ class MemoryClientImpl:
         tool = MemoryThreadGetTool()
         out = await self._invoke_tool(tool, ctx, inp)
         assert isinstance(out, MemoryThreadGetOutput)
-        return [out.root.model_dump(mode="json")] + [
-            r.model_dump(mode="json") for r in out.replies
-        ]
+        return [out.root.model_dump(mode="json")] + [r.model_dump(mode="json") for r in out.replies]
 
     async def get_batch(
         self,
