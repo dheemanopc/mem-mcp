@@ -103,6 +103,9 @@ class MemoryClientImpl:
         parent_id: UUID | None = None,
         indexable: bool = True,
         references: list[ReferenceInput] | None = None,
+        slug_clue: str | None = None,
+        expires_at: datetime | None = None,
+        ttl_seconds: int | None = None,
     ) -> UUID:
         """Write a memory (or merge into existing duplicate).
 
@@ -112,6 +115,11 @@ class MemoryClientImpl:
         `indexable` for search opt-out, `references` for cross-team task-graph
         spine writes. `references` rides the IT-08-honoring resolver — bad refs
         raise PluginValidationError(code="memory_not_accessible") opaquely.
+
+        Tier-2 extensions (per DA `04da8d62`): `slug_clue` for minting slugs
+        on decision/fact (rejected for other types via Pydantic validator);
+        `expires_at` / `ttl_seconds` for TTL on ephemeral writes (mutually
+        exclusive — substrate `_validate_expiry_conflict` enforces).
         """
         from mem_mcp.mcp.tools.write import MemoryWriteOutput
 
@@ -125,9 +133,13 @@ class MemoryClientImpl:
                 parent_id=parent_id,
                 indexable=indexable,
                 references=references,
+                slug_clue=slug_clue,
+                expires_at=expires_at,
+                ttl_seconds=ttl_seconds,
             )
         except ValidationError as exc:
-            # Input construction validation (e.g. slug_clue-on-note style — F-9).
+            # Input construction validation (e.g. slug_clue-on-note — F-9;
+            # expires_at + ttl_seconds mutual exclusion; past expires_at).
             errors = exc.errors(include_url=False, include_input=False)
             first: dict[str, Any] = dict(errors[0]) if errors else {}
             raise PluginValidationError(
@@ -368,3 +380,180 @@ class MemoryClientImpl:
         out = await self._invoke_tool(tool, ctx_write, inp)
         assert isinstance(out, MemoryUpdateOutput)
         return out.model_dump(mode="json")
+
+    # ── Tier-2 SDK parity additions (per DA spec 988ba555 + 04da8d62) ──────
+
+    async def refs_in(self, memory_id: UUID) -> list[dict[str, Any]]:
+        """Memories that cite `memory_id` (backward/reverse citation graph).
+
+        IT-08 opacity: cite-edges whose source is in an inaccessible team
+        are filtered out substrate-side (verified `refs_in.py:49`). The SDK
+        returns ONLY the accessible edge list (`out.refs`); the substrate's
+        `accessible_count`/`inaccessible_count` aggregates are deliberately
+        dropped at the SDK boundary per DA `04da8d62` §3.1 — exposing
+        `inaccessible_count` would leak existence of cross-team cite-edges
+        the caller cannot read. Operators needing raw counts use the
+        substrate tool directly.
+
+        SUBSTRATE-REALITY NOTE: DA spec named a `limit` param but
+        `RefsInInput` (`refs_in.py:16`) accepts only `memory_id`. SDK
+        signature matches HEAD; impl-response surfaces this for DA.
+        """
+        from mem_mcp.mcp.tools.refs_in import RefsInInput, RefsInOutput, RefsInTool
+
+        ctx = self._build_ctx(scope="memory.read")
+        inp = RefsInInput(memory_id=memory_id)
+        tool = RefsInTool()
+        out = await self._invoke_tool(tool, ctx, inp)
+        assert isinstance(out, RefsInOutput)
+        return [r.model_dump(mode="json") for r in out.refs]
+
+    async def refs_out(self, memory_id: UUID) -> list[dict[str, Any]]:
+        """Memories that `memory_id` cites (forward citation graph).
+
+        Symmetric to `refs_in`. Same IT-08 opacity discipline — counts
+        dropped at SDK boundary; only accessible edges returned. Same
+        substrate-reality note: no `limit` param.
+        """
+        from mem_mcp.mcp.tools.refs_out import RefsOutInput, RefsOutOutput, RefsOutTool
+
+        ctx = self._build_ctx(scope="memory.read")
+        inp = RefsOutInput(memory_id=memory_id)
+        tool = RefsOutTool()
+        out = await self._invoke_tool(tool, ctx, inp)
+        assert isinstance(out, RefsOutOutput)
+        return [r.model_dump(mode="json") for r in out.refs]
+
+    async def slug_lookup(
+        self,
+        *,
+        team_id: UUID,
+        resource_type: Literal["decision", "fact"],
+        slug: str,
+    ) -> dict[str, Any] | None:
+        """Resolve a slug to its memory record (or None if not resolvable).
+
+        Per IT-08 opaque contract: returns None for ALL non-resolution cases —
+        nonexistent slug in an accessible team OR slug in an inaccessible team.
+        Caller cannot distinguish; this is the contract.
+        """
+        from mem_mcp.mcp.tools.slug_lookup import (
+            MemsysSlugLookupInput,
+            MemsysSlugLookupOutput,
+            MemsysSlugLookupTool,
+        )
+
+        ctx = self._build_ctx(scope="memory.read")
+        inp = MemsysSlugLookupInput(
+            team_id=team_id,
+            resource_type=resource_type,
+            slug=slug,
+        )
+        tool = MemsysSlugLookupTool()
+        out = await self._invoke_tool(tool, ctx, inp)
+        assert isinstance(out, MemsysSlugLookupOutput)
+        # Substrate returns the all-null trio when not resolvable.
+        # SDK collapses that to None per DA spec §1 Item #3.
+        if out.memory_id is None:
+            return None
+        return out.model_dump(mode="json")
+
+    async def write_async(
+        self,
+        content: str,
+        *,
+        type: str = "note",
+        tags: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
+        parent_id: UUID | None = None,
+        indexable: bool = True,
+        references: list[ReferenceInput] | None = None,
+        slug_clue: str | None = None,
+        expires_at: datetime | None = None,
+        ttl_seconds: int | None = None,
+    ) -> dict[str, Any]:
+        """Fire-and-forget memory write.
+
+        Returns the substrate envelope dict with keys:
+          - `request_id`: UUID for caller-side correlation
+          - `queued_at`: submission timestamp
+          - `estimated_consistency_by`: submission + ~5s
+
+        NO read-your-own-write in the same session — if you need the new
+        memory's id downstream in the same turn, use sync `write()` instead.
+        The substrate's async-write drain has a ~5s eventual consistency
+        target; persistence is NOT guaranteed before the SDK call returns.
+        """
+        from mem_mcp.mcp.tools.write_async import MemoryWriteAsyncOutput, MemoryWriteAsyncTool
+
+        ctx = self._build_ctx(scope="memory.write")
+        try:
+            inp = MemoryWriteInput(
+                content=content,
+                type=type,  # type: ignore[arg-type]
+                tags=tags or [],
+                metadata=metadata or {},
+                parent_id=parent_id,
+                indexable=indexable,
+                references=references,
+                slug_clue=slug_clue,
+                expires_at=expires_at,
+                ttl_seconds=ttl_seconds,
+            )
+        except ValidationError as exc:
+            errors = exc.errors(include_url=False, include_input=False)
+            first: dict[str, Any] = dict(errors[0]) if errors else {}
+            raise PluginValidationError(
+                code="invalid_params",
+                message=str(first.get("msg") or "invalid input")[:300],
+                data={"errors": errors},
+            ) from exc
+        tool = MemoryWriteAsyncTool()
+        out = await self._invoke_tool(tool, ctx, inp)
+        assert isinstance(out, MemoryWriteAsyncOutput)
+        return out.model_dump(mode="json")
+
+    async def write_batch(
+        self,
+        memories: list[dict[str, Any]],
+        *,
+        on_error: Literal["continue", "fail_all"] = "continue",
+    ) -> list[dict[str, Any]]:
+        """Batch-write N memories in one round-trip.
+
+        Returns one result entry per input dict. Each entry is the substrate's
+        `_BatchEntryResult` dict-form. Aggregate metadata (`written_count`,
+        `failed_count`, `request_id`) is deliberately dropped at the SDK
+        boundary per DA `04da8d62` §3.1 (same discipline as refs counts) —
+        per-entry result array is the SDK contract.
+
+        Per-entry quota: each memory counts individually against
+        writes_per_minute + embed_tokens_daily. Mid-batch quota exhaustion
+        fails the remaining entries with per-entry quota_exceeded errors.
+
+        Substrate-inherited bounds: memories list must be 1..200 entries.
+        Empty list or 201-entry raises PluginValidationError(code="invalid_params").
+        """
+        from mem_mcp.mcp.tools.write_batch import (
+            MemoryWriteBatchInput,
+            MemoryWriteBatchOutput,
+            MemoryWriteBatchTool,
+        )
+
+        ctx = self._build_ctx(scope="memory.write")
+        try:
+            inp = MemoryWriteBatchInput(memories=memories, on_error=on_error)  # type: ignore[arg-type]
+        except ValidationError as exc:
+            # Per-entry error path is nested (memories.0.content style);
+            # passed through verbatim in data["errors"] per DA 04da8d62 ruling.
+            errors = exc.errors(include_url=False, include_input=False)
+            first: dict[str, Any] = dict(errors[0]) if errors else {}
+            raise PluginValidationError(
+                code="invalid_params",
+                message=str(first.get("msg") or "invalid input")[:300],
+                data={"errors": errors},
+            ) from exc
+        tool = MemoryWriteBatchTool()
+        out = await self._invoke_tool(tool, ctx, inp)
+        assert isinstance(out, MemoryWriteBatchOutput)
+        return [r.model_dump(mode="json") for r in out.results]

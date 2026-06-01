@@ -125,6 +125,9 @@ class MemoryClient(Protocol):
         parent_id: UUID | None = None,
         indexable: bool = True,
         references: list[ReferenceInput] | None = None,
+        slug_clue: str | None = None,
+        expires_at: datetime | None = None,
+        ttl_seconds: int | None = None,
     ) -> UUID: ...
 
     async def search(
@@ -174,6 +177,70 @@ class MemoryClient(Protocol):
         tags_op: Literal["replace", "add", "remove"] = "replace",
         type: str | None = None,
     ) -> dict[str, Any]: ...
+
+    # ── Tier-2 SDK parity additions (per DA spec 988ba555 + 04da8d62) ──────
+
+    async def refs_in(
+        self,
+        memory_id: UUID,
+    ) -> list[dict[str, Any]]: ...
+
+    async def refs_out(
+        self,
+        memory_id: UUID,
+    ) -> list[dict[str, Any]]: ...
+
+    async def slug_lookup(
+        self,
+        *,
+        team_id: UUID,
+        resource_type: Literal["decision", "fact"],
+        slug: str,
+    ) -> dict[str, Any] | None: ...
+
+    async def write_async(
+        self,
+        content: str,
+        *,
+        type: str = "note",
+        tags: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
+        parent_id: UUID | None = None,
+        indexable: bool = True,
+        references: list[ReferenceInput] | None = None,
+        slug_clue: str | None = None,
+        expires_at: datetime | None = None,
+        ttl_seconds: int | None = None,
+    ) -> dict[str, Any]:
+        """Fire-and-forget memory write. Returns an envelope
+        {request_id, queued_at, estimated_consistency_by} immediately;
+        actual persistence happens on the async-write drain (~5s eventual
+        consistency window).
+
+        NO read-your-own-write in the same session — if you need the new
+        memory's id downstream in the same turn, use sync `write()` instead.
+        This is enforced at the substrate layer; the SDK cannot fake it.
+        """
+        ...
+
+    async def write_batch(
+        self,
+        memories: list[dict[str, Any]],
+        *,
+        on_error: Literal["continue", "fail_all"] = "continue",
+    ) -> list[dict[str, Any]]:
+        """Batch-write N memories. Returns one result entry per input dict.
+        Each entry is `{ok, id?, error?}` per substrate `_BatchEntryResult`.
+
+        Per-entry quota: each memory counts individually against
+        writes_per_minute + embed_tokens_daily. Mid-batch quota exhaustion
+        fails the remaining entries with quota_exceeded.
+
+        Substrate constraint (inherited into SDK contract): memories list
+        must be 1..200 entries. Empty list or oversize raises
+        `PluginValidationError(code="invalid_params")`.
+        """
+        ...
 
 
 class PluginValidationError(Exception):

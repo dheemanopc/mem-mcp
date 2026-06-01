@@ -148,6 +148,9 @@ class TestProtocolsRuntimeCheckable:
             parent_id: UUID | None = None,
             indexable: bool = True,
             references: Any = None,
+            slug_clue: str | None = None,
+            expires_at: Any = None,
+            ttl_seconds: int | None = None,
         ) -> UUID:
             return uuid4()
 
@@ -202,6 +205,42 @@ class TestProtocolsRuntimeCheckable:
             type: str | None = None,
         ) -> dict[str, Any]:
             return {}
+
+        # Tier-2 additions per DA spec `988ba555` + ratification `04da8d62`.
+        async def refs_in(self, memory_id: UUID) -> list[dict[str, Any]]:
+            return []
+
+        async def refs_out(self, memory_id: UUID) -> list[dict[str, Any]]:
+            return []
+
+        async def slug_lookup(
+            self, *, team_id: UUID, resource_type: str, slug: str
+        ) -> dict[str, Any] | None:
+            return None
+
+        async def write_async(
+            self,
+            content: str,
+            *,
+            type: str = "note",
+            tags: list[str] | None = None,
+            metadata: dict[str, Any] | None = None,
+            parent_id: UUID | None = None,
+            indexable: bool = True,
+            references: Any = None,
+            slug_clue: str | None = None,
+            expires_at: Any = None,
+            ttl_seconds: int | None = None,
+        ) -> dict[str, Any]:
+            return {}
+
+        async def write_batch(
+            self,
+            memories: list[dict[str, Any]],
+            *,
+            on_error: str = "continue",
+        ) -> list[dict[str, Any]]:
+            return []
 
     class StubPermissionResolver:
         async def has(self, permission: Permission, *, team_id: UUID | None = None) -> bool:
