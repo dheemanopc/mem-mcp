@@ -81,9 +81,18 @@ async def resolve_reference_target(
         ReferenceTargetNotFoundError: target absent OR caller has no access.
         ValueError: invalid combination of args.
     """
+    # Under `system_tx` (the caller's typical wrapper) the GUC is unset and
+    # memories_select RLS filters every row out (NULL OR FALSE). Set the GUC
+    # to the caller's tenant so RLS's same-tenant clause lets own-tenant rows
+    # through; the helper below then enforces the actual access predicate
+    # (same-tenant OR UEA-membership). LOCAL scope — resets on tx end.
+    await conn.execute(
+        "SELECT set_config('app.current_tenant_id', $1, true)",
+        str(caller_user_id),
+    )
     if target_uuid is not None:
         row = await conn.fetchrow(
-            "SELECT id, team_id, tenant_id FROM memories " "WHERE id = $1 AND deleted_at IS NULL",
+            "SELECT id, team_id, tenant_id FROM memories WHERE id = $1 AND deleted_at IS NULL",
             target_uuid,
         )
     elif (
@@ -218,6 +227,14 @@ async def check_hard_delete_with_filtered_citers(
 
     Returns silently when zero inbound refs (caller proceeds with delete).
     """
+    # Under `system_tx` the GUC is unset and memories_select RLS filters the
+    # JOIN rows out. Set the GUC to the caller's tenant so RLS lets through
+    # same-tenant + team-readable citers; the per-row helper then enforces
+    # access. LOCAL scope — resets on tx end.
+    await conn.execute(
+        "SELECT set_config('app.current_tenant_id', $1, true)",
+        str(caller_user_id),
+    )
     rows = await conn.fetch(
         """
         SELECT mr.source_memory_id,

@@ -43,6 +43,14 @@ class RefsOutTool(BaseTool):
     async def __call__(self, ctx: ToolContext, inp: BaseModel) -> BaseModel:
         assert isinstance(inp, RefsOutInput)
         async with system_tx(ctx.db_pool) as conn:
+            # Under `system_tx` the GUC is unset and the LEFT JOIN with memories
+            # RLS-filters target rows to NULL. Set the GUC to the caller's tenant
+            # so same-tenant targets come through; the per-row helper then gates
+            # access. LOCAL scope — resets on tx end.
+            await conn.execute(
+                "SELECT set_config('app.current_tenant_id', $1, true)",
+                str(ctx.tenant_id),
+            )
             raw = await get_outbound_refs(conn, source_memory_id=inp.memory_id)
 
             accessible: list[OutboundRef] = []
