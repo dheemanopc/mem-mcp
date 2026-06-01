@@ -13,6 +13,14 @@ existence across team boundaries. Both "not found" and "no access" surface
 the same error code + same message + (ideally) same DB query count to
 prevent timing/probe attacks.
 
+Access predicate (per migration 0035 `can_access_team_resource`): same-tenant
+OR UEA-membership. Mirrors the semantics of the read-time memories_select
+RLS (migration 0033) so a memory the caller can read is also one they can
+reference. Per DA ratification f74663a6 §A(2), the team-membership clause
+is UEA-based (DAG-reachable) rather than current_user_active_team_ids()-based
+(direct membership) — the writer is strictly more permissive than the reader
+on the second clause; eventual convergence is tracked as a follow-up.
+
 Hard-delete protection: BEFORE-DELETE check; if any inbound refs exist,
 returns the structured citer list FILTERED to the caller's accessible
 teams. Inaccessible citers contribute to an aggregate count only.
@@ -64,15 +72,10 @@ async def resolve_reference_target(
       (a) target_uuid given → SELECT FROM memories.
       (b) (target_team_id, target_resource_type, target_slug) given → SELECT FROM slugs.
 
-    Access check: caller MUST have an active user_effective_team_access row
-    for the target's team. Failure (target absent OR access denied) raises
-    the SAME ReferenceTargetNotFoundError — caller cannot distinguish.
-
-    NOTE on tenant scoping: this helper queries `memories` ACROSS tenants
-    because a reference can legitimately point at a memory owned by a
-    DIFFERENT tenant in a shared/cross-team context. The opaque visibility
-    contract is enforced via user_effective_team_access (below), not via a
-    same-tenant filter.
+    Access predicate via `can_access_team_resource(caller, target.tenant_id,
+    target.team_id)`: same-tenant OR UEA-membership. Failure (target absent
+    OR access denied) raises the SAME ReferenceTargetNotFoundError — caller
+    cannot distinguish (IT-08 contract).
 
     Raises:
         ReferenceTargetNotFoundError: target absent OR caller has no access.
@@ -80,7 +83,7 @@ async def resolve_reference_target(
     """
     if target_uuid is not None:
         row = await conn.fetchrow(
-            "SELECT id, team_id FROM memories WHERE id = $1 AND deleted_at IS NULL",
+            "SELECT id, team_id, tenant_id FROM memories " "WHERE id = $1 AND deleted_at IS NULL",
             target_uuid,
         )
     elif (
@@ -88,7 +91,7 @@ async def resolve_reference_target(
     ):
         row = await conn.fetchrow(
             """
-            SELECT m.id, m.team_id
+            SELECT m.id, m.team_id, m.tenant_id
             FROM slugs s
             JOIN memories m ON m.id = s.memory_id
             WHERE s.team_id = $1 AND s.resource_type = $2 AND s.slug = $3
@@ -106,18 +109,14 @@ async def resolve_reference_target(
     if row is None:
         raise ReferenceTargetNotFoundError("reference target not found or not accessible")
 
-    # Access check: opaque-fail for cross-team unreadable.
-    if row["team_id"] is not None:
-        access = await conn.fetchval(
-            """
-            SELECT 1 FROM user_effective_team_access
-             WHERE user_id = $1 AND resource_team_id = $2
-            """,
-            caller_user_id,
-            row["team_id"],
-        )
-        if access is None:
-            raise ReferenceTargetNotFoundError("reference target not found or not accessible")
+    allowed = await conn.fetchval(
+        "SELECT can_access_team_resource($1, $2, $3)",
+        caller_user_id,
+        row["tenant_id"],
+        row["team_id"],
+    )
+    if not allowed:
+        raise ReferenceTargetNotFoundError("reference target not found or not accessible")
 
     return {"memory_id": row["id"], "team_id": row["team_id"]}
 
@@ -159,14 +158,18 @@ async def get_inbound_refs(
 ) -> list[dict[str, Any]]:
     """Backward graph: every reference that targets this memory_id.
 
-    No access filtering here — caller layers it on top via filter_citers_by_access.
+    Joins source memory to surface source_team_id + source_tenant_id so
+    callers can run access predicates without per-row lookups. No access
+    filtering here — caller layers it on top.
     """
     rows = await conn.fetch(
         """
-        SELECT source_memory_id, target_memory_id, target_team_id,
-               target_fragment, reference_kind, refs_version, created_at
-        FROM memory_references
-        WHERE target_memory_id = $1
+        SELECT mr.source_memory_id, mr.target_memory_id, mr.target_team_id,
+               mr.target_fragment, mr.reference_kind, mr.refs_version, mr.created_at,
+               sm.team_id AS source_team_id, sm.tenant_id AS source_tenant_id
+        FROM memory_references mr
+        LEFT JOIN memories sm ON sm.id = mr.source_memory_id
+        WHERE mr.target_memory_id = $1
         """,
         target_memory_id,
     )
@@ -178,13 +181,21 @@ async def get_outbound_refs(
     *,
     source_memory_id: UUID,
 ) -> list[dict[str, Any]]:
-    """Forward graph: every reference this memory makes."""
+    """Forward graph: every reference this memory makes.
+
+    Joins target memory to surface target_tenant_id so callers can run
+    access predicates without per-row lookups. (target_team_id is already
+    on memory_references.) LEFT JOIN handles the rare hard-deleted-target
+    case — target_tenant_id IS NULL falls through to UEA check.
+    """
     rows = await conn.fetch(
         """
-        SELECT source_memory_id, target_memory_id, target_team_id,
-               target_fragment, reference_kind, refs_version, created_at
-        FROM memory_references
-        WHERE source_memory_id = $1
+        SELECT mr.source_memory_id, mr.target_memory_id, mr.target_team_id,
+               mr.target_fragment, mr.reference_kind, mr.refs_version, mr.created_at,
+               tm.tenant_id AS target_tenant_id
+        FROM memory_references mr
+        LEFT JOIN memories tm ON tm.id = mr.target_memory_id
+        WHERE mr.source_memory_id = $1
         """,
         source_memory_id,
     )
@@ -200,23 +211,18 @@ async def check_hard_delete_with_filtered_citers(
     """Raise HardDeleteBlockedError if inbound refs exist.
 
     Per amendment #17: the error's citer list is FILTERED to only memory UUIDs
-    in teams the caller can read. Inaccessible citers contribute to an aggregate
-    count only — caller never learns their UUIDs OR which teams they're in.
+    the caller can access via can_access_team_resource (same-tenant OR
+    UEA-membership). Inaccessible citers contribute to an aggregate count
+    only — caller never learns their UUIDs OR which teams they're in.
     Preserves the cross-team opaque-existence model.
 
     Returns silently when zero inbound refs (caller proceeds with delete).
-
-    NOTE on tenant scoping: this helper deliberately queries `memories` ACROSS
-    tenants. Filtering by the caller's tenant_id would defeat the entire
-    purpose — we WANT to count cross-tenant citers as "inaccessible_count"
-    rather than hide them. The cross-tenant visibility-gating happens at the
-    application layer via user_effective_team_access (the per-citer access
-    check below). The tenant-scope linter's intent is satisfied because we
-    never EXPOSE cross-tenant data — only its count.
     """
     rows = await conn.fetch(
         """
-        SELECT mr.source_memory_id, m.team_id AS source_team_id
+        SELECT mr.source_memory_id,
+               m.team_id AS source_team_id,
+               m.tenant_id AS source_tenant_id
         FROM memory_references mr
         JOIN memories m ON m.id = mr.source_memory_id
         WHERE mr.target_memory_id = $1
@@ -226,17 +232,16 @@ async def check_hard_delete_with_filtered_citers(
     if not rows:
         return
 
-    # Per-citer access check via user_effective_team_access lookup.
     accessible: list[UUID] = []
     inaccessible_count = 0
     for r in rows:
-        access = await conn.fetchval(
-            "SELECT 1 FROM user_effective_team_access "
-            "WHERE user_id = $1 AND resource_team_id = $2",
+        allowed = await conn.fetchval(
+            "SELECT can_access_team_resource($1, $2, $3)",
             caller_user_id,
+            r["source_tenant_id"],
             r["source_team_id"],
         )
-        if access is not None:
+        if allowed:
             accessible.append(r["source_memory_id"])
         else:
             inaccessible_count += 1
