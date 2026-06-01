@@ -141,7 +141,9 @@ class TestItRv1NaturalPath:
                 citer_id = await sdk.write(
                     content="citer memory with reference",
                     type="note",
-                    references=[ReferenceInput(target_uuid=UUID(str(target_id)), reference_kind="cites")],
+                    references=[
+                        ReferenceInput(target_uuid=UUID(str(target_id)), reference_kind="cites")
+                    ],
                 )
                 assert citer_id is not None
 
@@ -179,7 +181,9 @@ class TestItRv1NaturalPath:
                     await sdk_t1.write(
                         content="t1 cross-tenant citer",
                         type="note",
-                        references=[ReferenceInput(target_uuid=UUID(str(m2)), reference_kind="cites")],
+                        references=[
+                            ReferenceInput(target_uuid=UUID(str(m2)), reference_kind="cites")
+                        ],
                     )
                 assert exc.value.code == "memory_not_accessible"
             finally:
