@@ -48,13 +48,13 @@ class RefsOutTool(BaseTool):
             accessible: list[OutboundRef] = []
             inaccessible_count = 0
             for r in raw:
-                access = await conn.fetchval(
-                    "SELECT 1 FROM user_effective_team_access "
-                    "WHERE user_id = $1 AND resource_team_id = $2",
+                allowed = await conn.fetchval(
+                    "SELECT can_access_team_resource($1, $2, $3)",
                     ctx.tenant_id,
+                    r["target_tenant_id"],
                     r["target_team_id"],
                 )
-                if access is None:
+                if not allowed:
                     inaccessible_count += 1
                     continue
                 accessible.append(

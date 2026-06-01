@@ -45,24 +45,16 @@ class RefsInTool(BaseTool):
         async with system_tx(ctx.db_pool) as conn:
             raw = await get_inbound_refs(conn, target_memory_id=inp.memory_id)
 
-            # Filter by caller access to each source's team
             accessible: list[InboundRef] = []
             inaccessible_count = 0
             for r in raw:
-                # Look up source's team
-                src_team = await conn.fetchval(
-                    "SELECT team_id FROM memories WHERE id = $1", r["source_memory_id"]
-                )
-                if src_team is None:
-                    inaccessible_count += 1
-                    continue
-                access = await conn.fetchval(
-                    "SELECT 1 FROM user_effective_team_access "
-                    "WHERE user_id = $1 AND resource_team_id = $2",
+                allowed = await conn.fetchval(
+                    "SELECT can_access_team_resource($1, $2, $3)",
                     ctx.tenant_id,
-                    src_team,
+                    r["source_tenant_id"],
+                    r["source_team_id"],
                 )
-                if access is None:
+                if not allowed:
                     inaccessible_count += 1
                     continue
                 accessible.append(
