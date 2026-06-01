@@ -77,9 +77,7 @@ class TestIt08WriteWithReferences:
             await sdk.write(
                 "source",
                 type="note",
-                references=[
-                    ReferenceInput(target_uuid=uuid4(), reference_kind="derived-from")
-                ],
+                references=[ReferenceInput(target_uuid=uuid4(), reference_kind="derived-from")],
             )
 
         # Now the "no-access" cross-team case

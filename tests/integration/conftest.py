@@ -62,14 +62,12 @@ async def multi_tenant_team_setup(pg_pool: Any) -> AsyncIterator[MultiTeamSetup]
             )
 
             team_a = await conn.fetchval(
-                "INSERT INTO teams (name, created_by_tenant_id) "
-                "VALUES ($1, $2) RETURNING id",
+                "INSERT INTO teams (name, created_by_tenant_id) " "VALUES ($1, $2) RETURNING id",
                 f"it08-team-a-{uuid4()}",
                 tenant_a,
             )
             team_b = await conn.fetchval(
-                "INSERT INTO teams (name, created_by_tenant_id) "
-                "VALUES ($1, $2) RETURNING id",
+                "INSERT INTO teams (name, created_by_tenant_id) " "VALUES ($1, $2) RETURNING id",
                 f"it08-team-b-{uuid4()}",
                 tenant_b,
             )
@@ -89,6 +87,26 @@ async def multi_tenant_team_setup(pg_pool: Any) -> AsyncIterator[MultiTeamSetup]
                 member_id=tenant_b,
                 role_key="member",
                 assigned_by_user_id=tenant_b,
+            )
+
+            # Primary identities with default_team_id so the write tool can
+            # auto-resolve team when caller doesn't pass team_id explicitly
+            # (per DA OUT-1, team_id is NOT on the SDK write Protocol).
+            await conn.execute(
+                """
+                INSERT INTO tenant_identities
+                (tenant_id, cognito_sub, provider, email, is_primary, default_team_id)
+                VALUES ($1, $2, 'cognito', $3, true, $4),
+                       ($5, $6, 'cognito', $7, true, $8)
+                """,
+                tenant_a,
+                f"sub-it08-a-{tenant_a}",
+                f"it08-a-{tenant_a}@example.test",
+                team_a,
+                tenant_b,
+                f"sub-it08-b-{tenant_b}",
+                f"it08-b-{tenant_b}@example.test",
+                team_b,
             )
 
             mem_a = await conn.fetchval(
@@ -125,12 +143,55 @@ async def multi_tenant_team_setup(pg_pool: Any) -> AsyncIterator[MultiTeamSetup]
     try:
         yield setup_data
     finally:
-        # Cleanup: cascade-delete tenants (cascades to teams, memories, role assignments)
+        # FK-safe cleanup ordering — teams.created_by_tenant_id has no
+        # CASCADE, so delete tables that reference tenants first, then teams,
+        # then tenants. Wrap in a separate transaction since fixture teardown
+        # runs after the test's tx has closed.
+        tids = [setup_data.tenant_a, setup_data.tenant_b]
+        team_ids = [setup_data.team_a, setup_data.team_b]
         async with pg_pool.acquire() as conn:
-            await conn.execute(
-                "DELETE FROM tenants WHERE id = ANY($1::uuid[])",
-                [setup_data.tenant_a, setup_data.tenant_b],
-            )
+            async with conn.transaction():
+                # Refs first (memory_references → memories FK)
+                await conn.execute(
+                    """
+                    DELETE FROM memory_references
+                    WHERE source_team_id = ANY($1::uuid[])
+                       OR target_team_id = ANY($1::uuid[])
+                    """,
+                    team_ids,
+                )
+                # Memories (memories → tenants FK CASCADE; we ensure here to
+                # also drop the SDK-written memories in tenant_a's tx that
+                # share tenant_id but not the original setup ids)
+                await conn.execute(
+                    "DELETE FROM memories WHERE tenant_id = ANY($1::uuid[])",
+                    tids,
+                )
+                # Slug rows for the test teams
+                await conn.execute(
+                    "DELETE FROM slugs WHERE team_id = ANY($1::uuid[])",
+                    team_ids,
+                )
+                # Role assignments (team_role_assignments → teams FK)
+                await conn.execute(
+                    "DELETE FROM team_role_assignments WHERE parent_team_id = ANY($1::uuid[])",
+                    team_ids,
+                )
+                # Identities (tenant_identities → tenants FK)
+                await conn.execute(
+                    "DELETE FROM tenant_identities WHERE tenant_id = ANY($1::uuid[])",
+                    tids,
+                )
+                # Teams (teams.created_by_tenant_id → tenants FK; no cascade)
+                await conn.execute(
+                    "DELETE FROM teams WHERE id = ANY($1::uuid[])",
+                    team_ids,
+                )
+                # Finally tenants
+                await conn.execute(
+                    "DELETE FROM tenants WHERE id = ANY($1::uuid[])",
+                    tids,
+                )
 
 
 @pytest.fixture

@@ -167,15 +167,21 @@ class MemoryWriteAsyncTool(BaseTool):
                         ref.target_slug,
                     )
                 if exists is None:
+                    # IT-08 opaque per ratification 70b43c08; mirror the
+                    # write.py polish from PR #299 so the Plugin SDK
+                    # _invoke_tool wrapper produces a clean
+                    # PluginValidationError(code="memory_not_accessible")
+                    # instead of falling back to "jsonrpc_-32602".
                     raise JsonRpcError(
                         -32602,
                         "reference target not found",
                         data={
+                            "code": "memory_not_accessible",
                             "errors": [
                                 {
                                     "path": f"references[{i}]",
                                     "message": "reference target does not exist at submit time",
                                 }
-                            ]
+                            ],
                         },
                     )
