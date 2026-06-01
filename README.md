@@ -52,6 +52,34 @@ poetry run pytest tests/unit/test_<file>.py -v
 MEM_MCP_TEST_DSN=postgresql://localhost/mem_mcp_test poetry run pytest --live-aws
 ```
 
+### Local integration-test database (pgvector)
+
+The `tests/integration/` suite skips when `MEM_MCP_TEST_DSN` is unset. A
+helper script spins up a pgvector container mirroring the CI service
+container, runs migrations, and prints the DSN exports:
+
+```bash
+# Bring up Postgres 16 + pgvector + run alembic upgrade head
+./scripts/test-db.sh up
+
+# Run the integration suite against it
+./scripts/test-db.sh test
+
+# ...or run pytest yourself after exporting the DSN
+eval "$(./scripts/test-db.sh dsn)"
+poetry run pytest tests/integration -v
+
+# Reset to a fresh DB
+./scripts/test-db.sh reset
+
+# Tear down (deletes the named volume — clean slate)
+./scripts/test-db.sh down
+```
+
+The setup mirrors `.github/workflows/integration.yml` exactly (same image,
+same credentials, same DB name), so a green local run faithfully predicts
+the CI integration job.
+
 ## Engineering guidelines
 
 See [GUIDELINES.md](./GUIDELINES.md). TL;DR:
