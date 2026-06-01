@@ -74,6 +74,12 @@ def _mint_jwt(tenant_id: UUID) -> str:
 async def pg_pool() -> AsyncIterator[Any]:
     """Live Postgres connection pool (skips when MEM_MCP_TEST_DSN unset).
 
+    Uses the same `_init_connection` as `mem_mcp.db.pool.init_pool` so the
+    pgvector + jsonb text codecs register correctly. Without these, any
+    test that exercises the real `MemoryWriteTool` path fails with
+    `expected str, got list` when asyncpg tries to bind a `list[float]`
+    embedding to a `vector` column. Matches prod pool config.
+
     Usage: use with tenant_tx() or system_tx() to run queries.
     """
     dsn = os.environ.get("MEM_MCP_TEST_DSN")
@@ -81,7 +87,14 @@ async def pg_pool() -> AsyncIterator[Any]:
         pytest.skip("MEM_MCP_TEST_DSN env not set; skipping live-DB test")
     import asyncpg  # type: ignore[import-untyped]
 
-    pool = await asyncpg.create_pool(dsn=dsn, min_size=1, max_size=4)
+    from mem_mcp.db.pool import _init_connection
+
+    pool = await asyncpg.create_pool(
+        dsn=dsn,
+        min_size=1,
+        max_size=4,
+        init=_init_connection,
+    )
     try:
         yield pool
     finally:
