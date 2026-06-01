@@ -109,6 +109,24 @@ async def multi_tenant_team_setup(pg_pool: Any) -> AsyncIterator[MultiTeamSetup]
                 team_b,
             )
 
+            # oauth_clients row matching the SDK's synthetic client_id
+            # (MemoryClientImpl uses `client_id=f"plugin:{plugin_id}"`).
+            # memories.source_client_id has a FK to oauth_clients.id, so
+            # writes from the SDK need this row to exist. Production
+            # plugin installers create this row; in tests we synthesize.
+            # Inserted with INSERT ... ON CONFLICT DO NOTHING so two
+            # concurrent test setups with the same plugin_id don't collide.
+            await conn.execute(
+                """
+                INSERT INTO oauth_clients
+                (id, redirect_uris, scope, registration_payload, review_status)
+                VALUES ($1, ARRAY[]::text[], 'memory.read memory.write',
+                        '{}'::jsonb, 'auto_allowed')
+                ON CONFLICT (id) DO NOTHING
+                """,
+                "plugin:it08-test",
+            )
+
             mem_a = await conn.fetchval(
                 "INSERT INTO memories (tenant_id, team_id, content, content_hash, "
                 "embedding, source_kind, type, visibility) "
