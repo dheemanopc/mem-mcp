@@ -187,17 +187,18 @@ async def multi_tenant_team_setup(pg_pool: Any) -> AsyncIterator[MultiTeamSetup]
                     team_ids,
                     tids,
                 )
-                # Memories (memories → tenants FK CASCADE; we ensure here to
-                # also drop the SDK-written memories in tenant_a's tx that
-                # share tenant_id but not the original setup ids)
-                await conn.execute(
-                    "DELETE FROM memories WHERE tenant_id = ANY($1::uuid[])",
-                    tids,
-                )
-                # Slug rows for the test teams
+                # Slugs FIRST — slugs.memory_id FK has ON DELETE RESTRICT
+                # (or similar), so deleting memories before slugs fails.
                 await conn.execute(
                     "DELETE FROM slugs WHERE team_id = ANY($1::uuid[])",
                     team_ids,
+                )
+                # Memories (memories → tenants FK CASCADE; we explicit-delete
+                # to also drop the SDK-written memories whose ids weren't in
+                # the original fixture setup)
+                await conn.execute(
+                    "DELETE FROM memories WHERE tenant_id = ANY($1::uuid[])",
+                    tids,
                 )
                 # Role assignments (team_role_assignments → teams FK)
                 await conn.execute(
