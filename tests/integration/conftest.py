@@ -151,14 +151,23 @@ async def multi_tenant_team_setup(pg_pool: Any) -> AsyncIterator[MultiTeamSetup]
         team_ids = [setup_data.team_a, setup_data.team_b]
         async with pg_pool.acquire() as conn:
             async with conn.transaction():
-                # Refs first (memory_references → memories FK)
+                # Refs first (memory_references → memories FK).
+                # Schema has target_team_id only (no source_team_id) —
+                # filtering by target works; for full coverage we also
+                # delete by memories.tenant_id of either side via subquery.
                 await conn.execute(
                     """
                     DELETE FROM memory_references
-                    WHERE source_team_id = ANY($1::uuid[])
-                       OR target_team_id = ANY($1::uuid[])
+                    WHERE target_team_id = ANY($1::uuid[])
+                       OR source_memory_id IN (
+                           SELECT id FROM memories WHERE tenant_id = ANY($2::uuid[])
+                       )
+                       OR target_memory_id IN (
+                           SELECT id FROM memories WHERE tenant_id = ANY($2::uuid[])
+                       )
                     """,
                     team_ids,
+                    tids,
                 )
                 # Memories (memories → tenants FK CASCADE; we ensure here to
                 # also drop the SDK-written memories in tenant_a's tx that

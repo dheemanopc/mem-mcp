@@ -129,16 +129,18 @@ class TestRefsTraversalOpacity:
 
         # Inject a memory_references row directly (bypass IT-08 check) so
         # we can verify the SDK-side filtering when traversing the graph.
+        # Schema (migration 0025): source_memory_id, target_memory_id,
+        # target_team_id, target_fragment (NOT NULL DEFAULT -1),
+        # reference_kind, refs_version. No source_team_id.
         async with pg_pool.acquire() as conn:
             await conn.execute(
                 """
                 INSERT INTO memory_references
-                (source_memory_id, source_team_id, target_memory_id,
+                (source_memory_id, target_memory_id,
                  target_team_id, target_fragment, reference_kind, refs_version)
-                VALUES ($1, $2, $3, $4, NULL, 'derived-from', '1')
+                VALUES ($1, $2, $3, -1, 'derived-from', 'pinned')
                 """,
                 source_id,
-                multi_tenant_team_setup.team_a,
                 multi_tenant_team_setup.memory_in_team_b,
                 multi_tenant_team_setup.team_b,
             )
