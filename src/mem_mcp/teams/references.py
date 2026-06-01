@@ -83,8 +83,7 @@ async def resolve_reference_target(
     """
     if target_uuid is not None:
         row = await conn.fetchrow(
-            "SELECT id, team_id, tenant_id FROM memories "
-            "WHERE id = $1 AND deleted_at IS NULL",
+            "SELECT id, team_id, tenant_id FROM memories " "WHERE id = $1 AND deleted_at IS NULL",
             target_uuid,
         )
     elif (

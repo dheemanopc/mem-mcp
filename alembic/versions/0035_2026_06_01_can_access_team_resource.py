@@ -78,13 +78,10 @@ $$;
     )
     op.execute(
         sa.text(
-            "GRANT EXECUTE ON FUNCTION "
-            "can_access_team_resource(uuid, uuid, uuid) TO mem_app"
+            "GRANT EXECUTE ON FUNCTION " "can_access_team_resource(uuid, uuid, uuid) TO mem_app"
         )
     )
 
 
 def downgrade() -> None:
-    op.execute(
-        sa.text("DROP FUNCTION IF EXISTS can_access_team_resource(uuid, uuid, uuid)")
-    )
+    op.execute(sa.text("DROP FUNCTION IF EXISTS can_access_team_resource(uuid, uuid, uuid)"))

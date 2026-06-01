@@ -236,8 +236,7 @@ async def _seed_natural_path(conn: asyncpg.Connection) -> dict[str, Any]:
     )
     # Verify UEA is EMPTY for (tenant, team) — guards the test premise.
     uea_row = await conn.fetchval(
-        "SELECT 1 FROM user_effective_team_access "
-        "WHERE user_id = $1 AND resource_team_id = $2",
+        "SELECT 1 FROM user_effective_team_access " "WHERE user_id = $1 AND resource_team_id = $2",
         tenant_id,
         team_id,
     )

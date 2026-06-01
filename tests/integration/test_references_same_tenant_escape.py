@@ -79,8 +79,7 @@ async def _natural_path_setup(conn: Any) -> dict[str, Any]:
     )
     # Guard the fixture premise: UEA must be empty for (tenant, team).
     uea = await conn.fetchval(
-        "SELECT 1 FROM user_effective_team_access "
-        "WHERE user_id = $1 AND resource_team_id = $2",
+        "SELECT 1 FROM user_effective_team_access " "WHERE user_id = $1 AND resource_team_id = $2",
         tenant,
         team,
     )
@@ -102,9 +101,7 @@ async def _cleanup_natural(pool: Any, tenant: UUID, team: UUID) -> None:
             )
             await conn.execute("DELETE FROM slugs WHERE team_id = $1", team)
             await conn.execute("DELETE FROM memories WHERE tenant_id = $1", tenant)
-            await conn.execute(
-                "DELETE FROM team_role_assignments WHERE parent_team_id = $1", team
-            )
+            await conn.execute("DELETE FROM team_role_assignments WHERE parent_team_id = $1", team)
             await conn.execute("DELETE FROM tenant_identities WHERE tenant_id = $1", tenant)
             await conn.execute("DELETE FROM teams WHERE id = $1", team)
             await conn.execute("DELETE FROM tenants WHERE id = $1", tenant)
@@ -121,15 +118,15 @@ class TestItRv1NaturalPath:
                 setup = await _natural_path_setup(conn)
             try:
                 tenant = setup["tenant"]
-                team = setup["team"]
 
                 sdk = sdk_client_factory(tenant_id=tenant, plugin_id="natural-path-test")
 
                 # Step 2: Write target memory M1 via SDK.
+                # SDK auto-resolves team_id from tenant_identities.default_team_id
+                # (which the natural-path fixture set to `team`).
                 target_id = await sdk.write(
                     content="target memory for ref",
                     type="note",
-                    team_id=team,
                 )
                 assert target_id is not None
 
@@ -144,7 +141,6 @@ class TestItRv1NaturalPath:
                 citer_id = await sdk.write(
                     content="citer memory with reference",
                     type="note",
-                    team_id=team,
                     references=[ReferenceInput(target_uuid=UUID(str(target_id)))],
                 )
                 assert citer_id is not None
@@ -175,7 +171,6 @@ class TestItRv1NaturalPath:
                 m2 = await sdk_t2.write(
                     content="t2 target",
                     type="note",
-                    team_id=t2["team"],
                 )
 
                 # T1 attempts a reference to T2's memory → MUST opaque-reject.
@@ -184,7 +179,6 @@ class TestItRv1NaturalPath:
                     await sdk_t1.write(
                         content="t1 cross-tenant citer",
                         type="note",
-                        team_id=t1["team"],
                         references=[ReferenceInput(target_uuid=UUID(str(m2)))],
                     )
                 assert exc.value.code == "memory_not_accessible"
@@ -210,9 +204,8 @@ class TestCarveOutRegressionLocks:
             resource_type="decision",
             slug="any-slug-that-may-or-may-not-exist",
         )
-        # Opaque carve-out: returns None envelope (memory_id=None) regardless
-        # of whether the slug exists. IT-08 contract preserved at this gate.
-        assert result.get("memory_id") is None
+        # Opaque carve-out: returns None (per IT-08 contract preserved at this gate).
+        assert result is None
 
     async def test_site6_get_batch_slug_path_still_uea_gated(
         self, pg_pool: Any, multi_tenant_team_setup: Any, sdk_client_factory: Any
