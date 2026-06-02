@@ -1,0 +1,41 @@
+# AWS overlay for the mem-mcp stack.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.aws.yml up
+#
+# What it changes vs. the base (local) stack:
+#   - Turns OFF the SSM bypass so config is loaded from /mem-mcp/* in SSM
+#     Parameter Store (env still overrides any field you set explicitly).
+#   - Passes AWS credentials/region through to the app services so Cognito JWT
+#     verification, Bedrock embeddings, SES, and SSM all work.
+#
+# Credentials: set AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY in .env, OR mount
+# your shared config (uncomment the volume below), OR run on an EC2/ECS task
+# with an instance/task role (no creds needed — boto3 picks them up).
+#
+# Database: for a real deployment point MEM_MCP_DB_DSN / MEM_MCP_DB_MAINT_DSN
+# at RDS in .env and drop the local postgres (e.g. `--scale postgres=0`, and
+# set MEM_MCP_SKIP_DB_WAIT=1 if you don't want the wait against RDS).
+
+x-aws-env: &aws-env
+  # Empty string is falsey → config falls through to SSM.
+  MEM_MCP_SKIP_SSM: ""
+  AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+  AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+  AWS_REGION: ${AWS_REGION:-ap-south-1}
+  AWS_DEFAULT_REGION: ${AWS_REGION:-ap-south-1}
+
+services:
+  migrate:
+    environment: *aws-env
+    # volumes:
+    #   - ${HOME}/.aws:/opt/mem-mcp/.aws:ro
+
+  api:
+    environment: *aws-env
+    # volumes:
+    #   - ${HOME}/.aws:/opt/mem-mcp/.aws:ro
+
+  jobs:
+    environment: *aws-env
+    # volumes:
+    #   - ${HOME}/.aws:/opt/mem-mcp/.aws:ro

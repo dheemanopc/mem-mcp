@@ -1,0 +1,47 @@
+# Build context hygiene for the mem-mcp app image.
+# Keep the context small + never ship secrets or local caches.
+
+.git
+.github
+**/__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+# Node / web (web/ has its own Dockerfile + build)
+web/node_modules/
+web/.next/
+web/out/
+
+# Env / secrets — never bake into an image
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+secrets/
+client_secret_*.json
+
+# Docs / infra not needed at runtime
+docs/
+infra/
+evals/
+*.md
+!README.md
+
+# Local OS / IDE
+.DS_Store
+.vscode/
+.idea/
+*.swp
+.claude/
+*.log

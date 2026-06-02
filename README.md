@@ -10,6 +10,7 @@ Personal Memory MCP — a multi-tenant memory service for AI clients (Claude Cod
 
 ## Documentation
 
+- [`docs/DOCKER.md`](./docs/DOCKER.md) — run the full stack (Postgres+pgvector, API, jobs, web, Caddy) in containers
 - [`MEMORY_MCP_BUILD_PLAN_V2.md`](./MEMORY_MCP_BUILD_PLAN_V2.md) — canonical HLD/spec
 - [`MEMORY_MCP_LLD_V1.md`](./MEMORY_MCP_LLD_V1.md) — low-level design v1 (deltas + module signatures + sequence diagrams + CFT layout + destroy plan)
 - [`TASKS_V1.md`](./TASKS_V1.md) — task list (1:1 with GitHub issues)
@@ -28,6 +29,23 @@ Open issues are the source of truth for what's next; the markdown task list mirr
 - CloudFormation + SAM for infra.
 
 See `MEMORY_MCP_LLD_V1.md` §0 for v1 simplifications relative to the spec.
+
+## Containerized stack (Docker)
+
+Run everything — Postgres+pgvector, migrations, API, jobs, web, and a Caddy
+reverse proxy — with Docker Compose:
+
+```bash
+cp .env.example .env   # edit secrets
+docker compose up --build
+# App via Caddy: http://localhost  ·  API: http://localhost:8080  ·  Web: http://localhost:8081
+```
+
+Local dev needs no AWS account for the service to boot (`MEM_MCP_SKIP_SSM=1`).
+For SSM/Cognito/Bedrock-backed config, add the AWS overlay:
+`docker compose -f docker-compose.yml -f docker-compose.aws.yml up`. Plugins
+are baked at build time (`--build-arg INSTALL_PLUGINS=true`). Full guide:
+[`docs/DOCKER.md`](./docs/DOCKER.md).
 
 ## Development quick-start
 

@@ -23,6 +23,18 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _SSM_PREFIX = "/mem-mcp/"
 
+# Truthy values for the MEM_MCP_SKIP_SSM escape hatch.
+_TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
+
+
+def _skip_ssm() -> bool:
+    """Whether to bypass SSM entirely (env-only config).
+
+    Set ``MEM_MCP_SKIP_SSM=1`` for containers / local dev that boot without
+    AWS credentials — every required field must then be supplied via env.
+    """
+    return os.environ.get("MEM_MCP_SKIP_SSM", "").strip().lower() in _TRUE_VALUES
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -115,6 +127,17 @@ class BotoSsmLoader:
         return result
 
 
+class NullSsmLoader:
+    """No-op SsmLoader that returns no parameters.
+
+    Used when ``MEM_MCP_SKIP_SSM`` is set so config comes purely from env
+    without ever constructing a boto client (no AWS credentials required).
+    """
+
+    def get_parameters_by_path(self, path: str, with_decryption: bool = True) -> dict[str, str]:
+        return {}
+
+
 def _ssm_key_to_env_key(ssm_path: str) -> str:
     """e.g. '/mem-mcp/db/password' → 'MEM_MCP_DB_PASSWORD'."""
     if not ssm_path.startswith(_SSM_PREFIX):
@@ -131,9 +154,13 @@ def get_settings(loader: SsmLoader | None = None) -> Settings:
     (or restart the process). In v1 we restart the process per GUIDELINES.
     """
     if loader is None:
-        # Production default — read region from env first if available
-        region = os.environ.get("MEM_MCP_REGION", "ap-south-1")
-        loader = BotoSsmLoader(region=region)
+        if _skip_ssm():
+            # Env-only mode (containers / local dev without AWS credentials).
+            loader = NullSsmLoader()
+        else:
+            # Production default — read region from env first if available
+            region = os.environ.get("MEM_MCP_REGION", "ap-south-1")
+            loader = BotoSsmLoader(region=region)
 
     ssm_values = loader.get_parameters_by_path(_SSM_PREFIX, with_decryption=True)
 

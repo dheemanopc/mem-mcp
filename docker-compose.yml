@@ -1,0 +1,110 @@
+# mem-mcp full stack — Postgres+pgvector, migrations, API, jobs, web, Caddy.
+#
+# Quick start (local dev, no AWS account for config):
+#   cp .env.example .env      # then edit secrets
+#   docker compose up --build
+#
+# Then:
+#   - UI / API via Caddy:   http://localhost
+#   - API direct:           http://localhost:8080  (/healthz, /mcp, ...)
+#   - Web direct:           http://localhost:8081
+#
+# AWS-backed config (SSM/Cognito/Bedrock): add the overlay —
+#   docker compose -f docker-compose.yml -f docker-compose.aws.yml up
+#
+# See docs/DOCKER.md for the full guide (plugins, jobs, AWS, RDS).
+
+x-app: &app
+  image: mem-mcp:local
+  build:
+    context: .
+    dockerfile: Dockerfile
+    # To bake plugins: pass INSTALL_PLUGINS=true + a git secret. See docs/DOCKER.md.
+    args:
+      INSTALL_PLUGINS: ${INSTALL_PLUGINS:-false}
+  env_file: .env
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mem_mcp}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      MEM_APP_PASSWORD: ${MEM_APP_PASSWORD:-change-me-app}
+      MEM_MAINT_PASSWORD: ${MEM_MAINT_PASSWORD:-change-me-maint}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres/initdb:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-mem_mcp}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  # One-shot: bring the schema up to head, then exit. Other app services wait
+  # for this to complete successfully.
+  migrate:
+    <<: *app
+    command: ["migrate"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    <<: *app
+    command: ["api"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+  # Maintenance + plugin jobs (replaces systemd timers via the in-process scheduler).
+  jobs:
+    <<: *app
+    command: ["scheduler"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  web:
+    image: mem-mcp-web:local
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    environment:
+      MEM_MCP_API_URL: ${MEM_MCP_API_URL:-http://api:8080}
+    depends_on:
+      - api
+    ports:
+      - "8081:8081"
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    depends_on:
+      - api
+      - web
+    ports:
+      - "80:80"
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:
