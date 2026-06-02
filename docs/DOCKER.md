@@ -177,14 +177,115 @@ provision TLS via Let's Encrypt automatically — mirror the path split in
 `deploy/Caddyfile` (memsys → API, memapp → web with `/api/web/*` + `/auth/*`
 to the API).
 
+## Localhost auth + embeddings sidecars
+
+The default localhost stack ships two sidecars that replace the AWS deps:
+
+- **`cognito-local`** (`jagregory/cognito-local:3.21.0`) on port `9229` — fake
+  Cognito IdP with `admin@local` pre-seeded.
+- **`ollama`** (`ollama/ollama:latest`) on port `11434` — local embeddings via
+  the `bge-m3` model (1024-dim, multilingual, matches Titan v2's vector dim
+  so no schema migration is needed when swapping providers).
+
+`.env.example` defaults already point both at the sidecars (see
+`MEM_MCP_COGNITO_ISSUER_URL`, `MEM_MCP_COGNITO_JWKS_URL`,
+`MEM_MCP_EMBEDDINGS_PROVIDER=ollama`, `MEM_MCP_OLLAMA_URL`). Copy `.env.example`
+to `.env` and you're done — no edits needed for the auth/embed flow to work.
+
+### First-time admin promotion (two-step boot)
+
+`bootstrap_first_system_admin` runs in `lifespan()` at api boot and looks up
+a `tenant_identities` row matching `MEM_MCP_BOOTSTRAP_SYSTEM_ADMIN_EMAIL`. On
+a cold DB the row doesn't exist yet (it's created on the first OAuth callback),
+so bootstrap returns `{status: "not_found"}` benignly. The flow is:
+
+1. `docker compose up` — stack starts; bootstrap no-ops.
+2. Browser → `http://localhost:8000` → `/auth/login` → cognito-local UI →
+   sign in as `admin@local` / `Admin@Local2026!` → callback creates the
+   tenant + identity rows.
+3. `docker compose restart api` — bootstrap runs again, finds the identity,
+   grants `SYSTEM_ADMIN`, persists the marker. Idempotent on subsequent boots.
+
+After step 3, `admin@local` has full admin privileges. Subsequent fresh
+`compose up` runs skip the bootstrap because the marker is persisted.
+
+### Headless token mint (for `curl` / scripted use)
+
+```bash
+eval $(scripts/dev-token.sh)
+curl -H "Authorization: Bearer $MEM_MCP_TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"jsonrpc":"2.0","method":"tools/list","id":1}' \
+     http://localhost:8080/mcp
+```
+
+The token is valid for 24 hours per the seeded client config; re-run
+`dev-token.sh` to mint a fresh one.
+
+### Using Claude with the localhost server
+
+**Claude Code (CLI):** add to `~/.claude.json`:
+
+```json
+{
+  "mcpServers": {
+    "memsys-local": {
+      "type": "http",
+      "url": "http://localhost:8000/mcp"
+    }
+  }
+}
+```
+
+On first call Claude Code follows the 401 → discovers
+`/.well-known/oauth-protected-resource` → opens a browser to cognito-local
+→ caches the token.
+
+If you'd rather skip the OAuth dance, use the headless token:
+
+```bash
+eval $(scripts/dev-token.sh)
+# then in ~/.claude.json, add:
+#   "headers": { "Authorization": "Bearer ${MEM_MCP_TOKEN}" }
+```
+
+**Claude.ai (web):** add `http://localhost:8000` as a custom MCP server in
+the integrations settings. The OAuth popup runs in your browser (which can
+reach localhost) and the token is cached in your claude.ai session.
+
+### Switching embedding providers
+
+Embedding vectors from `bge-m3` and Titan v2 live in **different semantic
+spaces**. Switching `MEM_MCP_EMBEDDINGS_PROVIDER` on a non-empty DB will
+break `memory_search` until you re-embed every row. Run:
+
+```bash
+docker compose run --rm jobs job embedding_backfill
+```
+
+The backfill job uses whichever provider is currently configured. For a
+fresh local DB this is moot.
+
 ## Troubleshooting
 
 - **`api` restarts / `wait_for_db` timing out** — check the DSN passwords
   match `MEM_APP_PASSWORD`/`MEM_MAINT_PASSWORD`, and that `migrate` succeeded
   (`docker compose logs migrate`).
-- **`readyz` 503** — expected without AWS: the `bedrock` and `cognito_jwks`
-  checks need real AWS. `healthz` (liveness) is always 200 when the process is
-  up.
+- **`readyz` 503 with `cognito_jwks: fetch_failed`** — cognito-local sidecar
+  isn't reachable from the api container. Confirm
+  `MEM_MCP_COGNITO_JWKS_URL=http://cognito-local:9229/...` (the docker
+  network hostname, not `localhost`).
+- **`readyz` 503 with `bedrock`** — expected if `MEM_MCP_EMBEDDINGS_PROVIDER=
+  ollama`: the `bedrock` health check still pings AWS Bedrock. Either set
+  `AWS_REGION` + creds (Bedrock check goes green) or accept the 503 on
+  `readyz` while `healthz` stays 200. (Future cleanup: gate the Bedrock check
+  on provider selection.)
+- **`/auth/login` redirects to `memauth.example.com`** — your `.env` still
+  has the placeholder values. `cp .env.example .env` again and don't edit
+  the cognito-local lines.
+- **`ollama pull` keeps re-running** — it's the `ollama-init` one-shot
+  service; `restart: no` means it runs once per `docker compose up`. To
+  force a model reset: `docker volume rm mem-mcp_ollama_models`.
 - **Skip the DB wait** (e.g. external managed DB you trust is up) — set
   `MEM_MCP_SKIP_DB_WAIT=1`.
 - **Re-run migrations** — `docker compose run --rm migrate`.

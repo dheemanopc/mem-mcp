@@ -1,0 +1,49 @@
+{
+  "Options": {
+    "Id": "local_memmcp",
+    "Name": "MemMcpLocalPool",
+    "Policies": {
+      "PasswordPolicy": {
+        "MinimumLength": 8,
+        "RequireUppercase": true,
+        "RequireLowercase": true,
+        "RequireNumbers": true,
+        "RequireSymbols": true
+      }
+    },
+    "MfaConfiguration": "OFF",
+    "SchemaAttributes": [
+      {
+        "Name": "email",
+        "AttributeDataType": "String",
+        "DeveloperOnlyAttribute": false,
+        "Mutable": true,
+        "Required": true
+      },
+      {
+        "Name": "sub",
+        "AttributeDataType": "String",
+        "DeveloperOnlyAttribute": false,
+        "Mutable": false,
+        "Required": true
+      }
+    ],
+    "EstimatedNumberOfUsers": 1,
+    "EmailConfiguration": { "EmailSendingAccount": "COGNITO_DEFAULT" }
+  },
+  "Users": {
+    "admin@local": {
+      "Username": "admin@local",
+      "Attributes": [
+        { "Name": "sub", "Value": "00000000-0000-4000-8000-000000000001" },
+        { "Name": "email", "Value": "admin@local" },
+        { "Name": "email_verified", "Value": "true" }
+      ],
+      "Enabled": true,
+      "UserStatus": "CONFIRMED",
+      "Password": "Admin@Local2026!",
+      "UserCreateDate": 1748000000,
+      "UserLastModifiedDate": 1748000000
+    }
+  }
+}

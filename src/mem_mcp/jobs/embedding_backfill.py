@@ -16,7 +16,7 @@ import sys
 from typing import TYPE_CHECKING, Any
 
 from mem_mcp.config import get_settings
-from mem_mcp.embeddings.bedrock import BedrockEmbeddingClient, EmbeddingError
+from mem_mcp.embeddings.bedrock import EmbeddingError
 from mem_mcp.logging_setup import get_logger, setup_logging
 
 if TYPE_CHECKING:
@@ -168,8 +168,12 @@ async def main(dry_run: bool = False) -> int:
     )
 
     try:
-        region = os.getenv("AWS_REGION", "ap-south-1")
-        embedder = BedrockEmbeddingClient(region=region)
+        # Honor MEM_MCP_EMBEDDINGS_PROVIDER so backfill re-embeds with the
+        # SAME provider as the inline write path. Mixing providers in one
+        # `memories.embedding` column corrupts semantic_search silently.
+        from mem_mcp.embeddings.factory import make_embedding_client
+
+        embedder = make_embedding_client(settings)
         result = await run_backfill(pool, embedder)
         _log.info("backfill_result", extra=result)
         return 0

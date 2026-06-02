@@ -79,6 +79,20 @@ class HttpxJwksFetcher:
         )
         self.timeout_seconds = timeout_seconds
 
+    @classmethod
+    def from_url(cls, url: str, timeout_seconds: float = 5.0) -> HttpxJwksFetcher:
+        """Construct from an explicit URL, bypassing the AWS URL builder.
+
+        Used when MEM_MCP_COGNITO_JWKS_URL points at a non-AWS IdP
+        (e.g. cognito-local sidecar in localhost dev). Doesn't call
+        ``__init__`` — that constructor only exists to build the URL from
+        region + pool_id, which we don't need here.
+        """
+        obj = cls.__new__(cls)
+        obj.url = url
+        obj.timeout_seconds = timeout_seconds
+        return obj
+
     async def fetch(self) -> JwksPayload:
         # Local import keeps unit tests from paying httpx import cost
         import httpx
