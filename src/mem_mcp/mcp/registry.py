@@ -19,10 +19,20 @@ _log = get_logger("mem_mcp.mcp.registry")
 
 
 class ToolRegistry:
-    """Holds the set of registered tools; dispatches JSON-RPC by method name."""
+    """Holds the set of registered tools; dispatches JSON-RPC by method name.
 
-    def __init__(self) -> None:
+    ``skip_scope_check`` is a localdev-only bypass for the per-tool
+    ``required_scope`` enforcement. The cognito-local sidecar's tokens carry
+    only the default ``aws.cognito.signin.user.admin`` scope (ROPC flow),
+    not ``memory.read`` / ``memory.write`` — so without bypass every tool
+    call from a localdev token rejects as ``insufficient_scope``. main.py
+    wires this to ``bool(s.cognito_issuer_url)`` so the bypass NEVER fires
+    against real AWS Cognito tokens; same gating as the lazy auto-create.
+    """
+
+    def __init__(self, skip_scope_check: bool = False) -> None:
         self._tools: dict[str, type[BaseTool]] = {}
+        self._skip_scope_check = skip_scope_check
 
     def register(self, tool_cls: type[BaseTool]) -> None:
         """Register a tool class. Idempotent (overwrites by name)."""
@@ -132,7 +142,11 @@ class ToolRegistry:
                 data={"available_methods": self.names()},
             )
 
-        if tool_cls.required_scope and tool_cls.required_scope not in ctx.scopes:
+        if (
+            not self._skip_scope_check
+            and tool_cls.required_scope
+            and tool_cls.required_scope not in ctx.scopes
+        ):
             raise JsonRpcError(
                 -32000,
                 "insufficient scope",

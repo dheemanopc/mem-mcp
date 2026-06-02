@@ -47,7 +47,12 @@ class FakeResolver:
     def __init__(self, resolution: TenantResolution) -> None:
         self.resolution = resolution
 
-    async def resolve(self, cognito_sub: str, client_id: str) -> TenantResolution:
+    async def resolve(
+        self,
+        cognito_sub: str,
+        client_id: str,
+        email_hint: str | None = None,
+    ) -> TenantResolution:
         return self.resolution
 
 

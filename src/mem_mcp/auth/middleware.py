@@ -65,7 +65,12 @@ class TenantResolution:
 
 
 class TenantResolver(Protocol):
-    async def resolve(self, cognito_sub: str, client_id: str) -> TenantResolution: ...
+    async def resolve(
+        self,
+        cognito_sub: str,
+        client_id: str,
+        email_hint: str | None = None,
+    ) -> TenantResolution: ...
 
 
 class TouchSink(Protocol):
@@ -77,19 +82,93 @@ class TouchSink(Protocol):
 # --------------------------------------------------------------------------
 
 
+async def _create_personal_team_and_assign(
+    conn: asyncpg.Connection,
+    tenant_id: UUID,
+    email_hint: str,
+    cognito_sub: str,
+) -> None:
+    """Create a personal team for ``tenant_id``, assign owner role, and set
+    default_team_id on the matching tenant_identities row.
+
+    Idempotent on the team-name uniqueness (uses ON CONFLICT DO NOTHING for
+    the role assignment; teams have no name UNIQUE so a re-run would create
+    a duplicate — caller must gate on `default_team_id IS NULL`).
+    Mirrors the migration 0026 backfill shape.
+
+    NOTE: teams_insert RLS requires `created_by_tenant_id =
+    safe_current_tenant_id()`. Under system_tx the GUC is unset and the
+    INSERT fails with InsufficientPrivilegeError. SET LOCAL the GUC to the
+    target tenant for the duration of this transaction so the RLS clause
+    passes. Same fix pattern as PR #305 for the references-validator path.
+    """
+    await conn.execute(
+        "SELECT set_config('app.current_tenant_id', $1, true)",
+        str(tenant_id),
+    )
+    new_team_id = await conn.fetchval(
+        "INSERT INTO teams (name, created_by_tenant_id, team_type) "
+        "VALUES ($1, $2, 'personal') RETURNING id",
+        f"Personal — {email_hint}",
+        tenant_id,
+    )
+    owner_role_id = await conn.fetchval(
+        "SELECT id FROM roles_catalog WHERE role_key = 'owner' AND plugin_id IS NULL"
+    )
+    if owner_role_id is not None:
+        await conn.execute(
+            "INSERT INTO team_role_assignments "
+            "(parent_team_id, member_kind, member_id, role_id, status, "
+            " assigned_by_user_id) "
+            "VALUES ($1, 'user', $2, $3, 'active', $2) "
+            "ON CONFLICT DO NOTHING",
+            new_team_id,
+            tenant_id,
+            owner_role_id,
+        )
+    await conn.execute(
+        "INSERT INTO tenant_identities "
+        "(tenant_id, cognito_sub, provider, email, is_primary, default_team_id) "
+        "VALUES ($1, $2, 'cognito', $3, true, $4) "
+        "ON CONFLICT (cognito_sub) DO UPDATE SET "
+        " default_team_id = EXCLUDED.default_team_id "
+        "WHERE tenant_identities.default_team_id IS NULL",
+        tenant_id,
+        cognito_sub,
+        email_hint,
+        new_team_id,
+    )
+
+
 class DbTenantResolver:
-    """Production resolver: single LEFT JOIN against the asyncpg pool."""
+    """Production resolver: single LEFT JOIN against the asyncpg pool.
 
-    def __init__(self, pool: asyncpg.Pool) -> None:
+    When ``auto_create_for_localdev`` is True AND a non-empty ``email_hint``
+    is passed AND the lookup returns no row, this resolver INSERTs a
+    tenant + tenant_identity from the claim (sub + email) and re-runs the
+    lookup. Intended ONLY for localhost dev with the cognito-local sidecar
+    — main.py gates this on MEM_MCP_COGNITO_ISSUER_URL being set, which
+    is empty in prod. Removes the bootstrap two-step (sign in → restart →
+    admin) for localdev users: first valid JWT auto-provisions the row.
+    """
+
+    def __init__(self, pool: asyncpg.Pool, auto_create_for_localdev: bool = False) -> None:
         self._pool = pool
+        self._auto_create = auto_create_for_localdev
 
-    async def resolve(self, cognito_sub: str, client_id: str) -> TenantResolution:
+    async def resolve(
+        self,
+        cognito_sub: str,
+        client_id: str,
+        email_hint: str | None = None,
+    ) -> TenantResolution:
         async with system_tx(self._pool) as conn:
             row = await conn.fetchrow(
                 """
                 SELECT
                   ti.tenant_id        AS tenant_id,
                   ti.id               AS identity_id,
+                  ti.default_team_id  AS default_team_id,
                   t.status            AS tenant_status,
                   (oc.id IS NOT NULL) AS client_known,
                   COALESCE(oc.disabled, false) AS client_disabled
@@ -101,6 +180,84 @@ class DbTenantResolver:
                 cognito_sub,
                 client_id,
             )
+            # Localdev: also auto-create the oauth_clients row if missing.
+            # Same gate (auto_create + localdev). The client_id from a
+            # cognito-local JWT isn't pre-registered via DCR in the mem-mcp
+            # DB, so the LEFT JOIN above sets client_known=false even when
+            # the tenant exists. Surface this as the same auto-provision path.
+            # Note: NO nested `conn.transaction()` here — system_tx is already
+            # a transaction; nested savepoints had a visibility quirk where
+            # the first call's re-fetch couldn't see the just-inserted client.
+            need_oauth_client = (
+                self._auto_create and client_id and (row is None or not row["client_known"])
+            )
+            need_full_tenant = row is None and self._auto_create and email_hint
+            need_team_backfill = (
+                row is not None
+                and self._auto_create
+                and email_hint
+                and row["default_team_id"] is None
+            )
+            if need_oauth_client:
+                await conn.execute(
+                    "INSERT INTO oauth_clients "
+                    "(id, redirect_uris, scope, registration_payload, review_status) "
+                    "VALUES ($1, ARRAY[]::text[], 'memory.read memory.write', "
+                    "'{}'::jsonb, 'auto_allowed') "
+                    "ON CONFLICT (id) DO NOTHING",
+                    client_id,
+                )
+                _log.info("oauth_client_auto_created_for_localdev", client_id=client_id)
+
+            if need_full_tenant:
+                assert email_hint is not None  # narrows for mypy
+                # Localdev-only path: auto-provision tenant + identity + team
+                # + default_team_id assignment from JWT claims so the first
+                # valid token Just Works (no manual psql insert or service
+                # restart). Mirrors migration 0026's personal-team backfill.
+                _log.info(
+                    "tenant_auto_created_for_localdev",
+                    cognito_sub=cognito_sub,
+                    email_hint=email_hint,
+                )
+                new_tenant_id = await conn.fetchval(
+                    "INSERT INTO tenants (email, status) VALUES ($1, 'active') "
+                    "ON CONFLICT (email) DO UPDATE SET status='active' RETURNING id",
+                    email_hint,
+                )
+                await _create_personal_team_and_assign(conn, new_tenant_id, email_hint, cognito_sub)
+
+            elif need_team_backfill:
+                assert email_hint is not None  # narrows for mypy
+                # Existing tenant from earlier partial auto-create has no
+                # personal team / default_team_id. Backfill them in-place
+                # so the next write call doesn't 400 with "no team_id".
+                _log.info(
+                    "tenant_team_backfilled_for_localdev",
+                    cognito_sub=cognito_sub,
+                )
+                await _create_personal_team_and_assign(
+                    conn, row["tenant_id"], email_hint, cognito_sub
+                )
+
+            if need_oauth_client or need_full_tenant or need_team_backfill:
+                # Re-run the lookup so we return the same shape as the normal path.
+                row = await conn.fetchrow(
+                    """
+                    SELECT
+                      ti.tenant_id        AS tenant_id,
+                      ti.id               AS identity_id,
+                      t.status            AS tenant_status,
+                      (oc.id IS NOT NULL) AS client_known,
+                      COALESCE(oc.disabled, false) AS client_disabled
+                    FROM tenant_identities ti
+                    JOIN tenants t   ON t.id = ti.tenant_id
+                    LEFT JOIN oauth_clients oc ON oc.id = $2
+                    WHERE ti.cognito_sub = $1
+                    """,
+                    cognito_sub,
+                    client_id,
+                )
         if row is None:
             return TenantResolution(None, None, "not_found", False, False)
         return TenantResolution(
@@ -172,7 +329,14 @@ def make_bearer_middleware(
         except JwtError as exc:
             return _unauthorized(resource_metadata_url, "invalid_token", exc.code)
 
-        resolution = await resolver.resolve(claims.sub, claims.client_id)
+        # email_hint passes through to the (optional) localdev auto-create path
+        # in DbTenantResolver; ignored in prod where auto_create_for_localdev=False.
+        email_hint = claims.raw.get("email") or claims.raw.get("username")
+        resolution = await resolver.resolve(
+            claims.sub,
+            claims.client_id,
+            email_hint=email_hint if isinstance(email_hint, str) else None,
+        )
 
         # Reject reasons (check tenant first, before client)
         if resolution.tenant_status == "not_found":
@@ -216,10 +380,21 @@ def make_bearer_middleware(
 
 
 def _www_authenticate(resource_metadata_url: str, error: str, error_description: str) -> str:
-    """Build RFC 6750 §3 WWW-Authenticate header value."""
+    """Build RFC 6750 §3 WWW-Authenticate header value.
+
+    Per RFC 9728, ``resource_metadata`` should be the URL of the
+    Protected-Resource-Metadata document itself, not the resource root.
+    If the caller passed just the resource host, append the well-known
+    path so OAuth-discovery clients (Claude Code, claude.ai) GET the
+    JSON document instead of hitting the resource root (which on docker
+    compose routes to the Next.js web service and returns HTML).
+    """
+    metadata_url = resource_metadata_url
+    if "/.well-known/oauth-protected-resource" not in metadata_url:
+        metadata_url = metadata_url.rstrip("/") + "/.well-known/oauth-protected-resource"
     return (
         f'Bearer realm="mem-mcp", '
-        f'resource_metadata="{resource_metadata_url}", '
+        f'resource_metadata="{metadata_url}", '
         f'error="{error}", '
         f'error_description="{error_description}"'
     )
