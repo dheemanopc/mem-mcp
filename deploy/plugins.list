@@ -4,7 +4,14 @@
 # blank lines are ignored. Only used when the image is built with
 # --build-arg INSTALL_PLUGINS=true (see Dockerfile / docs/DOCKER.md).
 #
-# Uncomment / add the plugins you want baked in:
+# Uncomment / add the plugins you want baked in.
 #
-# https://github.com/dheemanopc/mem-mcp-skill-kite.git
+# PMO is enabled by default in the localhost stack (public repo, no auth
+# needed). Uncomment additional plugins below as needed.
+https://github.com/dheemanopc/mem-mcp-skill-pmo.git
+#
+# Reminders has a known datetime serialization bug (see memsys 75b4096a §C-1)
+# — leave commented until the upstream fix lands. Uncomment to test against
+# the bug.
 # https://github.com/dheemanopc/mem-mcp-skill-reminders.git
+# https://github.com/dheemanopc/mem-mcp-skill-kite.git

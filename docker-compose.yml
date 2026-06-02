@@ -19,9 +19,12 @@ x-app: &app
   build:
     context: .
     dockerfile: Dockerfile
-    # To bake plugins: pass INSTALL_PLUGINS=true + a git secret. See docs/DOCKER.md.
+    # Bakes plugins from deploy/plugins.list at build time. Default ON for
+    # the localhost stack (PMO is in the list and is a public repo, no auth
+    # needed). Set INSTALL_PLUGINS=false in .env to skip plugin baking;
+    # private plugins need a BuildKit secret — see docs/DOCKER.md.
     args:
-      INSTALL_PLUGINS: ${INSTALL_PLUGINS:-false}
+      INSTALL_PLUGINS: ${INSTALL_PLUGINS:-true}
   env_file: .env
 
 services:
@@ -115,7 +118,12 @@ services:
     volumes:
       - ollama_models:/root/.ollama
     ports:
-      - "11434:11434"
+      # OLLAMA_HOST_PORT default 11434 (Ollama standard). Override (e.g.
+      # 11534) if you already run a host Ollama daemon on 11434. The api
+      # container always reaches the sidecar via the docker network using
+      # the internal port 11434 (MEM_MCP_OLLAMA_URL=http://ollama:11434),
+      # so the host-port remap doesn't affect anything inside the stack.
+      - "${OLLAMA_HOST_PORT:-11434}:11434"
     healthcheck:
       test: ["CMD-SHELL", "ollama list > /dev/null 2>&1 || exit 1"]
       interval: 10s
@@ -159,7 +167,9 @@ services:
       - api
       - web
     ports:
-      - "80:80"
+      # Default host port 8000 sidesteps conflicts with a system nginx/apache
+      # commonly bound to :80. Override via .env if you want bare http://localhost.
+      - "${CADDY_HOST_PORT:-8000}:80"
     volumes:
       - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
