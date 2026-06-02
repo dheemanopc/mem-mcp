@@ -375,7 +375,14 @@ def _build_bearer_dispatch() -> Any:
         jwks_fetcher = HttpxJwksFetcher(region=s.region, user_pool_id=s.cognito_user_pool_id)
     jwks_cache = JwksCache(jwks_fetcher)
     jwt_validator = JwtValidator(jwks_cache=jwks_cache, issuer=issuer)
-    tenant_resolver = DbTenantResolver(pool=pool)
+    # Localdev mode (cognito-local sidecar): auto-create tenant + identity on
+    # first valid JWT so the bootstrap chicken-and-egg disappears. Gated on
+    # MEM_MCP_COGNITO_ISSUER_URL being set; empty in prod, so this NEVER fires
+    # against real AWS Cognito tokens.
+    tenant_resolver = DbTenantResolver(
+        pool=pool,
+        auto_create_for_localdev=bool(s.cognito_issuer_url),
+    )
     touch = DbTouch(pool=pool)
     return make_bearer_middleware(
         validator=jwt_validator,
@@ -395,9 +402,10 @@ def _wire_routers(app: FastAPI) -> None:
     # Get the pool (initialized during lifespan startup)
     pool = get_pool()
 
-    # Build Cognito URLs
-    cognito_authorize_base_url = f"https://{s.cognito_domain}/login"
-    cognito_token_url = f"https://{s.cognito_domain}/oauth2/token"
+    # Build Cognito URLs (cognito-local serves plain HTTP)
+    _cog_scheme = "http" if s.cognito_domain.startswith(("localhost", "127.0.0.1")) else "https"
+    cognito_authorize_base_url = f"{_cog_scheme}://{s.cognito_domain}/login"
+    cognito_token_url = f"{_cog_scheme}://{s.cognito_domain}/oauth2/token"
     callback_url = f"{s.web_url}/auth/callback"
 
     # Build Cognito Protocol implementations
@@ -434,8 +442,12 @@ def _wire_routers(app: FastAPI) -> None:
         quotas=quotas,
     )
 
-    # Build ToolRegistry with 21 tools (14 memory + 1 onboarding + 6 team)
-    registry = ToolRegistry()
+    # Build ToolRegistry with 21 tools (14 memory + 1 onboarding + 6 team).
+    # Localdev mode (cognito-local sidecar): skip per-tool required_scope check.
+    # cognito-local's ROPC tokens only carry `aws.cognito.signin.user.admin`,
+    # not memory.read/write, so without this bypass every tool call rejects.
+    # Same gating as the lazy auto-create — never fires against real AWS Cognito.
+    registry = ToolRegistry(skip_scope_check=bool(s.cognito_issuer_url))
     tools_list: list = [
         MemoryWriteTool,
         MemoryWriteAsyncTool,

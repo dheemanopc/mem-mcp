@@ -44,7 +44,12 @@ class FakeResolver:
         self.resolution = resolution
         self.calls: list[tuple[str, str]] = []
 
-    async def resolve(self, cognito_sub: str, client_id: str) -> TenantResolution:
+    async def resolve(
+        self,
+        cognito_sub: str,
+        client_id: str,
+        email_hint: str | None = None,
+    ) -> TenantResolution:
         self.calls.append((cognito_sub, client_id))
         return self.resolution
 
