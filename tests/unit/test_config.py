@@ -13,6 +13,7 @@ import pytest
 
 from mem_mcp.config import (
     BotoSsmLoader,
+    NullSsmLoader,
     Settings,
     SsmLoader,
     _reset_settings_cache_for_tests,
@@ -180,6 +181,76 @@ class TestGetSettings:
         s = get_settings(loader)
         # No exception. Settings doesn't have a field for this; extra='ignore' handles it.
         assert s.db_dsn == _FULL_SSM_PARAMS["/mem-mcp/db/dsn"]
+
+
+# ---------------------------------------------------------------------------
+# MEM_MCP_SKIP_SSM escape hatch (containerized / local-dev boot without AWS)
+# ---------------------------------------------------------------------------
+
+
+class TestSkipSsm:
+    """When MEM_MCP_SKIP_SSM is truthy, get_settings() must NOT touch AWS.
+
+    Containers running without AWS credentials (local `docker compose up`)
+    supply every required field via env and set MEM_MCP_SKIP_SSM=1 so the
+    default boto SSM loader is never constructed.
+    """
+
+    def _set_required_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        for key in (
+            "MEM_MCP_DB_DSN",
+            "MEM_MCP_DB_MAINT_DSN",
+            "MEM_MCP_COGNITO_USER_POOL_ID",
+            "MEM_MCP_COGNITO_DOMAIN",
+            "MEM_MCP_RESOURCE_URL",
+            "MEM_MCP_WEB_URL",
+            "MEM_MCP_WEB_CLIENT_ID",
+            "MEM_MCP_WEB_CLIENT_SECRET",
+            "MEM_MCP_INTERNAL_LAMBDA_SECRET",
+            "MEM_MCP_SES_FROM",
+            "MEM_MCP_BACKUP_BUCKET",
+            "MEM_MCP_BACKUP_GPG_PASSPHRASE",
+            "MEM_MCP_WEB_SESSION_SECRET",
+            "MEM_MCP_LINK_STATE_SECRET",
+        ):
+            monkeypatch.setenv(key, "x")
+
+    @pytest.mark.parametrize("flag", ["1", "true", "TRUE", "yes", "on"])
+    def test_skip_ssm_uses_env_only(self, monkeypatch: pytest.MonkeyPatch, flag: str) -> None:
+        self._set_required_env(monkeypatch)
+        monkeypatch.setenv("MEM_MCP_SKIP_SSM", flag)
+        monkeypatch.setenv("MEM_MCP_DB_DSN", "postgresql://from-env")
+        # loader=None — production default path. With SKIP_SSM set this must NOT
+        # construct BotoSsmLoader (which would require AWS creds).
+        s = get_settings()
+        assert s.db_dsn == "postgresql://from-env"
+
+    def test_skip_ssm_does_not_construct_boto_loader(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._set_required_env(monkeypatch)
+        monkeypatch.setenv("MEM_MCP_SKIP_SSM", "1")
+
+        def _boom(*_args: object, **_kwargs: object) -> object:
+            raise AssertionError("BotoSsmLoader must not be constructed when SKIP_SSM is set")
+
+        monkeypatch.setattr(BotoSsmLoader, "__init__", _boom)
+        # Should not raise — boto loader is never instantiated.
+        get_settings()
+
+    def test_skip_ssm_falsey_still_uses_ssm(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # An explicit falsey value behaves like unset: the provided loader wins.
+        monkeypatch.setenv("MEM_MCP_SKIP_SSM", "0")
+        loader = FakeSsmLoader(_FULL_SSM_PARAMS)
+        s = get_settings(loader)
+        assert s.cognito_user_pool_id == "ap-south-1_TESTPOOL"
+        assert loader.calls == [("/mem-mcp/", True)]
+
+
+class TestNullSsmLoader:
+    def test_returns_empty(self) -> None:
+        loader: SsmLoader = NullSsmLoader()
+        assert loader.get_parameters_by_path("/mem-mcp/") == {}
 
 
 # ---------------------------------------------------------------------------
