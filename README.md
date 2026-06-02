@@ -1,4 +1,7 @@
-# PMO — Project Management Office orchestrator
+# pmo-bootstrap
+
+**Bootstrap kit for the PMO** — the prompts, role definitions, and engine
+config that stand up a Project Management Office on top of memsys.
 
 The PMO is a multi-role project-orchestration layer that runs **on top of
 [memsys](https://memsys.dheemantech.in) (the Personal Memory MCP)**. A single
