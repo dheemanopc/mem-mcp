@@ -1,0 +1,31 @@
+# Caddy reverse proxy for the mem-mcp docker compose stack.
+#
+# Single host on :80 (no TLS for local dev). API and web are split by path,
+# mirroring the production Caddyfile's single-origin routing:
+#   - MCP + auth + web-API + .well-known + plugin routes → api:8080
+#   - everything else (the Next.js admin UI)             → web:8081
+#
+# For a real deployment, replace ":80" with your hostname(s) and Caddy will
+# provision TLS automatically; see docs/DOCKER.md.
+
+{
+	# Local dev: disable the admin API's auto-HTTPS redirects noise.
+	auto_https off
+}
+
+:80 {
+	encode zstd gzip
+
+	header {
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+	}
+
+	# API surface: MCP transport, OAuth/auth, web-API, discovery, plugin UIs,
+	# and health probes all served by the FastAPI app.
+	@api path /mcp* /auth/* /api/* /.well-known/* /skills/* /healthz /readyz
+	reverse_proxy @api api:8080
+
+	# Everything else → Next.js admin UI.
+	reverse_proxy web:8081
+}

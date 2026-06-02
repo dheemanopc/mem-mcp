@@ -1,0 +1,10 @@
+# deploy/plugins.list — repos to bake into the Docker image at build time.
+#
+# One git URL per line (HTTPS or SSH). Lines starting with # are comments;
+# blank lines are ignored. Only used when the image is built with
+# --build-arg INSTALL_PLUGINS=true (see Dockerfile / docs/DOCKER.md).
+#
+# Uncomment / add the plugins you want baked in:
+#
+# https://github.com/dheemanopc/mem-mcp-skill-kite.git
+# https://github.com/dheemanopc/mem-mcp-skill-reminders.git
