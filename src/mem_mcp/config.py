@@ -67,6 +67,19 @@ class Settings(BaseSettings):
     # (e.g., "kite,github"). Empty string disables all skills.
     enabled_skills: str = ""
     bedrock_model_id: str = "amazon.titan-embed-text-v2:0"
+    # Cognito URL overrides — when unset, main.py constructs the AWS form from
+    # region + cognito_user_pool_id. Set these to point JWT validation at a
+    # local IdP (e.g. cognito-local sidecar in docker-compose). Issuer and JWKS
+    # URLs are allowed to diverge — issuer is browser-visible (matches the
+    # `iss` claim on tokens); JWKS URL is api-container-visible (where the
+    # validator fetches signing keys). Both unset = prod path unchanged.
+    cognito_issuer_url: str | None = None
+    cognito_jwks_url: str | None = None
+    # Embeddings provider selection — "bedrock" (default, prod) or "ollama"
+    # (localhost dev via Ollama sidecar). When "ollama", ollama_url must be set.
+    embeddings_provider: str = "bedrock"
+    ollama_url: str | None = None
+    ollama_embed_model: str = "bge-m3"
     log_level: str = "INFO"
     # TA session cache configuration
     ta_cache_max_sessions: int = 50

@@ -63,6 +63,10 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      cognito-local:
+        condition: service_healthy
+      ollama-init:
+        condition: service_completed_successfully
     ports:
       - "8080:8080"
     restart: unless-stopped
@@ -76,7 +80,57 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      ollama-init:
+        condition: service_completed_successfully
     restart: unless-stopped
+
+  # Local fake Cognito IdP — gives admin@local a real OAuth flow with no AWS
+  # account. Issuer is browser-visible (localhost:9229); JWKS is api-visible
+  # (cognito-local:9229 over the docker network). See docs/DOCKER.md.
+  cognito-local:
+    image: jagregory/cognito-local:3.21.0
+    volumes:
+      - cognito_data:/app/.cognito
+      - ./docker/cognito-local/config.json:/app/.cognito/config.json:ro
+      - ./docker/cognito-local/local_memmcp.json:/app/.cognito/db/local_memmcp.json:ro
+      - ./docker/cognito-local/clients.json:/app/.cognito/db/clients.json:ro
+    ports:
+      - "9229:9229"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9229/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  # Local embeddings — bge-m3 is 1024-dim multilingual, the closest local
+  # match for Bedrock Titan v2 (same dim → zero schema impact).
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama_models:/root/.ollama
+    ports:
+      - "11434:11434"
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list > /dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  # One-shot: pull bge-m3 into the ollama_models volume. `|| true` keeps the
+  # init idempotent (network blip on a re-run doesn't fail the compose stack).
+  # An offline first-pull failure surfaces as an embed-time error on first
+  # write — caller sees EmbeddingError("unavailable").
+  ollama-init:
+    image: ollama/ollama:latest
+    depends_on:
+      ollama:
+        condition: service_healthy
+    entrypoint: ["sh", "-c", "ollama pull ${MEM_MCP_OLLAMA_EMBED_MODEL:-bge-m3} || true"]
+    environment:
+      OLLAMA_HOST: "http://ollama:11434"
+    restart: "no"
 
   web:
     image: mem-mcp-web:local
@@ -108,3 +162,5 @@ volumes:
   pgdata:
   caddy_data:
   caddy_config:
+  cognito_data:
+  ollama_models:

@@ -80,18 +80,27 @@ class BedrockHealthChecker:
 class CognitoJwksHealthChecker:
     """Fetches Cognito JWKS document and verifies it parses as JSON.
 
-    URL: https://cognito-idp.{region}.amazonaws.com/{user_pool_id}/.well-known/jwks.json
+    Default URL: https://cognito-idp.{region}.amazonaws.com/{user_pool_id}/.well-known/jwks.json
+    Override via the optional ``url`` kwarg for a non-AWS IdP (e.g.
+    cognito-local sidecar in localhost dev).
     """
 
     name = "cognito_jwks"
 
-    def __init__(self, region: str, user_pool_id: str, timeout_seconds: float = 3.0) -> None:
+    def __init__(
+        self,
+        region: str,
+        user_pool_id: str,
+        timeout_seconds: float = 3.0,
+        url: str | None = None,
+    ) -> None:
         self.region = region
         self.user_pool_id = user_pool_id
         self.timeout_seconds = timeout_seconds
+        self._url_override = url
 
     async def check(self) -> CheckResult:
-        url = (
+        url = self._url_override or (
             f"https://cognito-idp.{self.region}.amazonaws.com/"
             f"{self.user_pool_id}/.well-known/jwks.json"
         )

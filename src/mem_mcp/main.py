@@ -45,7 +45,6 @@ from mem_mcp.cognito_clients import (
 )
 from mem_mcp.config import get_settings
 from mem_mcp.db import close_maint_pool, close_pool, init_maint_pool, init_pool
-from mem_mcp.embeddings.bedrock import BedrockEmbeddingClient
 from mem_mcp.health import (
     BedrockHealthChecker,
     CognitoJwksHealthChecker,
@@ -103,7 +102,11 @@ def _build_default_checkers() -> list[HealthChecker]:
     return [
         DbHealthChecker(),
         BedrockHealthChecker(region=s.region),
-        CognitoJwksHealthChecker(region=s.region, user_pool_id=s.cognito_user_pool_id),
+        CognitoJwksHealthChecker(
+            region=s.region,
+            user_pool_id=s.cognito_user_pool_id,
+            url=s.cognito_jwks_url,
+        ),
     ]
 
 
@@ -356,9 +359,21 @@ def _build_bearer_dispatch() -> Any:
 
     s = get_settings()
     pool = get_pool()
-    jwks_fetcher = HttpxJwksFetcher(region=s.region, user_pool_id=s.cognito_user_pool_id)
+    # Issuer + JWKS URLs may be overridden (e.g. cognito-local sidecar for
+    # localhost dev). Both unset = legacy AWS form. They're allowed to diverge:
+    # issuer is what tokens claim in `iss`; JWKS URL is where the validator
+    # fetches signing keys. In the cognito-local case, browser-issued tokens
+    # carry `iss=http://localhost:9229/...` while the API container fetches
+    # JWKS via `http://cognito-local:9229/...`.
+    issuer = s.cognito_issuer_url or (
+        f"https://cognito-idp.{s.region}.amazonaws.com/{s.cognito_user_pool_id}"
+    )
+    jwks_url = s.cognito_jwks_url or f"{issuer}/.well-known/jwks.json"
+    if s.cognito_jwks_url or s.cognito_issuer_url:
+        jwks_fetcher = HttpxJwksFetcher.from_url(jwks_url)
+    else:
+        jwks_fetcher = HttpxJwksFetcher(region=s.region, user_pool_id=s.cognito_user_pool_id)
     jwks_cache = JwksCache(jwks_fetcher)
-    issuer = f"https://cognito-idp.{s.region}.amazonaws.com/{s.cognito_user_pool_id}"
     jwt_validator = JwtValidator(jwks_cache=jwks_cache, issuer=issuer)
     tenant_resolver = DbTenantResolver(pool=pool)
     touch = DbTouch(pool=pool)
@@ -405,11 +420,12 @@ def _wire_routers(app: FastAPI) -> None:
         region=s.region,
     )
 
-    # Build ToolDeps (embeddings, audit, quotas)
-    embeddings = BedrockEmbeddingClient(
-        region=s.region,
-        model_id=s.bedrock_model_id,
-    )
+    # Build ToolDeps (embeddings, audit, quotas). Provider selected via env
+    # (MEM_MCP_EMBEDDINGS_PROVIDER): defaults to bedrock (prod path); set to
+    # "ollama" for localhost dev via the Ollama sidecar.
+    from mem_mcp.embeddings.factory import make_embedding_client
+
+    embeddings = make_embedding_client(s)
     audit = DbAuditLogger()
     quotas = QuotaEnforcer(pool=pool)
     deps = make_default_deps(
@@ -601,9 +617,18 @@ def _wire_routers(app: FastAPI) -> None:
     # Wire kite intent router (S2S credential handoff)
     try:
         vault = SkillVault.from_settings(s)
-        jwks_fetcher = HttpxJwksFetcher(region=s.region, user_pool_id=s.cognito_user_pool_id)
+        # Honor MEM_MCP_COGNITO_ISSUER_URL / MEM_MCP_COGNITO_JWKS_URL overrides
+        # the same way the bearer middleware does — keeps the kite intent
+        # router auth flow consistent in localhost dev.
+        issuer = s.cognito_issuer_url or (
+            f"https://cognito-idp.{s.region}.amazonaws.com/{s.cognito_user_pool_id}"
+        )
+        jwks_url = s.cognito_jwks_url or f"{issuer}/.well-known/jwks.json"
+        if s.cognito_jwks_url or s.cognito_issuer_url:
+            jwks_fetcher = HttpxJwksFetcher.from_url(jwks_url)
+        else:
+            jwks_fetcher = HttpxJwksFetcher(region=s.region, user_pool_id=s.cognito_user_pool_id)
         jwks_cache = JwksCache(jwks_fetcher)
-        issuer = f"https://cognito-idp.{s.region}.amazonaws.com/{s.cognito_user_pool_id}"
         jwt_validator = JwtValidator(jwks_cache=jwks_cache, issuer=issuer)
         from mem_mcp.web.admin.kite_intents import make_kite_intent_router
 

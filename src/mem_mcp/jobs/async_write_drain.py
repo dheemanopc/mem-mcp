@@ -137,14 +137,17 @@ async def _execute_memory_write(
     the sync tool would.
     """
     from mem_mcp.config import get_settings
-    from mem_mcp.embeddings.bedrock import BedrockEmbeddingClient
+    from mem_mcp.embeddings.factory import make_embedding_client
     from mem_mcp.mcp.tools._base import ToolContext
     from mem_mcp.mcp.tools._deps import make_default_deps
     from mem_mcp.mcp.tools.write import MemoryWriteInput, MemoryWriteTool
 
     inp = MemoryWriteInput.model_validate(payload)
     s = get_settings()
-    embeddings = BedrockEmbeddingClient(region=s.region, model_id=s.bedrock_model_id)
+    # Honor MEM_MCP_EMBEDDINGS_PROVIDER so the drain re-embeds with the SAME
+    # provider as the inline write path. Mixing providers in one
+    # `memories.embedding` column corrupts semantic_search silently.
+    embeddings = make_embedding_client(s)
     deps = make_default_deps(embeddings=embeddings)
     # Replay the original caller's identity so the memories.source_client_id
     # FK (oauth_clients) resolves and audit attribution stays accurate.
