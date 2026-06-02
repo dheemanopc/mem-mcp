@@ -7,6 +7,8 @@ prod path is byte-identical (defaults preserve legacy AWS URL form).
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from mem_mcp.config import Settings, _reset_settings_cache_for_tests
@@ -17,7 +19,7 @@ def _reset_cache() -> None:
     _reset_settings_cache_for_tests()
 
 
-def _base_kwargs() -> dict[str, str]:
+def _base_kwargs() -> dict[str, Any]:
     return {
         "db_dsn": "postgresql://x@y/z",
         "db_maint_dsn": "postgresql+psycopg://x@y/z",

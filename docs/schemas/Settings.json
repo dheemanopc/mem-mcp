@@ -17,6 +17,30 @@
       "title": "Cognito Domain",
       "type": "string"
     },
+    "cognito_issuer_url": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Cognito Issuer Url"
+    },
+    "cognito_jwks_url": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Cognito Jwks Url"
+    },
     "cognito_user_pool_id": {
       "title": "Cognito User Pool Id",
       "type": "string"
@@ -27,6 +51,11 @@
     },
     "db_maint_dsn": {
       "title": "Db Maint Dsn",
+      "type": "string"
+    },
+    "embeddings_provider": {
+      "default": "bedrock",
+      "title": "Embeddings Provider",
       "type": "string"
     },
     "enabled_skills": {
@@ -46,6 +75,23 @@
       "default": "INFO",
       "title": "Log Level",
       "type": "string"
+    },
+    "ollama_embed_model": {
+      "default": "bge-m3",
+      "title": "Ollama Embed Model",
+      "type": "string"
+    },
+    "ollama_url": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Ollama Url"
     },
     "operator_email": {
       "default": "anand@dheemantech.com",
