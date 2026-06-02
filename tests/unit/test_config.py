@@ -225,9 +225,7 @@ class TestSkipSsm:
         s = get_settings()
         assert s.db_dsn == "postgresql://from-env"
 
-    def test_skip_ssm_does_not_construct_boto_loader(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_skip_ssm_does_not_construct_boto_loader(self, monkeypatch: pytest.MonkeyPatch) -> None:
         self._set_required_env(monkeypatch)
         monkeypatch.setenv("MEM_MCP_SKIP_SSM", "1")
 
