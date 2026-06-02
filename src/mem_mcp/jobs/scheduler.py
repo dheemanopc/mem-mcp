@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import re
 import sys
 from collections.abc import Iterable
@@ -150,12 +151,28 @@ _CORE_SCHEDULES: dict[str, CronSchedule] = {
 }
 
 
+def _disabled_jobs() -> set[str]:
+    """Comma-separated job names to skip, from MEM_MCP_DISABLED_JOBS env var.
+
+    Useful for localhost dev where some jobs (e.g. reconcile_signups, which
+    calls AWS Cognito ListUsers) crash with NoCredentialsError because there
+    are no AWS creds. Set MEM_MCP_DISABLED_JOBS=reconcile_signups,cleanup_clients
+    to skip them at scheduler boot. Whitespace is tolerated.
+    """
+    raw = os.environ.get("MEM_MCP_DISABLED_JOBS", "")
+    return {n.strip() for n in raw.split(",") if n.strip()}
+
+
 def build_core_jobs() -> list[ScheduledJob]:
     """Build ScheduledJob entries for every registered core maintenance job."""
     from mem_mcp.jobs._runner import _JOBS
 
+    skip = _disabled_jobs()
     jobs: list[ScheduledJob] = []
     for name in sorted(_JOBS):
+        if name in skip:
+            log.info("core_job_disabled", extra={"job": name, "reason": "env_skip"})
+            continue
         schedule = _CORE_SCHEDULES.get(name)
         if schedule is None:
             log.warning("core_job_unscheduled", extra={"job": name})

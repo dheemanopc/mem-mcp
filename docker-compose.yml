@@ -91,9 +91,14 @@ services:
     image: jagregory/cognito-local:3.21.0
     volumes:
       - cognito_data:/app/.cognito
-      - ./docker/cognito-local/config.json:/app/.cognito/config.json:ro
-      - ./docker/cognito-local/local_memmcp.json:/app/.cognito/db/local_memmcp.json:ro
-      - ./docker/cognito-local/clients.json:/app/.cognito/db/clients.json:ro
+      # NOTE: read-write (no :ro) — cognito-local normalizes / writes back to
+      # its own config + user-pool files on load. Read-only mounts make it
+      # EROFS-crash at startup. Host seed files may be rewritten with extra
+      # normalized fields on first run; safe to commit those back or `git
+      # checkout` if you want the originals.
+      - ./docker/cognito-local/config.json:/app/.cognito/config.json
+      - ./docker/cognito-local/local_memmcp.json:/app/.cognito/db/local_memmcp.json
+      - ./docker/cognito-local/clients.json:/app/.cognito/db/clients.json
     ports:
       - "9229:9229"
     healthcheck:
@@ -129,7 +134,10 @@ services:
         condition: service_healthy
     entrypoint: ["sh", "-c", "ollama pull ${MEM_MCP_OLLAMA_EMBED_MODEL:-bge-m3} || true"]
     environment:
-      OLLAMA_HOST: "http://ollama:11434"
+      # OLLAMA_HOST format is host:port (no scheme). With "http://..." the
+      # client silently falls back to 127.0.0.1:11434 (no daemon there) and
+      # hangs on connect.
+      OLLAMA_HOST: "ollama:11434"
     restart: "no"
 
   web:
