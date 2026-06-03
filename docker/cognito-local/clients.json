@@ -1,31 +1,42 @@
 {
-  "memsys-local-client": {
-    "UserPoolId": "local_memmcp",
-    "ClientId": "memsys-local-client",
-    "ClientName": "MemSys Local Dev",
-    "GenerateSecret": false,
-    "CallbackURLs": [
-      "http://localhost:8000/auth/callback",
-      "http://localhost/auth/callback",
-      "http://localhost:8080/auth/callback",
-      "https://claude.ai/api/mcp/callback"
-    ],
-    "AllowedOAuthFlows": ["code"],
-    "AllowedOAuthFlowsUserPoolClient": true,
-    "AllowedOAuthScopes": ["openid", "profile", "email"],
-    "SupportedIdentityProviders": ["COGNITO"],
-    "ExplicitAuthFlows": [
-      "ALLOW_USER_PASSWORD_AUTH",
-      "ALLOW_REFRESH_TOKEN_AUTH",
-      "ALLOW_USER_SRP_AUTH"
-    ],
-    "AccessTokenValidity": 24,
-    "IdTokenValidity": 24,
-    "RefreshTokenValidity": 30,
-    "TokenValidityUnits": {
-      "AccessToken": "hours",
-      "IdToken": "hours",
-      "RefreshToken": "days"
+  "Clients": {
+    "memsys-local-client": {
+      "UserPoolId": "local_memmcp",
+      "ClientId": "memsys-local-client",
+      "ClientName": "MemSys Local Dev",
+      "GenerateSecret": false,
+      "CallbackURLs": [
+        "http://localhost:8000/auth/callback",
+        "http://localhost/auth/callback",
+        "http://localhost:8080/auth/callback",
+        "https://claude.ai/api/mcp/callback"
+      ],
+      "AllowedOAuthFlows": [
+        "code"
+      ],
+      "AllowedOAuthFlowsUserPoolClient": true,
+      "AllowedOAuthScopes": [
+        "openid",
+        "profile",
+        "email"
+      ],
+      "SupportedIdentityProviders": [
+        "COGNITO"
+      ],
+      "ExplicitAuthFlows": [
+        "ALLOW_USER_PASSWORD_AUTH",
+        "ALLOW_ADMIN_USER_PASSWORD_AUTH",
+        "ALLOW_REFRESH_TOKEN_AUTH",
+        "ALLOW_USER_SRP_AUTH"
+      ],
+      "AccessTokenValidity": 24,
+      "IdTokenValidity": 24,
+      "RefreshTokenValidity": 30,
+      "TokenValidityUnits": {
+        "AccessToken": "hours",
+        "IdToken": "hours",
+        "RefreshToken": "days"
+      }
     }
   }
 }
