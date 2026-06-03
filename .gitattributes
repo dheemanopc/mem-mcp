@@ -1,0 +1,29 @@
+# Force LF for files that are executed or parsed inside Linux containers.
+# Without this, a Windows checkout with core.autocrlf=true rewrites them to
+# CRLF, and `#!/usr/bin/env bash` becomes `bash\r` → exec format error at
+# container startup.
+
+*.sh         text eol=lf
+*.py         text eol=lf
+*.sql        text eol=lf
+*.yml        text eol=lf
+*.yaml       text eol=lf
+*.json       text eol=lf
+*.toml       text eol=lf
+*.env        text eol=lf
+.env.*       text eol=lf
+Dockerfile   text eol=lf
+Dockerfile.* text eol=lf
+*.dockerfile text eol=lf
+Caddyfile    text eol=lf
+
+# Binary — never normalize
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.pdf  binary
+*.zip  binary
+*.gz   binary
+*.tgz  binary
