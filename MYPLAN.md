@@ -79,6 +79,279 @@ When `nli_backend="none"` (default), `check_contradictions=True` returns `contra
 
 ---
 
+## Detailed Implementation Plan
+
+Ordered by dependency. Each step has an exact file, what to change, and the code to add/modify.
+
+---
+
+### Step 1 — `src/mem_mcp/config.py`: Add NLI settings
+
+Add 4 fields to `Settings` (after `ollama_embed_model: str = "bge-m3"`, line 83):
+
+```python
+# NLI contradiction detection via Ollama generative model
+nli_backend: str = "none"              # "none" | "ollama"
+nli_ollama_model: str = "llama3.2:1b"
+nli_contradiction_threshold: float = 0.7  # confidence floor for CONTRADICTION label
+nli_candidate_window: int = 20            # recent memories of same type to compare
+```
+
+Env vars (auto-wired by pydantic-settings prefix `MEM_MCP_`):
+`MEM_MCP_NLI_BACKEND`, `MEM_MCP_NLI_OLLAMA_MODEL`, `MEM_MCP_NLI_CONTRADICTION_THRESHOLD`, `MEM_MCP_NLI_CANDIDATE_WINDOW`
+
+**Verify:** `get_settings()` cache returns the new fields; `_reset_settings_cache_for_tests()` clears them.
+
+---
+
+### Step 2 — `src/mem_mcp/memory/contradiction.py`: New module
+
+Full file:
+
+```python
+"""Contradiction detection via Ollama NLI (Natural Language Inference).
+
+Detection flow:
+1. Fetch the N most recent memories of the same type (recency window).
+2. For each, call Ollama /api/generate with a structured classification prompt.
+3. Parse label (CONTRADICTION/NEUTRAL/ENTAILMENT) + confidence score.
+4. Return candidates where contradiction_score >= threshold, up to limit.
+
+On any Ollama failure the error is logged and that candidate is skipped —
+the write always proceeds regardless.
+"""
+
+from __future__ import annotations
+
+import logging
+import re
+from dataclasses import dataclass
+from datetime import datetime
+from typing import TYPE_CHECKING
+from uuid import UUID
+
+if TYPE_CHECKING:
+    import asyncpg
+
+logger = logging.getLogger(__name__)
+
+NLI_DEFAULT_THRESHOLD = 0.7
+NLI_DEFAULT_LIMIT = 3
+NLI_DEFAULT_CANDIDATE_WINDOW = 20
+NLI_DEFAULT_MODEL = "llama3.2:1b"
+
+_NLI_PROMPT = """\
+Memory A: {a}
+Memory B: {b}
+
+Do Memory A and Memory B state contradictory facts? Consider whether they make \
+conflicting claims about the same topic.
+
+Reply with exactly one of:
+CONTRADICTION <score>   (conflicting facts, score = your confidence 0.0-1.0)
+NEUTRAL <score>         (compatible or unrelated)
+ENTAILMENT <score>      (one supports the other)
+
+Example: CONTRADICTION 0.85"""
+
+_NLI_RE = re.compile(r"(CONTRADICTION|NEUTRAL|ENTAILMENT)\s+([\d.]+)", re.IGNORECASE)
+
+
+@dataclass(frozen=True)
+class ContradictionCandidate:
+    memory_id: UUID
+    content_snippet: str       # first 200 chars
+    contradiction_score: float  # 0.0-1.0, NLI model confidence
+    type: str
+    tags: list[str]
+    created_at: datetime
+
+
+def _parse_nli_response(text: str) -> tuple[str, float]:
+    """Parse 'CONTRADICTION 0.85' → ('CONTRADICTION', 0.85). Defaults NEUTRAL 0.0."""
+    m = _NLI_RE.search(text.strip())
+    if m:
+        label = m.group(1).upper()
+        score = min(1.0, max(0.0, float(m.group(2))))
+        return label, score
+    return "NEUTRAL", 0.0
+
+
+async def _score_contradiction(a: str, b: str, ollama_url: str, model: str) -> float:
+    """Call Ollama /api/generate; return contradiction confidence 0.0-1.0."""
+    import httpx
+
+    prompt = _NLI_PROMPT.format(a=a[:500], b=b[:500])
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.post(
+            f"{ollama_url.rstrip('/')}/api/generate",
+            json={"model": model, "prompt": prompt, "stream": False},
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+    raw = data.get("response", "")
+    label, score = _parse_nli_response(raw)
+    return score if label == "CONTRADICTION" else 0.0
+
+
+async def find_contradiction_candidates(
+    conn: asyncpg.Connection,
+    tenant_id: UUID,
+    new_content: str,
+    type_: str,
+    ollama_url: str,
+    model: str = NLI_DEFAULT_MODEL,
+    threshold: float = NLI_DEFAULT_THRESHOLD,
+    limit: int = NLI_DEFAULT_LIMIT,
+    window: int = NLI_DEFAULT_CANDIDATE_WINDOW,
+) -> list[ContradictionCandidate]:
+    """Fetch recent same-type memories, score via NLI, return contradictions."""
+    rows = await conn.fetch(
+        """
+        SELECT id, content, type, tags, created_at
+        FROM memories
+        WHERE tenant_id = $1 AND type = $2
+          AND deleted_at IS NULL AND is_current = true
+        ORDER BY created_at DESC
+        LIMIT $3
+        """,
+        tenant_id,
+        type_,
+        window,
+    )
+
+    results: list[ContradictionCandidate] = []
+    for row in rows:
+        try:
+            score = await _score_contradiction(new_content, row["content"], ollama_url, model)
+        except Exception as exc:
+            logger.warning("NLI scoring failed for candidate %s: %s", row["id"], exc)
+            continue
+        if score >= threshold:
+            results.append(
+                ContradictionCandidate(
+                    memory_id=row["id"],
+                    content_snippet=row["content"][:200],
+                    contradiction_score=score,
+                    type=row["type"],
+                    tags=list(row["tags"] or []),
+                    created_at=row["created_at"],
+                )
+            )
+
+    results.sort(key=lambda c: c.contradiction_score, reverse=True)
+    return results[:limit]
+```
+
+---
+
+### Step 3 — `src/mem_mcp/mcp/tools/write.py`: Wire contradiction check
+
+**3a. Imports** — add at the top (after existing imports):
+```python
+from mem_mcp.config import get_settings
+from mem_mcp.memory.contradiction import ContradictionCandidate, find_contradiction_candidates
+```
+
+**3b. `MemoryWriteInput`** — add two fields after `fragment_id: int | None = None` (line 89):
+```python
+check_contradictions: bool = False
+contradiction_limit: int = Field(default=3, ge=1, le=10)
+```
+
+**3c. `MemoryWriteOutput`** — add one field after `embedding_status: str` (line 197):
+```python
+contradictions: list[ContradictionCandidate] | None = None
+```
+
+**3d. In `__call__`** — add before `async with tenant_tx(...)` (line 248), after `embed_or_skip` block:
+```python
+# Initialize before tenant_tx so all four return paths always see it
+contradictions_result: list[ContradictionCandidate] | None = None
+s = get_settings()
+_nli_enabled = (
+    inp.check_contradictions
+    and s.nli_backend == "ollama"
+    and s.ollama_url is not None
+)
+```
+
+**3e.** — add inside `tenant_tx`, after reference resolution (after line 316, before `# Dedupe` comment):
+```python
+            # Contradiction detection (NLI via Ollama) — advisory, never blocking
+            if inp.check_contradictions:
+                if _nli_enabled:
+                    contradictions_result = await find_contradiction_candidates(
+                        conn,
+                        ctx.tenant_id,
+                        inp.content,
+                        inp.type,
+                        ollama_url=s.ollama_url,  # type: ignore[arg-type]
+                        model=s.nli_ollama_model,
+                        threshold=s.nli_contradiction_threshold,
+                        limit=inp.contradiction_limit,
+                        window=s.nli_candidate_window,
+                    )
+                else:
+                    contradictions_result = []
+```
+
+**3f. All four `return MemoryWriteOutput(...)` calls** — add `contradictions=contradictions_result` to each:
+
+| Line | Current last arg | Add |
+|------|-----------------|-----|
+| ~360 (dedupe) | `embedding_status=embedding_status,` | `contradictions=contradictions_result,` |
+| ~492 (reply) | `embedding_status=embedding_status,` | `contradictions=contradictions_result,` |
+| ~620 (supersede) | `embedding_status=embedding_status,` | `contradictions=contradictions_result,` |
+| ~719 (plain INSERT) | `embedding_status=embedding_status,` | `contradictions=contradictions_result,` |
+
+---
+
+### Step 4 — `src/mem_mcp/mcp/tool_descriptions.py`: Update description
+
+Append to the `memory_write` description string (after the last `Note:` sentence):
+
+```
+Contradiction detection: pass `check_contradictions=true` to scan recent memories of the same type for factual conflicts using NLI (Natural Language Inference). Returns `contradictions: [{memory_id, content_snippet, contradiction_score, type, tags, created_at}]` sorted by confidence descending, up to `contradiction_limit` (default 3). The write always proceeds — contradictions are advisory. Requires `MEM_MCP_NLI_BACKEND=ollama` server-side configuration; returns `[]` when NLI is not configured.
+```
+
+---
+
+### Step 5 — Tests
+
+**`tests/unit/test_contradiction.py`** — 8 tests covering:
+1. `_parse_nli_response("CONTRADICTION 0.9")` → `("CONTRADICTION", 0.9)`
+2. `_parse_nli_response("NEUTRAL 0.1")` → `("NEUTRAL", 0.1)`
+3. `_parse_nli_response("garbage")` → `("NEUTRAL", 0.0)`
+4. `_parse_nli_response("CONTRADICTION 1.5")` → score clamped to 1.0
+5. `find_contradiction_candidates` with mock conn (0 rows) → `[]`
+6. `find_contradiction_candidates` with mock conn (1 row) + mock `_score_contradiction` returning 0.85 → 1 result
+7. `find_contradiction_candidates` score below threshold → `[]`
+8. `find_contradiction_candidates` Ollama raises → warning logged, `[]` returned
+
+**`tests/integration/test_write_contradiction.py`** — 3 tests:
+1. `nli_backend=none`: `check_contradictions=True` → `contradictions: []`, no Ollama call
+2. `nli_backend=ollama` (mock Ollama returning `CONTRADICTION 0.9`): write "we use Postgres", write "we use MySQL" with `check_contradictions=True` → first memory in `contradictions`
+3. Ollama timeout → write succeeds, `contradictions: []`
+
+---
+
+### Execution order
+
+```
+1. config.py      (settings — no deps)
+2. contradiction.py  (new module — no write.py dep)
+3. write.py          (wires config + contradiction)
+4. tool_descriptions.py  (string change — last)
+5. tests/unit/        (mock-only, fast)
+6. tests/integration/ (needs DB + mock Ollama)
+```
+
+**Total estimate: ~5.75h** (matches issue #315)
+
+---
+
 ## Bugs Found (Code Review — HEAD~10..HEAD)
 
 All bugs confirmed via independent verification agents. Ranked by severity.
