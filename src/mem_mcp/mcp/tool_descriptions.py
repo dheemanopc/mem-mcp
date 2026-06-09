@@ -26,7 +26,9 @@ Multi-team users: **Remember the chosen team for the rest of this conversation a
 
 Examples: "Remember we chose PostgreSQL over MySQL." → type=decision. "Save this retry snippet." → type=snippet. "Note: deadline is March 15." → type=fact. "We're going freemium." → type=decision, tags=["pricing"]. "Add my comment on that trade memory: SL too tight." → type=note, parent_id="<trade-uuid>". "Save this for the team" → team_id=<uuid>, visibility="team".
 
-Note: `visibility="team"` requires `team_id` to be specified.""",
+Note: `visibility="team"` requires `team_id` to be specified.
+
+Contradiction detection: pass `check_contradictions=true` to scan recent memories of the same type for factual conflicts using NLI (Natural Language Inference) via Ollama. Returns `contradictions: [{memory_id, content_snippet, contradiction_score, type, tags, created_at}]` sorted by confidence descending, up to `contradiction_limit` (default 3, max 10). The write always proceeds — contradictions are advisory only. Requires `MEM_MCP_NLI_BACKEND=ollama` server configuration; returns `contradictions: []` when NLI is not configured.""",
     "memory_search": """Search memories using a natural-language query — call this to retrieve previously stored information relevant to the current topic, or when the user references past conversations, decisions, or facts.
 
 Call when: user says "what did we decide", "remind me", "what was our", "do you remember", "what did I save about"; user asks a question whose answer might be in memory; user uses possessive pronouns about past work ("our plan", "my preferences", "the approach we chose"); a new conversation starts on a topic where prior context likely exists; you need to check for duplicates before calling memory_write.

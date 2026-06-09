@@ -80,6 +80,11 @@ class Settings(BaseSettings):
     embeddings_provider: str = "bedrock"
     ollama_url: str | None = None
     ollama_embed_model: str = "bge-m3"
+    # NLI contradiction detection via Ollama generative model
+    nli_backend: str = "none"  # "none" | "ollama"
+    nli_ollama_model: str = "llama3.2:1b"
+    nli_contradiction_threshold: float = 0.7
+    nli_candidate_window: int = 20
     log_level: str = "INFO"
     # TA session cache configuration
     ta_cache_max_sessions: int = 50

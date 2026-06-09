@@ -10,12 +10,14 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from mem_mcp.config import get_settings
 from mem_mcp.db import system_tx, tenant_tx
 from mem_mcp.embeddings.bedrock import EmbeddingError
 from mem_mcp.embeddings.embed_or_skip import embed_or_skip
 from mem_mcp.mcp.errors import JsonRpcError
 from mem_mcp.mcp.tool_descriptions import TOOL_DESCRIPTIONS
 from mem_mcp.mcp.tools._base import BaseTool, ToolContext
+from mem_mcp.memory.contradiction import ContradictionCandidate, find_contradiction_candidates
 from mem_mcp.memory.dedupe import check_dup
 from mem_mcp.memory.normalize import hash_content
 from mem_mcp.memory.versioning import VERSIONED_TYPES
@@ -87,6 +89,8 @@ class MemoryWriteInput(BaseModel):
     slug_clue: str | None = None
     references: list[ReferenceInput] | None = None
     fragment_id: int | None = None
+    check_contradictions: bool = False
+    contradiction_limit: int = Field(default=3, ge=1, le=10)
 
     @field_validator("tags", mode="after")
     @classmethod
@@ -194,6 +198,7 @@ class MemoryWriteOutput(BaseModel):
     created_at: datetime
     request_id: str
     embedding_status: str
+    contradictions: list[ContradictionCandidate] | None = None
 
 
 class MemoryWriteTool(BaseTool):
@@ -244,6 +249,15 @@ class MemoryWriteTool(BaseTool):
                     "message": str(exc)[:200],
                 },
             ) from exc
+
+        # Initialized before tenant_tx so all four write-path return branches see it
+        contradictions_result: list[ContradictionCandidate] | None = None
+        _s = get_settings()
+        _nli_enabled = (
+            inp.check_contradictions
+            and _s.nli_backend == "ollama"
+            and _s.ollama_url is not None
+        )
 
         async with tenant_tx(ctx.db_pool, ctx.tenant_id) as conn:
             # Resolve effective team_id (from caller's default_team_id if not provided)
@@ -315,6 +329,23 @@ class MemoryWriteTool(BaseTool):
                                 },
                             ) from exc
 
+            # Contradiction detection (NLI via Ollama) — advisory, never blocking
+            if inp.check_contradictions:
+                if _nli_enabled:
+                    contradictions_result = await find_contradiction_candidates(
+                        conn,
+                        ctx.tenant_id,
+                        inp.content,
+                        inp.type,
+                        ollama_url=_s.ollama_url,  # type: ignore[arg-type]
+                        model=_s.nli_ollama_model,
+                        threshold=_s.nli_contradiction_threshold,
+                        limit=inp.contradiction_limit,
+                        window=_s.nli_candidate_window,
+                    )
+                else:
+                    contradictions_result = []
+
             # Dedupe (unless caller forced new or parent_id set)
             existing = None
             if not inp.force_new and inp.parent_id is None:
@@ -365,6 +396,7 @@ class MemoryWriteTool(BaseTool):
                     created_at=row["created_at"],
                     request_id=ctx.request_id,
                     embedding_status=embedding_status,
+                    contradictions=contradictions_result,
                 )
 
             # parent_id branch: write a reply
@@ -497,6 +529,7 @@ class MemoryWriteTool(BaseTool):
                     created_at=reply_row["created_at"],
                     request_id=ctx.request_id,
                     embedding_status=embedding_status,
+                    contradictions=contradictions_result,
                 )
 
             # supersede branch (versioned types only)
@@ -625,6 +658,7 @@ class MemoryWriteTool(BaseTool):
                     created_at=new_row["created_at"],
                     request_id=ctx.request_id,
                     embedding_status=embedding_status,
+                    contradictions=contradictions_result,
                 )
 
             # Plain INSERT
@@ -724,4 +758,5 @@ class MemoryWriteTool(BaseTool):
                 created_at=row["created_at"],
                 request_id=ctx.request_id,
                 embedding_status=embedding_status,
+                contradictions=contradictions_result,
             )
