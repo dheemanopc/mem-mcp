@@ -24,7 +24,7 @@ Teams & slug support: pass `team_id` (UUID) to set the team scope (or omit to us
 
 Multi-team users: **Remember the chosen team for the rest of this conversation and pass it on every subsequent memory_* call** unless the user explicitly switches contexts.
 
-Contradiction detection: pass `check_contradictions=true` to have recent same-type memories NLI-screened against the new content; the response then carries a `contradictions` list (memory_id, content_snippet, contradiction_score, type, tags, created_at), capped by `contradiction_limit` (1-10, default 3). Advisory only — the write always proceeds. Populated results require server-side `nli_backend=ollama` configuration; otherwise the list is empty.
+Contradiction check: pass `check_contradictions=true` to receive `contradiction_candidates` — the most recent same-type memories (memory_id, content_snippet, type, tags, created_at; newest first, capped by `contradiction_limit`, 1-10, default 3). The server does NO judging (deterministic recency window, no LLM): YOU compare each candidate against the content you just wrote and decide whether they state conflicting facts. If one does, tell the user and offer memory_supersede (decision/fact) or memory_update. Snippets are truncated to 200 chars — memory_get the full body before judging if needed. Advisory only; the write has already succeeded.
 
 Examples: "Remember we chose PostgreSQL over MySQL." → type=decision. "Save this retry snippet." → type=snippet. "Note: deadline is March 15." → type=fact. "We're going freemium." → type=decision, tags=["pricing"]. "Add my comment on that trade memory: SL too tight." → type=note, parent_id="<trade-uuid>". "Save this for the team" → team_id=<uuid>, visibility="team".
 

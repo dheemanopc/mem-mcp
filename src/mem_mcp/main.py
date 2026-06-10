@@ -436,30 +436,10 @@ def _wire_routers(app: FastAPI) -> None:
     embeddings = make_embedding_client(s)
     audit = DbAuditLogger()
     quotas = QuotaEnforcer(pool=pool)
-
-    # Contradiction detection on memory_write (issue #315). Default backend
-    # "none" keeps the Noop checker — check_contradictions returns [].
-    nli = None
-    if s.nli_backend == "ollama":
-        if s.ollama_url:
-            from mem_mcp.memory.contradiction import OllamaNliChecker
-
-            nli = OllamaNliChecker(
-                url=s.ollama_url,
-                model=s.nli_ollama_model,
-                threshold=s.nli_contradiction_threshold,
-                window=s.nli_candidate_window,
-            )
-        else:
-            log.warning(
-                "nli_backend=ollama but MEM_MCP_OLLAMA_URL unset; contradiction detection disabled"
-            )
-
     deps = make_default_deps(
         embeddings=embeddings,
         audit=audit,
         quotas=quotas,
-        nli=nli,
     )
 
     # Build ToolRegistry with 21 tools (14 memory + 1 onboarding + 6 team).

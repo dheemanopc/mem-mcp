@@ -80,13 +80,6 @@ class Settings(BaseSettings):
     embeddings_provider: str = "bedrock"
     ollama_url: str | None = None
     ollama_embed_model: str = "bge-m3"
-    # Contradiction detection on memory_write (issue #315) — "none" (default,
-    # check_contradictions is a no-op) or "ollama" (NLI via the same Ollama
-    # instance as embeddings; ollama_url must be set).
-    nli_backend: str = "none"
-    nli_ollama_model: str = "llama3.2:1b"
-    nli_contradiction_threshold: float = 0.7  # applied to NLI confidence score
-    nli_candidate_window: int = 20  # recent memories compared per write
     log_level: str = "INFO"
     # TA session cache configuration
     ta_cache_max_sessions: int = 50

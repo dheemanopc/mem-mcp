@@ -1,10 +1,8 @@
-"""Integration tests for contradiction detection (issue #315) — real PG.
+"""Integration tests for contradiction candidates (issue #315) — real PG.
 
-Covers the DB-touching half of find_contradiction_candidates: the recency-
-window candidate fetch (type scoping, deleted/superseded exclusion, window
-cap). The Ollama NLI call is patched — the wired-tool e2e against a real
-Ollama is out of scope (same pool-factory limitation noted in
-test_spec2_e2e_write_get_slug.py).
+Covers the recency-window candidate fetch: type scoping, deleted/superseded
+exclusion, limit cap. Deterministic SQL only — no LLM in the pipeline; the
+calling model judges contradictions client-side.
 
 Skips cleanly when MEM_MCP_TEST_DSN is unset (pg_pool fixture).
 """
@@ -16,31 +14,12 @@ from uuid import uuid4
 
 import pytest
 
-from mem_mcp.memory.contradiction import find_contradiction_candidates
+from mem_mcp.memory.contradiction import find_recent_candidates
 
 if TYPE_CHECKING:
     from asyncpg import Pool  # type: ignore[import-untyped]
 
 pytestmark = pytest.mark.asyncio
-
-
-def _patch_classify_all_contradict(
-    monkeypatch: pytest.MonkeyPatch, score: float = 0.9
-) -> list[str]:
-    """Every candidate classifies as CONTRADICTION; returns the call log."""
-    calls: list[str] = []
-
-    async def fake_classify(
-        *, url: str, model: str, new_content: str, candidate_content: str, timeout_seconds: float
-    ) -> tuple[str, float]:
-        calls.append(candidate_content)
-        return ("CONTRADICTION", score)
-
-    monkeypatch.setattr(
-        "mem_mcp.memory.contradiction._ollama_nli_classify",
-        fake_classify,
-    )
-    return calls
 
 
 async def _seed_tenant_and_team(conn: Any) -> tuple[Any, Any]:
@@ -84,9 +63,7 @@ async def _insert_memory(
     )
 
 
-async def test_candidate_fetch_scoping_and_exclusions(
-    pg_pool: Pool, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_candidate_fetch_scoping_and_exclusions(pg_pool: Pool) -> None:
     """Only live, current, same-type, same-tenant rows become candidates."""
     async with pg_pool.acquire() as conn:
         async with conn.transaction():
@@ -99,25 +76,15 @@ async def test_candidate_fetch_scoping_and_exclusions(
             await _insert_memory(conn, tenant_id, team_id, "other type", type_="snippet")
             await _insert_memory(conn, other_tenant, other_team, "other tenant row")
 
-            calls = _patch_classify_all_contradict(monkeypatch)
-            out = await find_contradiction_candidates(
-                conn,
-                tenant_id,
-                "we use PostgreSQL",
-                "note",
-                ollama_url="http://unused",
-            )
+            out = await find_recent_candidates(conn, tenant_id, "note", limit=10)
 
-            assert calls == ["we use MySQL"]
             assert [c.memory_id for c in out] == [live_id]
-            assert out[0].contradiction_score == 0.9
+            assert out[0].content_snippet == "we use MySQL"
             assert out[0].type == "note"
 
 
-async def test_window_caps_candidates_to_most_recent(
-    pg_pool: Pool, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """With window=2, only the 2 most recent memories are NLI-screened."""
+async def test_limit_caps_to_most_recent(pg_pool: Pool) -> None:
+    """With limit=2, only the 2 most recent memories are returned, newest first."""
     async with pg_pool.acquire() as conn:
         async with conn.transaction():
             tenant_id, team_id = await _seed_tenant_and_team(conn)
@@ -132,16 +99,6 @@ async def test_window_caps_candidates_to_most_recent(
                     f"memory {i}",
                 )
 
-            calls = _patch_classify_all_contradict(monkeypatch)
-            out = await find_contradiction_candidates(
-                conn,
-                tenant_id,
-                "new content",
-                "note",
-                ollama_url="http://unused",
-                window=2,
-                limit=10,
-            )
+            out = await find_recent_candidates(conn, tenant_id, "note", limit=2)
 
-            assert sorted(calls) == ["memory 2", "memory 3"]  # the 2 most recent
-            assert len(out) == 2
+            assert [c.content_snippet for c in out] == ["memory 3", "memory 2"]
