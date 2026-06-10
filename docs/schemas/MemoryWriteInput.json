@@ -95,11 +95,23 @@
   },
   "additionalProperties": false,
   "properties": {
+    "check_contradictions": {
+      "default": false,
+      "title": "Check Contradictions",
+      "type": "boolean"
+    },
     "content": {
       "maxLength": 200000,
       "minLength": 1,
       "title": "Content",
       "type": "string"
+    },
+    "contradiction_limit": {
+      "default": 3,
+      "maximum": 10,
+      "minimum": 1,
+      "title": "Contradiction Limit",
+      "type": "integer"
     },
     "expires_at": {
       "anyOf": [

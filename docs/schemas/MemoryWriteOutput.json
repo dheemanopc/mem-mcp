@@ -1,5 +1,65 @@
 {
+  "$defs": {
+    "ContradictionCandidate": {
+      "properties": {
+        "content_snippet": {
+          "title": "Content Snippet",
+          "type": "string"
+        },
+        "contradiction_score": {
+          "title": "Contradiction Score",
+          "type": "number"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "memory_id": {
+          "format": "uuid",
+          "title": "Memory Id",
+          "type": "string"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        },
+        "type": {
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "memory_id",
+        "content_snippet",
+        "contradiction_score",
+        "type",
+        "tags",
+        "created_at"
+      ],
+      "title": "ContradictionCandidate",
+      "type": "object"
+    }
+  },
   "properties": {
+    "contradictions": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/ContradictionCandidate"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Contradictions"
+    },
     "created_at": {
       "format": "date-time",
       "title": "Created At",
