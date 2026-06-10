@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
@@ -17,6 +18,15 @@ import asyncpg  # type: ignore[import-untyped]
 from mem_mcp.db.tenant_tx import system_tx
 
 log = logging.getLogger(__name__)
+
+
+def _json_default(obj: Any) -> str:
+    """Plugin payloads carry datetimes/UUIDs (fire_at, item ids); a bare
+    json.dumps would raise TypeError and fail the whole queue call — the
+    same bug class that broke reminders dismiss/resolve plugin-side."""
+    if isinstance(obj, datetime | date):
+        return obj.isoformat()
+    return str(obj)
 
 
 class NoticeClientImpl:
@@ -47,7 +57,7 @@ class NoticeClientImpl:
                 self._plugin_id,
                 kind,
                 template,
-                json.dumps(payload),
+                json.dumps(payload, default=_json_default),
                 str(ttl_seconds),
             )
         log.info("plugin_notice_queued", extra={"plugin_id": self._plugin_id, "kind": kind})
