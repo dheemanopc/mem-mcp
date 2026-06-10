@@ -76,6 +76,26 @@
       "title": "Log Level",
       "type": "string"
     },
+    "nli_backend": {
+      "default": "none",
+      "title": "Nli Backend",
+      "type": "string"
+    },
+    "nli_candidate_window": {
+      "default": 20,
+      "title": "Nli Candidate Window",
+      "type": "integer"
+    },
+    "nli_contradiction_threshold": {
+      "default": 0.7,
+      "title": "Nli Contradiction Threshold",
+      "type": "number"
+    },
+    "nli_ollama_model": {
+      "default": "llama3.2:1b",
+      "title": "Nli Ollama Model",
+      "type": "string"
+    },
     "ollama_embed_model": {
       "default": "bge-m3",
       "title": "Ollama Embed Model",
