@@ -7,11 +7,12 @@ Protocol-shaped so tests can swap in fakes.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol
 from uuid import UUID
 
 from mem_mcp.audit.logger import AuditLogger, NoopAuditLogger
+from mem_mcp.memory.contradiction import ContradictionChecker, NoopContradictionChecker
 
 if TYPE_CHECKING:
     from mem_mcp.embeddings.bedrock import EmbeddingClient
@@ -49,6 +50,10 @@ class ToolDeps:
     embeddings: EmbeddingClient
     audit: AuditLogger
     quotas: Quotas
+    # Contradiction check on memory_write (issue #315). Noop default keeps
+    # check_contradictions=true a backwards-compatible no-op until
+    # nli_backend=ollama is configured (see main.py wiring).
+    nli: ContradictionChecker = field(default_factory=NoopContradictionChecker)
 
 
 def make_default_deps(
@@ -56,10 +61,12 @@ def make_default_deps(
     embeddings: EmbeddingClient,
     audit: AuditLogger | None = None,
     quotas: Quotas | None = None,
+    nli: ContradictionChecker | None = None,
 ) -> ToolDeps:
     """Build ToolDeps with sensible production defaults for the gaps."""
     return ToolDeps(
         embeddings=embeddings,
         audit=audit or NoopAuditLogger(),
         quotas=quotas or NoopQuotas(),
+        nli=nli or NoopContradictionChecker(),
     )

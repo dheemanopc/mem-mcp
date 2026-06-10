@@ -16,6 +16,7 @@ from mem_mcp.embeddings.embed_or_skip import embed_or_skip
 from mem_mcp.mcp.errors import JsonRpcError
 from mem_mcp.mcp.tool_descriptions import TOOL_DESCRIPTIONS
 from mem_mcp.mcp.tools._base import BaseTool, ToolContext
+from mem_mcp.memory.contradiction import ContradictionCandidate
 from mem_mcp.memory.dedupe import check_dup
 from mem_mcp.memory.normalize import hash_content
 from mem_mcp.memory.versioning import VERSIONED_TYPES
@@ -87,6 +88,10 @@ class MemoryWriteInput(BaseModel):
     slug_clue: str | None = None
     references: list[ReferenceInput] | None = None
     fragment_id: int | None = None
+    # Contradiction detection (issue #315) — advisory NLI check, never blocks
+    # the write. Returns [] unless the server configures nli_backend=ollama.
+    check_contradictions: bool = False
+    contradiction_limit: int = Field(default=3, ge=1, le=10)
 
     @field_validator("tags", mode="after")
     @classmethod
@@ -194,6 +199,10 @@ class MemoryWriteOutput(BaseModel):
     created_at: datetime
     request_id: str
     embedding_status: str
+    # None when check_contradictions=false; [] when checked and clean (or
+    # NLI backend disabled/unavailable); populated with advisory candidates
+    # otherwise. The write succeeds regardless.
+    contradictions: list[ContradictionCandidate] | None = None
 
 
 class MemoryWriteTool(BaseTool):
@@ -244,6 +253,13 @@ class MemoryWriteTool(BaseTool):
                     "message": str(exc)[:200],
                 },
             ) from exc
+
+        # Declared before tenant_tx so all four write-path return branches see
+        # it. [] (not None) whenever the caller asked for the check, so the
+        # response shape is stable even on the dedupe early-return.
+        contradictions_result: list[ContradictionCandidate] | None = None
+        if inp.check_contradictions:
+            contradictions_result = []
 
         async with tenant_tx(ctx.db_pool, ctx.tenant_id) as conn:
             # Resolve effective team_id (from caller's default_team_id if not provided)
@@ -365,6 +381,21 @@ class MemoryWriteTool(BaseTool):
                     created_at=row["created_at"],
                     request_id=ctx.request_id,
                     embedding_status=embedding_status,
+                    contradictions=contradictions_result,
+                )
+
+            # Contradiction check (issue #315) — after the dedupe early-return
+            # (a deduped memory is never a contradiction candidate), before the
+            # insert branches so reply/supersede/plain paths share one call.
+            # NoopContradictionChecker returns []; OllamaNliChecker returns []
+            # on Ollama failure — the write proceeds either way.
+            if inp.check_contradictions:
+                contradictions_result = await ctx.deps.nli.find_candidates(
+                    conn,
+                    ctx.tenant_id,
+                    inp.content,
+                    inp.type,
+                    limit=inp.contradiction_limit,
                 )
 
             # parent_id branch: write a reply
@@ -497,6 +528,7 @@ class MemoryWriteTool(BaseTool):
                     created_at=reply_row["created_at"],
                     request_id=ctx.request_id,
                     embedding_status=embedding_status,
+                    contradictions=contradictions_result,
                 )
 
             # supersede branch (versioned types only)
@@ -625,6 +657,7 @@ class MemoryWriteTool(BaseTool):
                     created_at=new_row["created_at"],
                     request_id=ctx.request_id,
                     embedding_status=embedding_status,
+                    contradictions=contradictions_result,
                 )
 
             # Plain INSERT
@@ -724,4 +757,5 @@ class MemoryWriteTool(BaseTool):
                 created_at=row["created_at"],
                 request_id=ctx.request_id,
                 embedding_status=embedding_status,
+                contradictions=contradictions_result,
             )
