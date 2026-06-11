@@ -140,3 +140,36 @@ Note: directory is `evals/` (plural) to avoid shadowing the Python `eval` builti
 - **Regression CI gate**: Fail deploy if metrics drop >5%
 - **Per-tenant evaluation**: Separate baseline per customer
 - **A/B testing**: Compare embedding/indexing strategies
+
+## vocab_route — Space-Vocabulary Phase 0 (spec memo a12959d7)
+
+Gate evaluation for the space-vocabulary retrieval proposal. Compares, over
+real queries against the live store:
+
+- **A** — current vector search (`memories.embedding`, Titan v2, used as-is)
+- **B** — vocabulary route: query → cosine vs per-space phrase vocabulary →
+  OR websearch tsquery → ts_rank_cd
+- **C** — reciprocal-rank fusion of A + B
+
+Vocabulary phrases come from a deterministic extractor (no LLM —
+`phrases.py`): stopword-boundary 2-4 word windows, frequency-ranked,
+cosine-deduped at 0.93. If the gate fails specifically on vocabulary
+quality, that is the signal the spec's write-time LLM keyword extraction is
+load-bearing — a separate architectural decision.
+
+Run on a host with DB + Bedrock access (prod box):
+
+    poetry run python -m evals.vocab_route.run_eval \
+        --dsn "$DB_MAINT_DSN" --tenant-id <tenant-uuid> \
+        --output vocab_route_report.json
+
+Only queries (~20) and vocabulary phrases (≤300/space) are embedded — the
+corpus reuses its stored prod embeddings, so a full run costs cents.
+`dataset.jsonl` holds real owner-tenant queries with expected memory IDs
+(ground truth as of 2026-06-11); `spaces.json` maps spaces to qualifying
+tags. Without `--dsn` the harness runs in mock mode (stub embedder,
+`--corpus` JSONL) — CI plumbing validation only, never the gate.
+
+Gate (from the spec): B ties/beats A on hit@5 while materially cheaper in
+tokens, OR C meaningfully beats A. The report prints
+`viability_gate_passed` plus per-case routed phrases and fallbacks.
