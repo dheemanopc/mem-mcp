@@ -43,7 +43,9 @@ Multi-team users: pass `team_id` (UUID or team name) to scope the call. If you r
 
 Examples: "What did we decide about authentication?" → query="authentication decision". "Remind me of our pricing strategy." → query="pricing strategy". "What snippets do I have for retries?" → query="retry snippet", type=snippet. "What's our database?" → query="database choice decision". "Find the most relevant comments about RECLTD on this trade" → query="RECLTD slippage", parent_id="<trade-uuid>".
 
-Note: returned `content` may be truncated for very large memories; call `memory_get(id)` to fetch the full body.""",
+Matching: keyword matching is lenient — any query word can match (English-stemmed, OR semantics), with more matching words ranking higher; combined with semantic similarity and recency decay.
+
+Results: each result carries a short `preview` (keyword-windowed snippet with **match** markers, or head-of-content) for relevance triage, plus `content` truncated to 2000 chars (`content_truncated`/`content_length` indicate clipping). Evaluate with `preview`; call `memory_get(id)` for the full body.""",
     "memory_write_async": """Submit a memory write fire-and-forget — call this when you want to persist a memory WITHOUT blocking the conversation turn on the synchronous write latency (300ms-2s with embedding).
 
 Call when: persisting a dialogue exchange mid-conversation where the user feels the wait of sync memory_write; PMO role-prompts persisting working notes/ambiguity captures during dialogue; any "log this and keep moving" pattern.
@@ -83,11 +85,13 @@ Do not call when the user has a specific question — use memory_search instead 
 
 Tags: Multiple tags are intersected (AND) — a memory matches only if it has ALL the listed tags.
 
+Keywords: pass `keywords` to return only memories whose content textually matches at least one word (lenient, English-stemmed OR matching). Unlike memory_search this does not rank by relevance — pagination order (created_at/updated_at) is preserved.
+
 Multi-team users: pass `team_id` (UUID or team name) to scope the call. If you receive a `team_required` error, ask the user which team to work in (or use `user_default_team_id` from the error data). **Remember the chosen team for the rest of this conversation and pass it on every subsequent memory_* call** unless the user explicitly switches contexts. Use `team_id="*"` for cross-team queries.
 
-Examples: "Show me all my decisions." → type=decision, order=desc. "What did I save last week?" → since=7 days ago. "List snippets tagged python." → type=snippet, tags=["python"]. "Show my most recent 10 memories." → limit=10, order_by=created_at, order=desc.
+Examples: "Show me all my decisions." → type=decision, order=desc. "What did I save last week?" → since=7 days ago. "List snippets tagged python." → type=snippet, tags=["python"]. "Show my most recent 10 memories." → limit=10, order_by=created_at, order=desc. "List notes mentioning postgres from this month" → keywords="postgres", since=month start.
 
-Note: returned `content` is truncated to ~2000 chars per result; call `memory_get(id)` to fetch the full body.""",
+Results: each result carries a short `preview` (keyword-windowed snippet with **match** markers when `keywords` was passed, head-of-content otherwise); `content` is truncated to ~2000 chars per result — call `memory_get(id)` to fetch the full body.""",
     "memory_update": """Edit the content or tags of an existing memory in place — call this when the user wants to correct or extend a memory without creating a new version.
 
 Call when: user says "update that memory", "fix that note", "change it to say", "add a tag to", "that's not right — it should say"; user provides a correction to a stored note or snippet; user wants to add tags to an existing memory; small corrections to facts or notes that don't represent a conceptual change.

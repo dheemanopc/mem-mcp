@@ -134,6 +134,7 @@ def test_memory_list_item_requires_embedding_status() -> None:
         MemoryListItem(  # type: ignore[call-arg]
             id=uuid4(),
             content="test",
+            preview="test",
             type="note",
             tags=[],
             version=1,

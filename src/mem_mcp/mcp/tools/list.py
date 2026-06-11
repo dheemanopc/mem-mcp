@@ -14,6 +14,13 @@ from mem_mcp.db import tenant_tx
 from mem_mcp.mcp.errors import JsonRpcError
 from mem_mcp.mcp.tool_descriptions import TOOL_DESCRIPTIONS
 from mem_mcp.mcp.tools._base import BaseTool, ToolContext
+from mem_mcp.memory.hybrid_query import (
+    HEADLINE_OPTIONS,
+    HEADLINE_SOURCE_MAX_CHARS,
+    LENIENT_TSQUERY_SQL,
+    PREVIEW_FALLBACK_CHARS,
+    PREVIEW_MAX_CHARS,
+)
 
 MemoryType = Literal["note", "decision", "fact", "snippet", "question"]
 
@@ -23,6 +30,10 @@ class MemoryListInput(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    # Lenient textual filter: rows must keyword-match at least one word
+    # (English-stemmed, OR semantics). Pagination order is unchanged
+    # (created_at/updated_at) — this filters, it does not rank.
+    keywords: str | None = Field(default=None, min_length=1, max_length=512)
     tags: list[str] | None = None
     type: MemoryType | None = None
     since: datetime | None = None
@@ -46,7 +57,11 @@ class MemoryListItem(BaseModel):
     """Single memory in list results."""
 
     id: UUID
+    # Truncated to 2000 chars; full body via memory_get.
     content: str
+    # Keyword-windowed snippet (**match** markers) when `keywords` was
+    # passed; head-of-content otherwise.
+    preview: str
     type: str
     tags: list[str]
     version: int
@@ -157,6 +172,21 @@ class MemoryListTool(BaseTool):
             where_clauses.append(f"parent_id = ${len(params) + 1}")
             params.append(inp.parent_id)
 
+        # Lenient keyword filter (OR-of-lexemes tsquery; see hybrid_query).
+        # The same parameter is referenced by the preview headline below.
+        # NULL tsquery (all-stopword input) matches nothing — explicit and
+        # cheap rather than silently returning everything.
+        preview_select = f"LEFT(content, {PREVIEW_FALLBACK_CHARS}) AS preview"
+        if inp.keywords:
+            tsq = LENIENT_TSQUERY_SQL.format(param=f"${len(params) + 1}")
+            where_clauses.append(f"content_tsv @@ {tsq}")
+            preview_select = (
+                f"LEFT(COALESCE(ts_headline('english', LEFT(content, {HEADLINE_SOURCE_MAX_CHARS}), "
+                f"{tsq}, '{HEADLINE_OPTIONS}'), LEFT(content, {PREVIEW_FALLBACK_CHARS})), "
+                f"{PREVIEW_MAX_CHARS}) AS preview"
+            )
+            params.append(inp.keywords)
+
         # Keyset pagination: build cursor predicate
         if cursor_order_value_iso and cursor_id:
             order_col = inp.order_by
@@ -178,7 +208,7 @@ class MemoryListTool(BaseTool):
         # Fetch limit + 1 to detect if there's a next page
         fetch_limit = inp.limit + 1
         query = f"""
-            SELECT id, LEFT(content, 2000) AS content, type, tags, version, is_current, created_at, updated_at, deleted_at,
+            SELECT id, LEFT(content, 2000) AS content, {preview_select}, type, tags, version, is_current, created_at, updated_at, deleted_at,
                    expires_at, indexable, embedding_status
             FROM memories
             WHERE {where_str}

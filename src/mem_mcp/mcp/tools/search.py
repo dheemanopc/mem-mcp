@@ -24,6 +24,10 @@ from mem_mcp.memory.recency import recency_lambda_for
 
 MemoryType = Literal["note", "decision", "fact", "snippet", "question"]
 
+# Search responses carry at most this much of each memory's content — the
+# cap the tool description has always promised. Full body via memory_get.
+SEARCH_CONTENT_MAX_CHARS = 2_000
+
 
 class MemorySearchInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -42,7 +46,15 @@ class MemorySearchInput(BaseModel):
 
 class SearchResultItem(BaseModel):
     id: UUID
+    # Truncated to SEARCH_CONTENT_MAX_CHARS; check content_truncated and
+    # fetch the full body via memory_get when needed.
     content: str
+    # Short textual snippet for relevance triage: keyword-windowed with
+    # **match** markers when the query keyword-matched, head-of-content
+    # otherwise.
+    preview: str
+    content_truncated: bool
+    content_length: int
     type: str
     tags: list[str]
     version: int
@@ -129,7 +141,10 @@ class MemorySearchTool(BaseTool):
         items = [
             SearchResultItem(
                 id=r.id,
-                content=r.content,
+                content=r.content[:SEARCH_CONTENT_MAX_CHARS],
+                preview=r.preview,
+                content_truncated=len(r.content) > SEARCH_CONTENT_MAX_CHARS,
+                content_length=len(r.content),
                 type=r.type,
                 tags=r.tags,
                 version=r.version,

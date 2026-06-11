@@ -41,6 +41,20 @@
       "default": null,
       "title": "Indexable"
     },
+    "keywords": {
+      "anyOf": [
+        {
+          "maxLength": 512,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Keywords"
+    },
     "limit": {
       "default": 25,
       "maximum": 100,

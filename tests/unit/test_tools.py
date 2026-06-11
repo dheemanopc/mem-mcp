@@ -270,6 +270,7 @@ class TestMemorySearchTool:
                     score=0.8,
                     indexable=True,
                     embedding_status="ok",
+                    preview="hit",
                 )
             ]
 
