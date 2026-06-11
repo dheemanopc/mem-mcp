@@ -30,6 +30,10 @@ _STOPWORDS: Final[frozenset[str]] = frozenset(
 )
 
 _TOKEN_RE = re.compile(r"[a-z0-9][a-z0-9_./:-]*")
+# Phrases must not cross sentence boundaries — "dismissed_at null. repro:"
+# is vocabulary noise. Split on terminal punctuation + whitespace first;
+# identifiers like get_batch.py (no following space) survive.
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?;:])\s+")
 
 MIN_PHRASE_WORDS: Final[int] = 2
 MAX_PHRASE_WORDS: Final[int] = 4
@@ -44,14 +48,16 @@ def extract_phrases(text: str) -> Counter[str]:
     """
     counts: Counter[str] = Counter()
     for line in text.lower().splitlines():
-        run: list[str] = []
-        for token in [*_TOKEN_RE.findall(line), "."]:  # sentinel flushes the tail
-            if token in _STOPWORDS or token == ".":
-                _flush_run(run, counts)
-                run = []
-            else:
-                run.append(token)
-        _flush_run(run, counts)
+        for segment in _SENTENCE_SPLIT_RE.split(line):
+            run: list[str] = []
+            for token in [*_TOKEN_RE.findall(segment), "."]:  # sentinel flushes tail
+                token = token.rstrip(".:;,")
+                if not token or token in _STOPWORDS:
+                    _flush_run(run, counts)
+                    run = []
+                else:
+                    run.append(token)
+            _flush_run(run, counts)
     return counts
 
 

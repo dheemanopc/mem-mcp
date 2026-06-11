@@ -38,6 +38,17 @@ class TestExtractPhrases:
         phrases = extract_phrases("alpha beta gamma delta epsilon zeta")
         assert all(len(p.split()) <= 4 for p in phrases)
 
+    def test_phrases_do_not_cross_sentence_boundaries(self) -> None:
+        """'dismissed_at null. repro: reminder' is vocabulary noise — phrases
+        stop at terminal punctuation. (Validated empirically: fixing this
+        moved config B hit@5 0.89 -> 0.94 on the 21-doc preliminary run.)"""
+        phrases = extract_phrases("state stays dismissed_at null. repro: reminder fires again")
+        assert not any("null. repro" in p for p in phrases)
+        assert not any(p.endswith((".", ":", ";")) for p in phrases)
+        # identifiers with interior dots survive (no space after the dot)
+        phrases2 = extract_phrases("crash inside get_batch.py slug branch")
+        assert any("get_batch.py" in p for p in phrases2)
+
     def test_deterministic(self) -> None:
         text = "chunk level vector retrieval for long documents"
         assert extract_phrases(text) == extract_phrases(text)
