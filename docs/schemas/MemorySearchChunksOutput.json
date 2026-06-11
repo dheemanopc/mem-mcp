@@ -1,0 +1,81 @@
+{
+  "$defs": {
+    "ChunkResultItem": {
+      "properties": {
+        "chunk_index": {
+          "title": "Chunk Index",
+          "type": "integer"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "memory_id": {
+          "format": "uuid",
+          "title": "Memory Id",
+          "type": "string"
+        },
+        "score": {
+          "title": "Score",
+          "type": "number"
+        },
+        "snippet": {
+          "title": "Snippet",
+          "type": "string"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        },
+        "total_chunks": {
+          "title": "Total Chunks",
+          "type": "integer"
+        },
+        "type": {
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "memory_id",
+        "chunk_index",
+        "total_chunks",
+        "snippet",
+        "score",
+        "type",
+        "tags",
+        "created_at"
+      ],
+      "title": "ChunkResultItem",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "query_embedding_tokens": {
+      "title": "Query Embedding Tokens",
+      "type": "integer"
+    },
+    "request_id": {
+      "title": "Request Id",
+      "type": "string"
+    },
+    "results": {
+      "items": {
+        "$ref": "#/$defs/ChunkResultItem"
+      },
+      "title": "Results",
+      "type": "array"
+    }
+  },
+  "required": [
+    "results",
+    "query_embedding_tokens",
+    "request_id"
+  ],
+  "title": "MemorySearchChunksOutput",
+  "type": "object"
+}

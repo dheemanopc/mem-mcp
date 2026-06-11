@@ -69,6 +69,7 @@ from mem_mcp.mcp.tools.refs_in import RefsInTool
 from mem_mcp.mcp.tools.refs_out import RefsOutTool
 from mem_mcp.mcp.tools.remove_team_member import RemoveTeamMemberTool
 from mem_mcp.mcp.tools.search import MemorySearchTool
+from mem_mcp.mcp.tools.search_chunks import MemorySearchChunksTool
 from mem_mcp.mcp.tools.slug_lookup import MemsysSlugLookupTool
 from mem_mcp.mcp.tools.stats import MemoryStatsTool
 from mem_mcp.mcp.tools.supersede import MemorySupersedeTool
@@ -462,7 +463,7 @@ def _wire_routers(app: FastAPI) -> None:
         nli=nli,
     )
 
-    # Build ToolRegistry with 21 tools (14 memory + 1 onboarding + 6 team).
+    # Build ToolRegistry with 22 tools (15 memory + 1 onboarding + 6 team).
     # Localdev mode (cognito-local sidecar): skip per-tool required_scope check.
     # cognito-local's ROPC tokens only carry `aws.cognito.signin.user.admin`,
     # not memory.read/write, so without this bypass every tool call rejects.
@@ -473,6 +474,7 @@ def _wire_routers(app: FastAPI) -> None:
         MemoryWriteAsyncTool,
         MemoryWriteBatchTool,
         MemorySearchTool,
+        MemorySearchChunksTool,
         MemoryGetTool,
         MemoryGetBatchTool,
         MemoryListTool,

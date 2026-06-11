@@ -32,6 +32,8 @@ MODELS: list[tuple[str, str]] = [
     ("mem_mcp.mcp.tools.write_batch", "MemoryWriteBatchOutput"),
     ("mem_mcp.mcp.tools.search", "MemorySearchInput"),
     ("mem_mcp.mcp.tools.search", "MemorySearchOutput"),
+    ("mem_mcp.mcp.tools.search_chunks", "MemorySearchChunksInput"),
+    ("mem_mcp.mcp.tools.search_chunks", "MemorySearchChunksOutput"),
     ("mem_mcp.mcp.tools.get", "MemoryGetInput"),
     ("mem_mcp.mcp.tools.get", "MemoryGetOutput"),
     ("mem_mcp.mcp.tools.list", "MemoryListInput"),

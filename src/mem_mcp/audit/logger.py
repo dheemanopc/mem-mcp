@@ -57,6 +57,7 @@ AUDIT_ACTIONS: tuple[str, ...] = (
     # memory tools
     "memory.write",
     "memory.search",
+    "memory.search_chunks",
     "memory.get",
     "memory.list",
     "memory.stats",
@@ -106,6 +107,7 @@ AuditAction = Literal[
     "identity.unlinked",
     "memory.write",
     "memory.search",
+    "memory.search_chunks",
     "memory.get",
     "memory.list",
     "memory.stats",

@@ -46,6 +46,17 @@ Examples: "What did we decide about authentication?" → query="authentication d
 Matching: keyword matching is lenient — any query word can match (English-stemmed, OR semantics), with more matching words ranking higher; combined with semantic similarity and recency decay. Memories written with `indexable=false` are NEVER returned by search (neither semantic nor keyword) — reach those via memory_list (tags/parent_id filters), memory_thread_get, or memory_get.
 
 Results: each result carries a short `preview` (keyword-windowed snippet with **match** markers, or head-of-content) for relevance triage, plus `content` truncated to 2000 chars (`content_truncated`/`content_length` indicate clipping). Evaluate with `preview`; call `memory_get(id)` for the full body.""",
+    "memory_search_chunks": """Search inside memories at passage level — call this when you need the specific passage that matches a query rather than whole memories, especially across long documents (KB articles, specs, scan bundles).
+
+Call when: the answer is likely a paragraph inside a long memory ("what does the spec say about retries", "find the section on rate limits"); synthesizing across several documents where you need the relevant passage from each; a memory_search result had a high semantic score but an unhelpful head-of-content preview and you want the actual matching passage.
+
+Do not call for: precise/canonical lookups (instrument tokens, price levels, spec IDs, locked facts) — use tags/slugs/memory_get, never fuzzy retrieval. Do not call when whole-memory ranking is what you want — use memory_search. Results cover indexable memories only.
+
+Results: each item is a chunk snippet with provenance — memory_id, chunk_index/total_chunks, type, tags, created_at, similarity score. Up to `per_memory` chunks per memory (default 2; long memories often match in several places). Escalate with memory_get(memory_id) for the full body; neighboring passages are chunk_index ± 1.
+
+Freshness: chunks are built asynchronously after writes (typically within ~5 minutes). A just-written memory may not appear yet — memory_search covers it immediately.
+
+Examples: "What did the LLD say about token budgets?" → query="token budget", type=decision. "Find the section about HNSW indexes across my notes" → query="HNSW index configuration".""",
     "memory_write_async": """Submit a memory write fire-and-forget — call this when you want to persist a memory WITHOUT blocking the conversation turn on the synchronous write latency (300ms-2s with embedding).
 
 Call when: persisting a dialogue exchange mid-conversation where the user feels the wait of sync memory_write; PMO role-prompts persisting working notes/ambiguity captures during dialogue; any "log this and keep moving" pattern.
