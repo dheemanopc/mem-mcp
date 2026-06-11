@@ -51,6 +51,7 @@ def _memory_row(**overrides: Any) -> dict[str, Any]:
     base = {
         "id": uuid4(),
         "content": "test memory",
+        "preview": "test memory",
         "type": "note",
         "tags": ["tag1", "tag2"],
         "version": 1,

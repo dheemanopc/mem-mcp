@@ -6,6 +6,14 @@
           "title": "Content",
           "type": "string"
         },
+        "content_length": {
+          "title": "Content Length",
+          "type": "integer"
+        },
+        "content_truncated": {
+          "title": "Content Truncated",
+          "type": "boolean"
+        },
         "created_at": {
           "format": "date-time",
           "title": "Created At",
@@ -23,6 +31,10 @@
         "indexable": {
           "title": "Indexable",
           "type": "boolean"
+        },
+        "preview": {
+          "title": "Preview",
+          "type": "string"
         },
         "score": {
           "title": "Score",
@@ -59,6 +71,9 @@
       "required": [
         "id",
         "content",
+        "preview",
+        "content_truncated",
+        "content_length",
         "type",
         "tags",
         "version",

@@ -213,6 +213,7 @@ def _row(score: float = 0.5, **overrides: Any) -> dict[str, Any]:
     base = {
         "id": uuid4(),
         "content": "x",
+        "preview": "x",
         "type": "note",
         "tags": ["a"],
         "version": 1,

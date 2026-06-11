@@ -1,10 +1,14 @@
 """Hybrid retrieval: semantic top-50 U keyword top-50, recency-decayed.
 
-The canonical SQL is in spec §10.3 — replicated here verbatim with positional
-parameters. The Python wrapper (hybrid_search) builds the param tuple and
-casts result rows to SearchResult.
+Based on the canonical SQL in spec §10.3, with two deviations driven by
+user feedback (recall complaints + context-heavy responses):
+- the keyword leg uses a lenient OR-of-lexemes tsquery instead of
+  plainto_tsquery's all-words AND (any matching word qualifies; ts_rank_cd
+  still ranks fuller matches higher);
+- each returned row carries a `preview` ts_headline snippet for relevance
+  triage, computed only on the post-LIMIT rows.
 
-Scoring formula (spec §10.3):
+Scoring formula (spec §10.3, unchanged):
   score = (w_sem * sem_score + w_kw * (kw_score / max_kw_score))
         * exp(-recency_lambda * age_days)
 """
@@ -22,6 +26,36 @@ if TYPE_CHECKING:
 # Default semantic / keyword score weights (spec §10.3)
 SEARCH_DEFAULT_W_SEM: Final[float] = 0.7
 SEARCH_DEFAULT_W_KW: Final[float] = 0.3
+
+# Lenient OR tsquery built from the caller's plain-text query: normalize the
+# text into lexemes via to_tsvector, then OR them together. Any single
+# matching word qualifies a row for the keyword leg (ts_rank_cd still ranks
+# multi-word matches higher), unlike plainto_tsquery which ANDs every word
+# and zeroes the keyword score for any memory missing one term. Lexemes are
+# quote_literal-quoted so punctuation inside a lexeme can't break tsquery
+# syntax. All-stopword input aggregates to NULL → to_tsquery(NULL) → NULL,
+# which every consumer must treat as "no keyword leg".
+# {param} is the positional parameter carrying the raw query text.
+LENIENT_TSQUERY_SQL: Final[str] = """to_tsquery('english',
+    (SELECT string_agg(quote_literal(lexeme), ' | ')
+     FROM unnest(tsvector_to_array(to_tsvector('english', {param}))) AS lexeme)
+)""".strip()
+
+# ts_headline options for result previews: short keyword-windowed fragments,
+# **bold** match markers (markdown, readable by both humans and LLM clients).
+HEADLINE_OPTIONS: Final[str] = (
+    "StartSel=**, StopSel=**, MaxFragments=2, MaxWords=30, MinWords=8, " 'FragmentDelimiter=" … "'
+)
+
+# ts_headline cost scales with document length; cap its input. Matches past
+# this window fall back to the head-of-content preview.
+HEADLINE_SOURCE_MAX_CHARS: Final[int] = 8_000
+
+# Fallback preview (no keyword match / all-stopword query): head of content.
+PREVIEW_FALLBACK_CHARS: Final[int] = 280
+
+# Hard cap on the preview field itself.
+PREVIEW_MAX_CHARS: Final[int] = 600
 
 
 @dataclass(frozen=True)
@@ -55,10 +89,17 @@ class SearchResult:
     score: float
     indexable: bool
     embedding_status: str
+    # Keyword-windowed ts_headline snippet (**match** markers) when the query
+    # keyword-matched the row; head-of-content otherwise. For relevance triage
+    # — full body via memory_get.
+    preview: str
 
 
-_HYBRID_SQL = """
-WITH semantic AS (
+_HYBRID_SQL = f"""
+WITH q AS (
+    SELECT {LENIENT_TSQUERY_SQL.format(param="$7")} AS tsq
+),
+semantic AS (
     SELECT id, 1 - (embedding <=> $1::vector) AS sem_score
     FROM memories
     WHERE tenant_id = $2
@@ -75,12 +116,13 @@ WITH semantic AS (
     LIMIT 50
 ),
 keyword AS (
-    SELECT m.id, ts_rank_cd(m.content_tsv, q) AS kw_score
-    FROM memories m, plainto_tsquery('english', $7) q
+    SELECT m.id, ts_rank_cd(m.content_tsv, q.tsq) AS kw_score
+    FROM memories m, q
     WHERE m.tenant_id = $2
       AND m.deleted_at IS NULL
       AND m.is_current = true
-      AND m.content_tsv @@ q
+      AND q.tsq IS NOT NULL
+      AND m.content_tsv @@ q.tsq
       AND ($3::text IS NULL OR m.type = $3)
       AND ($4::text[] IS NULL OR m.tags @> $4)
       AND ($5::timestamptz IS NULL OR m.created_at >= $5)
@@ -100,20 +142,34 @@ combined AS (
     LEFT JOIN keyword  k ON k.id = m.id
     WHERE m.id IN (SELECT id FROM semantic UNION SELECT id FROM keyword)
       AND m.tenant_id = $2
+),
+ranked AS (
+    SELECT m.id, m.content, m.type, m.tags, m.version,
+           m.created_at, m.updated_at,
+           c.sem_score, c.kw_score,
+           exp(-$8::float * c.age_days) AS recency_factor,
+           (
+               $9::float * c.sem_score
+             + $10::float * (c.kw_score / GREATEST((SELECT MAX(kw_score) FROM keyword), 0.0001))
+           ) * exp(-$8::float * c.age_days) AS score,
+           m.indexable, m.embedding_status
+    FROM combined c
+    JOIN memories m ON m.id = c.id
+    ORDER BY score DESC
+    LIMIT $11
 )
-SELECT m.id, m.content, m.type, m.tags, m.version,
-       m.created_at, m.updated_at,
-       c.sem_score, c.kw_score,
-       exp(-$8::float * c.age_days) AS recency_factor,
-       (
-           $9::float * c.sem_score
-         + $10::float * (c.kw_score / GREATEST((SELECT MAX(kw_score) FROM keyword), 0.0001))
-       ) * exp(-$8::float * c.age_days) AS score,
-       m.indexable, m.embedding_status
-FROM combined c
-JOIN memories m ON m.id = c.id
-ORDER BY score DESC
-LIMIT $11
+-- preview computed only on the LIMITed rows (ts_headline is per-row costly)
+SELECT r.*,
+       LEFT(
+           COALESCE(
+               ts_headline('english', LEFT(r.content, {HEADLINE_SOURCE_MAX_CHARS}),
+                           (SELECT tsq FROM q), '{HEADLINE_OPTIONS}'),
+               LEFT(r.content, {PREVIEW_FALLBACK_CHARS})
+           ),
+           {PREVIEW_MAX_CHARS}
+       ) AS preview
+FROM ranked r
+ORDER BY r.score DESC
 """.strip()
 
 
@@ -154,6 +210,7 @@ async def hybrid_search(
             score=float(r["score"]),
             indexable=bool(r["indexable"]),
             embedding_status=r["embedding_status"],
+            preview=r["preview"],
         )
         for r in rows
     ]

@@ -96,6 +96,7 @@ async def test_list_memories_happy_path(
                     MemoryListItem(
                         id=memory_id,
                         content="Test memory",
+                        preview="Test memory",
                         type="note",
                         tags=["test"],
                         version=1,

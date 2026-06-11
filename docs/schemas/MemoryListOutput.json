@@ -53,6 +53,10 @@
           "title": "Is Current",
           "type": "boolean"
         },
+        "preview": {
+          "title": "Preview",
+          "type": "string"
+        },
         "tags": {
           "items": {
             "type": "string"
@@ -77,6 +81,7 @@
       "required": [
         "id",
         "content",
+        "preview",
         "type",
         "tags",
         "version",
