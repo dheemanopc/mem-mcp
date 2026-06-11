@@ -105,6 +105,7 @@ semantic AS (
     WHERE tenant_id = $2
       AND deleted_at IS NULL
       AND is_current = true
+      AND indexable = true  -- opt-out rows are not searchable (any leg)
       AND embedding IS NOT NULL  -- oversize content stored without embedding
       AND ($3::text IS NULL OR type = $3)
       AND ($4::text[] IS NULL OR tags @> $4)
@@ -121,6 +122,9 @@ keyword AS (
     WHERE m.tenant_id = $2
       AND m.deleted_at IS NULL
       AND m.is_current = true
+      AND m.indexable = true  -- indexable=false skips embeddings only, so
+                              -- without this guard opt-out rows leak back
+                              -- in through lexical matching
       AND q.tsq IS NOT NULL
       AND m.content_tsv @@ q.tsq
       AND ($3::text IS NULL OR m.type = $3)

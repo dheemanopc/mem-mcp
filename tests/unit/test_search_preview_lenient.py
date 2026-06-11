@@ -53,6 +53,19 @@ class TestLenientHybridSql:
         assert "ts_headline" in _HYBRID_SQL
         assert _HYBRID_SQL.index("LIMIT $11") < _HYBRID_SQL.index("ts_headline")
 
+    def test_both_legs_exclude_non_indexable(self) -> None:
+        """indexable=false means not searchable at all. The flag only skips
+        embedding generation at write time, so without an explicit guard in
+        the keyword leg those rows leak back in through lexical matching."""
+        semantic_cte = _HYBRID_SQL[
+            _HYBRID_SQL.index("semantic AS") : _HYBRID_SQL.index("keyword AS")
+        ]
+        keyword_cte = _HYBRID_SQL[
+            _HYBRID_SQL.index("keyword AS") : _HYBRID_SQL.index("combined AS")
+        ]
+        assert "indexable = true" in semantic_cte
+        assert "m.indexable = true" in keyword_cte
+
 
 class _FakeFetchConn:
     def __init__(self, rows: list[dict[str, Any]]) -> None:
