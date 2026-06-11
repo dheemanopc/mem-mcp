@@ -136,6 +136,7 @@ def parse_plugin_schedule(schedule: str) -> Schedule:
 # The pg_dump backup timer is intentionally excluded — it's a shell/DB-host
 # concern handled outside the Python jobs container.
 _CORE_SCHEDULES: dict[str, CronSchedule] = {
+    "chunk_build": CronSchedule(minute=set(range(0, 60, 5))),  # every 5 min
     "cleanup_clients": CronSchedule(minute={30}, hour={22}),
     "cleanup_kite_intents": CronSchedule(minute={30}, hour={21}),
     "cluster_build": CronSchedule(minute={0}, hour={22}, day_of_week={5}),  # Sat

@@ -1,0 +1,19 @@
+[Unit]
+Description=mem-mcp chunk build worker (chunk-level retrieval)
+After=network.target postgresql.service
+Requires=postgresql.service
+
+[Service]
+Type=oneshot
+User=memmcp
+Group=memmcp
+WorkingDirectory=/opt/mem-mcp
+EnvironmentFile=/etc/mem-mcp/env
+ExecStart=/home/memmcp/.local/bin/poetry run python -m mem_mcp.jobs chunk_build
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+
+LimitNOFILE=4096
+TimeoutStartSec=3600

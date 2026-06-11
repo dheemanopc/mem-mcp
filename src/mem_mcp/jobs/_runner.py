@@ -1,6 +1,7 @@
 """CLI entrypoint for jobs:  `python -m mem_mcp.jobs <job_name> [--dry-run]`.
 
 Currently registers:
+    chunk_build           — build memory_chunks for chunk-level retrieval
     cleanup_clients       — DCR client cleanup (T-4.9)
     cleanup_kite_intents  — hard-delete resolved/expired kite_intents past grace
     cluster_build         — weekly: rebuild near-duplicate clusters per tenant
@@ -25,6 +26,7 @@ import sys
 from collections.abc import Callable, Coroutine
 from typing import Any
 
+from mem_mcp.jobs.chunk_build import main as chunk_build_main
 from mem_mcp.jobs.cleanup_clients import main as cleanup_clients_main
 from mem_mcp.jobs.cleanup_kite_intents import main as cleanup_kite_intents_main
 from mem_mcp.jobs.cluster_build import main as cluster_build_main
@@ -41,6 +43,7 @@ from mem_mcp.jobs.storage_stats import main as storage_stats_main
 _JobMain = Callable[..., Coroutine[Any, Any, int]]
 
 _JOBS: dict[str, _JobMain] = {
+    "chunk_build": chunk_build_main,
     "cleanup_clients": cleanup_clients_main,
     "cleanup_kite_intents": cleanup_kite_intents_main,
     "cluster_build": cluster_build_main,

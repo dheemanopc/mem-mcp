@@ -1,0 +1,65 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "limit": {
+      "default": 10,
+      "maximum": 50,
+      "minimum": 1,
+      "title": "Limit",
+      "type": "integer"
+    },
+    "per_memory": {
+      "default": 2,
+      "maximum": 5,
+      "minimum": 1,
+      "title": "Per Memory",
+      "type": "integer"
+    },
+    "query": {
+      "maxLength": 2048,
+      "minLength": 1,
+      "title": "Query",
+      "type": "string"
+    },
+    "tags": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 16,
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Tags"
+    },
+    "type": {
+      "anyOf": [
+        {
+          "enum": [
+            "note",
+            "decision",
+            "fact",
+            "snippet",
+            "question"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Type"
+    }
+  },
+  "required": [
+    "query"
+  ],
+  "title": "MemorySearchChunksInput",
+  "type": "object"
+}
