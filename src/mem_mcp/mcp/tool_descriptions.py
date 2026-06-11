@@ -43,7 +43,7 @@ Multi-team users: pass `team_id` (UUID or team name) to scope the call. If you r
 
 Examples: "What did we decide about authentication?" → query="authentication decision". "Remind me of our pricing strategy." → query="pricing strategy". "What snippets do I have for retries?" → query="retry snippet", type=snippet. "What's our database?" → query="database choice decision". "Find the most relevant comments about RECLTD on this trade" → query="RECLTD slippage", parent_id="<trade-uuid>".
 
-Matching: keyword matching is lenient — any query word can match (English-stemmed, OR semantics), with more matching words ranking higher; combined with semantic similarity and recency decay.
+Matching: keyword matching is lenient — any query word can match (English-stemmed, OR semantics), with more matching words ranking higher; combined with semantic similarity and recency decay. Memories written with `indexable=false` are NEVER returned by search (neither semantic nor keyword) — reach those via memory_list (tags/parent_id filters), memory_thread_get, or memory_get.
 
 Results: each result carries a short `preview` (keyword-windowed snippet with **match** markers, or head-of-content) for relevance triage, plus `content` truncated to 2000 chars (`content_truncated`/`content_length` indicate clipping). Evaluate with `preview`; call `memory_get(id)` for the full body.""",
     "memory_write_async": """Submit a memory write fire-and-forget — call this when you want to persist a memory WITHOUT blocking the conversation turn on the synchronous write latency (300ms-2s with embedding).
