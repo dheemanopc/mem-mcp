@@ -1,0 +1,18 @@
+{"id": "vr-001", "space": "memsys-core", "query": "why did reference writes start failing after the teams migration", "expected_ids": ["8695a8a6-85cc-43a3-8a6b-6ede2660c4eb", "75b4096a-2a75-46cc-ae22-baae20432115"]}
+{"id": "vr-002", "space": "memsys-core", "query": "production server health check and write latency investigation", "expected_ids": ["75b4096a-2a75-46cc-ae22-baae20432115"]}
+{"id": "vr-003", "space": "memsys-core", "query": "fetch many memories in a single round trip api", "expected_ids": ["968ff70e-2940-45fd-b6ba-7f2bc7e5b3dc", "4e166a93-b0cc-4075-831c-8d6e3ac7a43a", "95aab258-0c6d-49d5-b813-7f9fc56caba4"]}
+{"id": "vr-004", "space": "memsys-core", "query": "google style search result previews with short snippets", "expected_ids": ["3e66b43c-93ec-46f3-8c3d-ab4a842e06cd"]}
+{"id": "vr-005", "space": "memsys-core", "query": "learned dictionary that translates my words into project terminology", "expected_ids": ["a12959d7-4e5e-4a45-b7db-9467f5a4c21e"]}
+{"id": "vr-006", "space": "memsys-core", "query": "reminder keeps popping up on every response and cannot be dismissed", "expected_ids": ["e1c7d0ce-c75d-42c0-b38a-252824832019", "a89ddcf5-c2ab-486d-857d-73c9a6d9976f"]}
+{"id": "vr-007", "space": "memsys-core", "query": "rule that no intelligence is allowed inside the memory substrate", "expected_ids": ["9e4bfe28-e5a6-4436-9cf6-d68a743e01fd"]}
+{"id": "vr-008", "space": "memsys-core", "query": "how background maintenance jobs are scheduled on the server", "expected_ids": ["b72140b6-f81b-438f-9082-c71da016569f"]}
+{"id": "vr-009", "space": "memsys-core", "query": "what broke during the teams foundation deploy and how it was fixed", "expected_ids": ["734899b1-b2c9-4b53-bf9a-9d63474c0fde"]}
+{"id": "vr-010", "space": "memsys-core", "query": "batch get crashes when looking up memories by slug", "expected_ids": ["96464537-164a-417c-bc76-dee684b721fe"]}
+{"id": "vr-011", "space": "memsys-core", "query": "difference between dismissing and resolving an item", "expected_ids": ["9e4bfe28-e5a6-4436-9cf6-d68a743e01fd"]}
+{"id": "vr-012", "space": "memsys-core", "query": "database crashes on empty tenant setting when casting uuid", "expected_ids": ["96464537-164a-417c-bc76-dee684b721fe", "75b4096a-2a75-46cc-ae22-baae20432115"]}
+{"id": "vr-013", "space": "memsys-core", "query": "opaque error when citing another team's memory as a reference", "expected_ids": ["8695a8a6-85cc-43a3-8a6b-6ede2660c4eb"]}
+{"id": "vr-014", "space": "pmo", "query": "seeding demo work items for the dating app project", "expected_ids": ["bf7b3379-cf6f-46e1-a7fb-d807bf434cd9"]}
+{"id": "vr-015", "space": "pmo", "query": "verification evidence for the working memory helper task", "expected_ids": ["21e55047-2d4c-4caf-904a-067b72ab0f0a"]}
+{"id": "vr-016", "space": "ai-trader-v2", "query": "did the stock scanner stop writing its daily bundles", "expected_ids": ["8a2c1add-c9fc-4a8b-992a-d4b959f87702", "626b4184-06ec-4f0e-b1f1-048df6992bab", "b98ffde9-8c52-47fe-b4f0-ddb511069b4f", "d02d5159-da21-4752-a585-a66ddacefe27"]}
+{"id": "vr-017", "space": "ai-trader-v2", "query": "technical analysis session cache expires immediately after opening", "expected_ids": ["85ca4b57-d584-41b4-8204-6222febbdfc6"]}
+{"id": "vr-018", "space": "ai-trader-v2", "query": "evening review found no trade setups to plan", "expected_ids": ["d02d5159-da21-4752-a585-a66ddacefe27", "b98ffde9-8c52-47fe-b4f0-ddb511069b4f", "626b4184-06ec-4f0e-b1f1-048df6992bab"]}

@@ -1,0 +1,5 @@
+{
+  "memsys-core": ["memsys-core", "project:mem-mcp", "memsys-reminders", "memsys-module"],
+  "pmo": ["pmo", "pmo-project-pmo-v1-build"],
+  "ai-trader-v2": ["ai-trader-v2", "routine:nightly-review", "kite-plugin", "ai-trader-scan-context"]
+}
