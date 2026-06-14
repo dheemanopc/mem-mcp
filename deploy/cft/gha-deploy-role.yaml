@@ -1,0 +1,137 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: |
+  GitHub Actions OIDC trust + scoped IAM role for the mem-mcp auto-deploy
+  workflow (.github/workflows/deploy-prod.yml). Creates:
+    1. The token.actions.githubusercontent.com OIDC provider (if absent in
+       this account — IAM rejects a duplicate, so delete the existing one
+       first if you already have one).
+    2. An IAM role assumable only by the dheemanopc/mem-mcp repo on the
+       refs/heads/main branch.
+    3. A scoped policy granting just enough to drive the existing
+       deploy/scripts/deploy.sh on the prod EC2 via AWS-RunShellScript.
+
+  Apply:
+    aws cloudformation deploy \
+      --stack-name mem-mcp-gha-deploy-role \
+      --template-file deploy/cft/gha-deploy-role.yaml \
+      --capabilities CAPABILITY_NAMED_IAM
+
+  Then read the role ARN from the stack output `DeployRoleArn` and set it
+  as a GitHub Actions repo variable named DEPLOY_ROLE_ARN:
+    gh variable set DEPLOY_ROLE_ARN --body "<arn-from-output>"
+
+Parameters:
+  GitHubOrg:
+    Type: String
+    Default: dheemanopc
+    Description: GitHub organisation that owns the mem-mcp repo
+  GitHubRepo:
+    Type: String
+    Default: mem-mcp
+    Description: GitHub repository name
+  ProdInstanceId:
+    Type: String
+    Default: i-054760e67d8481307
+    Description: EC2 instance ID of the prod mem-mcp host
+  AllowedBranch:
+    Type: String
+    Default: main
+    Description: |
+      Only workflows running on this branch can assume the role.
+      Hard-coded in the trust policy `sub` condition; change here to
+      authorise a different branch (e.g. for a one-off canary).
+
+Resources:
+  # GitHub's OIDC identity provider. The thumbprints are GitHub's TLS-cert
+  # SHA1 fingerprints; AWS validates the JWT signature against the JWKS at
+  # https://token.actions.githubusercontent.com/.well-known/openid-configuration
+  # but still requires at least one thumbprint at provider-creation time.
+  # Both legacy + current values listed so a thumbprint rotation by GitHub
+  # doesn't lock us out before we redeploy this stack.
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      ThumbprintList:
+        - 6938fd4d98bab03faadb97b34396831e3780aea1
+        - 1c58a3a8518e8759bf075b76b750d4f2df264fcd
+      Tags:
+        - Key: Project
+          Value: mem-mcp
+        - Key: Component
+          Value: gha-deploy
+
+  GhaDeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: mem-mcp-gha-deploy
+      Description: |
+        Assumed via OIDC by .github/workflows/deploy-prod.yml on merge to
+        main. Sole privilege is to drive deploy.sh on the prod EC2 via
+        AWS-RunShellScript.
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowGitHubActionsOnMain
+            Effect: Allow
+            Principal:
+              Federated: !Ref GitHubOidcProvider
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              StringLike:
+                # Restrict to the exact branch only. Pull requests, tags,
+                # and other branches CANNOT assume this role.
+                token.actions.githubusercontent.com:sub: !Sub 'repo:${GitHubOrg}/${GitHubRepo}:ref:refs/heads/${AllowedBranch}'
+      Tags:
+        - Key: Project
+          Value: mem-mcp
+        - Key: Component
+          Value: gha-deploy
+
+  GhaDeployPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: mem-mcp-gha-deploy
+      Roles:
+        - !Ref GhaDeployRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          # Send the deploy.sh command only to the prod instance, only
+          # through the AWS-managed shell-script document.
+          - Sid: SendDeployCommandToProdInstance
+            Effect: Allow
+            Action: ssm:SendCommand
+            Resource:
+              - !Sub 'arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/${ProdInstanceId}'
+              - !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}::document/AWS-RunShellScript'
+          # GetCommandInvocation does not support resource-level scoping
+          # (AWS limitation as of 2026); restrict by Condition on the
+          # instance ID instead.
+          - Sid: ReadCommandInvocationOnProdInstance
+            Effect: Allow
+            Action:
+              - ssm:GetCommandInvocation
+              - ssm:ListCommandInvocations
+            Resource: '*'
+            Condition:
+              StringEquals:
+                ssm:InstanceId: !Ref ProdInstanceId
+
+Outputs:
+  DeployRoleArn:
+    Description: |
+      ARN of the role GitHub Actions assumes. Set this as the repo variable
+      DEPLOY_ROLE_ARN:
+        gh variable set DEPLOY_ROLE_ARN --body "<this-value>"
+    Value: !GetAtt GhaDeployRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-DeployRoleArn'
+  OidcProviderArn:
+    Description: GitHub OIDC provider ARN created (or referenced) by this stack
+    Value: !Ref GitHubOidcProvider

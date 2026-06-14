@@ -59,6 +59,51 @@ Why SSM (vs SSH):
 - Audit trail in CloudTrail / SSM run history.
 - Same command works from anywhere with AWS credentials — no key distribution.
 
+## Auto-deploy on merge to main (GitHub Actions)
+
+On push to main, `.github/workflows/deploy-prod.yml` runs `deploy.sh main` over SSM. The workflow pauses for manual approval at the `production` environment. Uses OIDC — no AWS keys are stored in GitHub.
+
+### One-time setup
+
+1. Apply the CloudFormation template:
+   ```bash
+   aws cloudformation deploy \
+     --stack-name mem-mcp-gha-deploy-role \
+     --template-file deploy/cft/gha-deploy-role.yaml \
+     --capabilities CAPABILITY_NAMED_IAM \
+     --region ap-south-1
+   ```
+
+2. Read the role ARN from the stack output:
+   ```bash
+   aws cloudformation describe-stacks \
+     --stack-name mem-mcp-gha-deploy-role \
+     --region ap-south-1 \
+     --query 'Stacks[0].Outputs[?OutputKey==`DeployRoleArn`].OutputValue' \
+     --output text
+   ```
+
+3. Set the repo variable:
+   ```bash
+   gh variable set DEPLOY_ROLE_ARN --body "<arn-from-step-2>"
+   ```
+
+4. In repo Settings → Environments → New environment `production`. Add yourself as Required reviewer. Optionally set Wait timer and restrict Deployment branches to `main`.
+
+### Runtime flow
+
+- Merge a PR to main → workflow `deploy-prod` starts automatically.
+- Workflow pauses at the `production` environment and waits for approval.
+- Click **Approve** in the Actions tab (or via GitHub mobile app).
+- SSM runs `deploy.sh main` on the prod EC2 instance.
+- Workflow tails the command output and runs a smoke test on `/readyz`.
+
+### Manual re-run and rollback
+
+From the Actions tab, click the **Run workflow** button to manually re-run the workflow (useful for re-deploying after a transient failure). This is the `workflow_dispatch` trigger.
+
+For rollback to a prior commit, use the operator workflow documented above — run `deploy.sh` with a specific git ref (e.g., `deploy.sh v1.2.3` or `deploy.sh abc1234def`). The auto-deploy workflow itself always deploys `main`.
+
 ## Plugin System (v1)
 
 ### Overview
