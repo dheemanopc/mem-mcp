@@ -1,0 +1,114 @@
+# Auto-deploy on merge to main. Apply deploy/cft/gha-deploy-role.yaml first,
+# then set DEPLOY_ROLE_ARN repo variable. Uses OIDC — no AWS keys in GitHub.
+
+name: deploy-prod
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Check DEPLOY_ROLE_ARN configured
+        id: guard
+        run: |
+          if [ -z "${{ vars.DEPLOY_ROLE_ARN }}" ]; then
+            echo "::warning::DEPLOY_ROLE_ARN repo variable is not set. Apply deploy/cft/gha-deploy-role.yaml and set the variable. Skipping deploy."
+            exit 0
+          fi
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+
+      - name: Configure AWS credentials
+        if: steps.guard.outputs.configured == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.DEPLOY_ROLE_ARN }}
+          aws-region: ap-south-1
+          role-session-name: gha-deploy-${{ github.run_id }}
+
+      - name: Send deploy command
+        if: steps.guard.outputs.configured == 'true'
+        id: send
+        run: |
+          CMD_ID=$(aws ssm send-command \
+            --instance-ids i-054760e67d8481307 \
+            --document-name AWS-RunShellScript \
+            --parameters 'commands=["sudo /opt/mem-mcp/deploy/scripts/deploy.sh main"]' \
+            --query Command.CommandId --output text)
+          echo "cmd_id=$CMD_ID" >> "$GITHUB_OUTPUT"
+          echo "Deploy command id: $CMD_ID"
+
+      - name: Poll deployment completion
+        if: steps.guard.outputs.configured == 'true'
+        run: |
+          CMD_ID="${{ steps.send.outputs.cmd_id }}"
+          INSTANCE_ID="i-054760e67d8481307"
+          MAX_ITERATIONS=30
+          ITERATION=0
+
+          while [ $ITERATION -lt $MAX_ITERATIONS ]; do
+            STATUS=$(aws ssm get-command-invocation \
+              --command-id "$CMD_ID" \
+              --instance-id "$INSTANCE_ID" \
+              --query Status --output text)
+
+            case "$STATUS" in
+              Success|Failed|Cancelled|TimedOut)
+                echo "Deploy reached terminal status: $STATUS"
+
+                STDOUT=$(aws ssm get-command-invocation \
+                  --command-id "$CMD_ID" \
+                  --instance-id "$INSTANCE_ID" \
+                  --query StandardOutputContent --output text)
+                echo "=== Last 200 lines of output ==="
+                echo "$STDOUT" | tail -200
+
+                STDERR=$(aws ssm get-command-invocation \
+                  --command-id "$CMD_ID" \
+                  --instance-id "$INSTANCE_ID" \
+                  --query StandardErrorContent --output text)
+                if [ -n "$STDERR" ]; then
+                  echo "=== Last 80 lines of error ==="
+                  echo "$STDERR" | tail -80
+                fi
+
+                if [ "$STATUS" = "Success" ]; then
+                  exit 0
+                else
+                  exit 1
+                fi
+                ;;
+            esac
+
+            ITERATION=$((ITERATION + 1))
+            sleep 30
+          done
+
+          echo "::error::Deploy exceeded 15 minute timeout without reaching terminal status"
+          exit 1
+
+      - name: Smoke test /readyz
+        if: steps.guard.outputs.configured == 'true'
+        run: |
+          for i in 1 2 3 4 5; do
+            RESP=$(curl -fsS https://memsys.dheemantech.in/readyz || true)
+            if echo "$RESP" | grep -q '"status":"ok"'; then
+              echo "readyz OK: $RESP"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::/readyz did not return ok within 25s"
+          exit 1
