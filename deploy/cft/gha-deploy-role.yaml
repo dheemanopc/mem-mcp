@@ -33,13 +33,19 @@ Parameters:
     Type: String
     Default: i-054760e67d8481307
     Description: EC2 instance ID of the prod mem-mcp host
-  AllowedBranch:
+  RestrictedEnvironment:
     Type: String
-    Default: main
+    Default: production
     Description: |
-      Only workflows running on this branch can assume the role.
-      Hard-coded in the trust policy `sub` condition; change here to
-      authorise a different branch (e.g. for a one-off canary).
+      Only workflows targeting this GitHub Actions environment can assume
+      the role. The OIDC token's `sub` claim takes the form
+      `repo:OWNER/REPO:environment:ENV_NAME` whenever a job declares
+      `environment: <name>` — and crucially the token is issued only AFTER
+      the env's protection rules (required reviewers) approve. Binding the
+      trust policy to the env name therefore enforces both repo+branch
+      (via the env's deployment branch policy) AND human approval, in one
+      condition. Branch-form `sub` (`...:ref:refs/heads/main`) does NOT
+      match a workflow that uses an environment.
 
 Resources:
   # GitHub's OIDC identity provider. The thumbprints are GitHub's TLS-cert
@@ -75,7 +81,7 @@ Resources:
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
-          - Sid: AllowGitHubActionsOnMain
+          - Sid: AllowGitHubActionsFromProductionEnvironment
             Effect: Allow
             Principal:
               Federated: !Ref GitHubOidcProvider
@@ -83,10 +89,11 @@ Resources:
             Condition:
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
-              StringLike:
-                # Restrict to the exact branch only. Pull requests, tags,
-                # and other branches CANNOT assume this role.
-                token.actions.githubusercontent.com:sub: !Sub 'repo:${GitHubOrg}/${GitHubRepo}:ref:refs/heads/${AllowedBranch}'
+                # Only a workflow job that declared `environment: <name>`
+                # AND passed the env's protection rules (required reviewer
+                # + branch policy) gets a token with this sub claim. PRs,
+                # other branches, and other repos cannot match.
+                token.actions.githubusercontent.com:sub: !Sub 'repo:${GitHubOrg}/${GitHubRepo}:environment:${RestrictedEnvironment}'
       Tags:
         - Key: Project
           Value: mem-mcp
@@ -110,18 +117,15 @@ Resources:
             Resource:
               - !Sub 'arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/${ProdInstanceId}'
               - !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}::document/AWS-RunShellScript'
-          # GetCommandInvocation does not support resource-level scoping
-          # (AWS limitation as of 2026); restrict by Condition on the
-          # instance ID instead.
-          - Sid: ReadCommandInvocationOnProdInstance
+          # GetCommandInvocation supports neither resource-level scoping
+          # nor an `ssm:InstanceId` condition key (verified against the
+          # IAM authorization reference). Allow on `*`; blast radius is
+          # bounded by the SendCommand statement above — the role can
+          # still only START commands on the prod instance.
+          - Sid: ReadCommandInvocation
             Effect: Allow
-            Action:
-              - ssm:GetCommandInvocation
-              - ssm:ListCommandInvocations
+            Action: ssm:GetCommandInvocation
             Resource: '*'
-            Condition:
-              StringEquals:
-                ssm:InstanceId: !Ref ProdInstanceId
 
 Outputs:
   DeployRoleArn:
