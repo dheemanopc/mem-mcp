@@ -117,18 +117,15 @@ Resources:
             Resource:
               - !Sub 'arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/${ProdInstanceId}'
               - !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}::document/AWS-RunShellScript'
-          # GetCommandInvocation does not support resource-level scoping
-          # (AWS limitation as of 2026); restrict by Condition on the
-          # instance ID instead.
-          - Sid: ReadCommandInvocationOnProdInstance
+          # GetCommandInvocation supports neither resource-level scoping
+          # nor an `ssm:InstanceId` condition key (verified against the
+          # IAM authorization reference). Allow on `*`; blast radius is
+          # bounded by the SendCommand statement above — the role can
+          # still only START commands on the prod instance.
+          - Sid: ReadCommandInvocation
             Effect: Allow
-            Action:
-              - ssm:GetCommandInvocation
-              - ssm:ListCommandInvocations
+            Action: ssm:GetCommandInvocation
             Resource: '*'
-            Condition:
-              StringEquals:
-                ssm:InstanceId: !Ref ProdInstanceId
 
 Outputs:
   DeployRoleArn:
