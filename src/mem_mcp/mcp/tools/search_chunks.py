@@ -25,7 +25,7 @@ from mem_mcp.mcp.tool_descriptions import TOOL_DESCRIPTIONS
 from mem_mcp.mcp.tools._base import BaseTool, ToolContext
 from mem_mcp.memory.access_tracking import bump_access
 
-MemoryType = Literal["note", "decision", "fact", "snippet", "question"]
+MemoryType = Literal["note", "decision", "fact", "snippet", "question", "position", "challenge"]
 
 # Candidate pool before per-memory capping; bounded so the window function
 # never runs over the whole table.

@@ -10,3 +10,5 @@ Per spec §16.1. ADRs document significant decisions (and their alternatives + t
 - [0004](./0004-tenant-identities-table.md) — Separate tenant_identities table
 - [0005](./0005-versioning-by-type.md) — Versioning only on decision/fact types
 - [0006](./0006-cft-not-terraform.md) — CloudFormation + SAM over Terraform (v1)
+- [0007](./0007-mindmap-thinking-node-types.md) — Mind-map thinking-node types (position, challenge)
+- [0008](./0008-mindmap-in-core-slug-rooted.md) — Mind-map lives in core; a map is a slug-rooted memory

@@ -1,0 +1,9 @@
+name: mindmap-driver
+version: "1.0.0"
+description: Drives collaborative thinking-maps — open, capture positions/challenges, ratify, and graduate decisions on close.
+connector_url: https://memsys.dheemantech.in/mcp
+connector_type: mcp
+required_scopes:
+  - memory.read
+  - memory.write
+homepage: https://memapp.dheemantech.in/skills

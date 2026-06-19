@@ -104,13 +104,15 @@ class TestRecencyLambda:
         assert recency_lambda_for(None) == DEFAULT_RECENCY_LAMBDA
 
     def test_table_completeness(self) -> None:
-        # All 5 spec'd types covered
+        # All spec'd types covered, including the mind-map thinking nodes.
         assert set(RECENCY_LAMBDA_BY_TYPE.keys()) == {
             "decision",
             "fact",
             "note",
             "snippet",
             "question",
+            "position",
+            "challenge",
         }
 
 

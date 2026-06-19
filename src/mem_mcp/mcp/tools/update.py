@@ -17,7 +17,7 @@ from mem_mcp.memory.normalize import hash_content
 from mem_mcp.memory.versioning import VERSIONED_TYPES
 
 _TAG_RE = re.compile(r"^[a-zA-Z0-9_:.-]+$")
-MemoryType = Literal["note", "decision", "fact", "snippet", "question"]
+MemoryType = Literal["note", "decision", "fact", "snippet", "question", "position", "challenge"]
 
 
 class MemoryUpdateInput(BaseModel):
@@ -25,7 +25,7 @@ class MemoryUpdateInput(BaseModel):
 
     id: UUID
     content: str | None = None
-    type: Literal["note", "decision", "fact", "snippet", "question"] | None = None
+    type: Literal["note", "decision", "fact", "snippet", "question", "position", "challenge"] | None = None
     tags: list[str] | None = None
     metadata: dict[str, Any] | None = None
     tags_op: Literal["replace", "add", "remove"] = "replace"

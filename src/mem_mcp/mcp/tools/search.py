@@ -22,7 +22,7 @@ from mem_mcp.memory.hybrid_query import (
 )
 from mem_mcp.memory.recency import recency_lambda_for
 
-MemoryType = Literal["note", "decision", "fact", "snippet", "question"]
+MemoryType = Literal["note", "decision", "fact", "snippet", "question", "position", "challenge"]
 
 # Search responses carry at most this much of each memory's content — the
 # cap the tool description has always promised. Full body via memory_get.

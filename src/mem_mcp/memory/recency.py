@@ -11,6 +11,9 @@ RECENCY_LAMBDA_BY_TYPE: Final[dict[str, float]] = {
     "note": 0.05,
     "snippet": 0.10,
     "question": 0.05,
+    # Thinking nodes (mind-map): working memory, decay like questions.
+    "position": 0.05,
+    "challenge": 0.05,
 }
 
 # Default lambda used when type is unknown or not provided
