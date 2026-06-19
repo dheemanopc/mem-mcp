@@ -398,4 +398,50 @@ Results filtered the same way as memsys_refs_in: refs to inaccessible target tea
 Required scope: memory.read.
 
 Example: "What does this decision cite?" → memsys_refs_out(memory_id="X").""",
+    "mindmap_open": """Open a thinking map — a working space for reasoning out loud toward a decision, kept separate from the settled knowledge base until it graduates.
+
+Call when: the user wants to brainstorm, think through, or work out a hard question collaboratively ("let's think about X", "help me reason through Y", "I'm trying to decide Z"); or to continue structured thinking seeded from an existing KB decision/fact (pass seed_memory_id). This is one of only two human touch-points — opening is the user saying "let's brainstorm".
+
+Do not call for: recording a decision already made (use memory_write); quick factual lookups; casual chat. A map is for live, in-flight reasoning, not archival.
+
+The map is rooted at your root_question and addressed by a short map_key (its slug) returned here — pass that key to every later mindmap_* call. One map per conversation is the convention; it is not enforced. For from_spec maps, opening a second live map seeded from the same node is deduped (returns the existing map).
+
+Example: "Let's figure out our caching strategy." → mindmap_open(title="Caching strategy", root_question="What caching approach fits our read/write mix?").""",
+    "mindmap_write_node": """Capture a thinking node into a live map — a position, a challenge to one, or a working note.
+
+Call this CONTINUOUSLY while reasoning inside a map: every distinct position taken, objection raised, or consideration surfaced becomes a node. node_role: position (a stance/claim), challenge (an objection or counter), note (working context). Pass the map_key from mindmap_open.
+
+Ratification: when the user endorses a position, record ratification_strength (survived-challenge > explicit-endorse > delegate > tacit) and ratification_citation (their actual words) so the map is self-contained. 'delegate' means the user deferred to you — it graduates flagged for substance-verification.
+
+Atomicity: keep each node to ONE idea. A node that bundles several decisions returns split_suggested=true — split it into linked nodes, never trim. The reviewer surfaces every 15 writes (review_due=true); run mindmap_review then.
+
+Do not call for: content that belongs in the settled KB (that happens at mindmap_close). This is in-flight thinking.
+
+Example: user: "I think we should use Redis." → mindmap_write_node(map_key="caching-strategy", content="Use Redis for the hot path", node_role="position").""",
+    "mindmap_link": """Draw a typed edge between two memories in the reasoning graph.
+
+Use to connect map nodes: a challenge displaced-from a position, a position resolves-under a question, a dropped-under branch, a principle-under that constrains choices, superseded-under, open-under. reference_kind is open text — use the verb that fits.
+
+Pass map_key to log the link as a map event. Required scope: memory.write.
+
+Example: mindmap_link(source_memory_id="<challenge>", target_memory_id="<position>", reference_kind="displaced-from", map_key="caching-strategy").""",
+    "mindmap_get": """Read a map's current state — its root, all nodes, the edges between them, review status, and open loops.
+
+Call when: resuming a map mid-conversation; the user asks "where were we", "what have we got so far", "what's still open"; before graduating, to review what was built. open_loops lists nodes whose turn is the owner's (waiting on the user). Required scope: memory.read.
+
+Example: "Where did we get to on caching?" → mindmap_get(map_key="caching-strategy").""",
+    "mindmap_review": """Run the structural reviewer pass over a map and reset its write-counter.
+
+Call when mindmap_write_node returns review_due=true (every 15 owned writes), or before graduating. Returns the map's full structure (nodes, edges, recent events) for you — or a review sub-agent — to smoke-test for structural problems: orphan positions, unaddressed challenges, nodes that bundle multiple decisions, mislabeled ratifications. The reviewer looks at the MAP ONLY, never the transcript — it catches mistakes, not cheating. It is advisory; it flags, it does not block. Required scope: memory.write.
+
+Example: write_node returned review_due=true → mindmap_review(map_key="caching-strategy").""",
+    "mindmap_close": """Graduate a map's confirmed decisions to the knowledge base, then archive it.
+
+Call when the user signals the thinking is done ("we're settled", "let's lock this in", "ship it"). This is the second human touch-point: YOU propose the significant decisions, the USER confirms them, and only confirmed ones are passed here. Each becomes a new KB decision (with a slug_clue) carrying a promoted-from link back to the archived map node — a fresh write, never a supersession. Pass ratification_strength per decision; 'delegate' graduates flagged verify_substance.
+
+After close the map is archived: it no longer surfaces in mindmap_open similarity search, but its reasoning stays walkable via references (no-reopen, not deleted). Pass an optional summary to mint a spec-index node.
+
+Do not call until the user has confirmed the decisions. Required scope: memory.write.
+
+Example: mindmap_close(map_key="caching-strategy", confirmed_decisions=[{content:"Adopt Redis for the hot read path", slug_clue:"redis-hot-path", from_node_id:"<position>", ratification_strength:"survived-challenge"}]).""",
 }

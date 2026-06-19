@@ -2,22 +2,32 @@
 
 ## Status
 
-`proposed` — 2026-06-19. Awaiting owner review before code.
+`approved-for-build` — owner-reviewed 2026-06-19. Implementing now.
 
-Turns the functional model in `memsys-mindmap-spec-v0.1` (graduated KB,
-spec index `c082d427`, status *functional-model-closed, NOT build-blessed*)
-into a buildable technical design. Target: **a working system for real use**,
-all seven graduated decisions implemented to a usable state.
+Turns the functional model in `memsys-mindmap-spec-v0.1` (functional-model-closed,
+spec index `c082d427`) into the buildable design. Goal: **a fully functional
+system, up and running** — all seven graduated decisions implemented and usable.
 
-This doc resolves only the build-blocking choices — the core/plugin seam and
-the schema. The lifecycle protocol itself is deliberately kept as swappable
-prompt assets (per spec node `0aa54585`), so it is not frozen here.
+### Owner decisions at review (override the earlier draft)
+
+1. **No plugin. Everything lives in core.** The earlier core/plugin seam is
+   dropped. Node vocabulary, map containers, lifecycle tools, reviewer — all in
+   `src/mem_mcp` core.
+2. **A map's root *is* a memsys key.** A map is rooted at a memory and addressed
+   by that root memory's slug (the memsys "key"). No opaque map-id registry; the
+   map handle = the root node's key.
+3. **One map per conversation is convention, not design.** Working on a single
+   map at a time is how the driver *uses* the system; it is **not** enforced.
+   Map ops take the map key explicitly — no mandated active-map lock, no
+   conversation-id plumbing.
+4. **Reviewer threshold N = 15** to start (10 is too eager). Tunable.
+5. **Team / multi-person deferred** (`b2e23042`).
 
 ## Source decisions (the spec body)
 
 | Node | Decision |
 |---|---|
-| `6844c142` | Map lifecycle, exclusive ownership, no-reopen, seed-from-spec, graduation-with-confirm, archived-but-referenceable, API contract |
+| `6844c142` | Map lifecycle, exclusive node ownership, no-reopen, seed-from-spec, graduation-with-confirm, archived-but-referenceable, API contract |
 | `f5e52f08` | Open-loop ownership = whose-turn |
 | `d1ebfc6e` | Promotion = new KB write referencing archived node; **NOT** supersession |
 | `5f439cd0` | Atomicity via byte-limit; split-not-trim; sticky-until-reviewed |
@@ -28,204 +38,158 @@ prompt assets (per spec node `0aa54585`), so it is not frozen here.
 ## Founding constraints (carried from spec, non-negotiable)
 
 1. **Memsys has no intelligence by design.** Storage/links/filters/search only.
-   All judgment lives in the model + human above it. Tools enforce; they never decide.
+   All judgment lives in the model + human above it. Tools enforce; never decide.
 2. **System of thought, not record.** Verification catches *mistakes, not cheating*.
 3. **Additive / non-breaking.** Old flat memories = unmapped nodes, untouched.
 4. **No compression-as-truncation.** Split, never trim.
 
-## The core/plugin seam (the load-bearing decision)
+## What a "map" is, concretely
 
-Per spec node `507bab07` ("provenance *vocabulary* lives in core; *protocols*
-that animate it are plugins") and the build-order warning in `0aa54585`
-(storage firm, judgment rippable):
+A map is **a root memory plus the nodes that hang off it**. No separate opaque
+identity:
 
-| Layer | Lives in | Owns |
-|---|---|---|
-| **Core** (nouns) | `mem_mcp` core | node-type vocabulary; typed edges; provenance metadata |
-| **Plugin `mindmap`** (verbs) | new plugin schema `plugin_mindmap` | map containers, exclusive ownership, active-map, write-counter, archived state, the lifecycle tools, driver + reviewer **prompt assets** |
+- **Root node** = a memory (the root question/topic) given a **slug**, so the
+  map's memsys key *is* that slug (owner decision 2). The slug vocabulary
+  (`slugs.resource_type`, currently `decision|fact`) is extended to allow `map`.
+- **Map record** = one row in `memory_maps` keyed by `root_memory_id`, holding
+  the lifecycle state that isn't node content (live/archived, write-counter,
+  seed origin, graduated index).
+- **Member nodes** = positions / challenges / decisions captured under the map,
+  recorded in `memory_map_membership` (exclusive: a node belongs to ≤1 map).
+- **Edges** = rows in the existing `memory_references` table (open-text
+  `reference_kind` — zero schema change for the edge vocabulary).
 
-Rationale: a judgment flaw baked into trusted core is the expensive mistake;
-storage can be ripped out and redone cheaply. So only the smallest, settled
-vocabulary change touches core; everything mutable/judgmental is plugin-side
-and swappable.
+The driver passes the **map key (root slug)** explicitly to each map tool. There
+is no enforced active-map; "one map per conversation" is driver discipline.
 
-### Core changes (minimal, additive)
+## Core changes
 
-The current memory `type` enum is exactly
-`note | decision | fact | snippet | question`
-(`alembic/versions/0001_initial_schema.py`, the `memories.type` CHECK).
+### 1. Node-type vocabulary (additive)
 
-**Change 1 — extend the type enum** with `position` and `challenge`
-(the thinking-node vocabulary the spec wants first-class; already an agreed
-owner decision — provenance vocab belongs in core, not a plugin).
-- Migration: new Alembic revision that rewrites the `memories.type` CHECK
-  constraint to add the two values. Purely additive; no row rewrites.
-- `position` and `challenge` are **working** thinking-nodes → they join the
-  *non-versioned, edit-in-place* group (note/snippet/question). They do **not**
-  go in `VERSIONED_TYPES` (`memory/versioning.py`); only `decision`/`fact`
-  stay versioned. This extends ADR-0005; a short ADR-0007 will record it.
-- Update input validators (`mcp/tools/write.py`), recency tuning
-  (`memory/recency.py` — thinking-nodes should decay like questions), and the
-  tool-description enum text.
+The current `memories.type` CHECK is
+`note | decision | fact | snippet | question`. Add `position` and `challenge`
+(first-class thinking nodes). Both are **working** nodes → non-versioned,
+edit-in-place (they join note/snippet/question; only `decision`/`fact` stay in
+`VERSIONED_TYPES`). Extends ADR-0005 → recorded as ADR-0007.
 
-**No other core change.** Specifically we reuse, untouched:
-- `memory_references` (table, `0025`) for **all** edges — `reference_kind` is
-  open-text, so the map edge vocabulary needs zero schema work.
-- `metadata` JSONB for provenance fields (`engagement`, `node_role`,
-  `ratification_strength`, `ratification_citation`, trajectory).
-- supersession/versioning chain (kept *separate* from promotion — see below).
+Touch points: the type CHECK migration; write validator(s); recency tuning
+(thinking-nodes decay like questions); tool-description enum text.
 
-### Plugin `mindmap` (new)
+### 2. Slug vocabulary (additive)
 
-Mirrors the `reminders` plugin (entry-point discovery, own Postgres schema,
-own Alembic migrations, `MemoryClient` SDK for node I/O, RBAC permissions,
-`surface_pending_state` hook). Nodes are core memories written via
-`MemoryClient`; the plugin schema stores only the **map graph + lifecycle
-state**, never node content.
+Extend `slugs.resource_type` CHECK to allow `map`, so a map root can be minted a
+stable slug via the existing slug machinery (`teams/slugs.py` retry-suffix
+loop). The map key the driver uses = this slug.
 
-**Plugin tables (`plugin_mindmap` schema):**
+### 3. New core tables (public schema, RLS like peers)
 
 ```
-maps
-  id              uuid pk
-  tenant_id       uuid            -- RLS scope, mirrors core
-  title           text
-  state           text  check (state in ('live','archived'))   default 'live'
-  seed_spec_node  uuid null       -- origin spec node for from_spec maps
-  writes_since_review  int        default 0   -- reviewer write-counter
-  graduated_spec_index uuid null  -- KB spec-index node produced at close
-  created_at      timestamptz
-  closed_at       timestamptz null
+memory_maps
+  root_memory_id        uuid pk references memories(id) on delete cascade
+  tenant_id             uuid not null
+  title                 text not null
+  state                 text not null check (state in ('live','archived')) default 'live'
+  writes_since_review   int  not null default 0
+  review_threshold      int  not null default 15          -- owner: N=15
+  seed_spec_memory_id   uuid null                          -- origin for from_spec maps
+  graduated_index_id    uuid null                          -- spec-index node minted at close
+  created_at            timestamptz not null default now()
+  closed_at             timestamptz null
 
-map_membership                    -- exclusive ownership; a memory in <=1 row
-  map_id          uuid  fk -> maps(id)
-  memory_id       uuid            -- the core node id (no FK; cross-schema)
-  node_role       text            -- root_question | position | challenge | decision | ...
-  added_at        timestamptz
-  primary key (memory_id)         -- enforces "owned by EXACTLY ONE map"
+memory_map_membership                                       -- exclusive ownership
+  memory_id        uuid pk references memories(id) on delete cascade
+  root_memory_id   uuid not null references memory_maps(root_memory_id) on delete cascade
+  node_role        text not null      -- root | position | challenge | decision | ...
+  added_at         timestamptz not null default now()
 
-active_map                        -- which map owns new writes, per conversation
-  tenant_id       uuid
-  conversation_id text            -- source_client / session key
-  map_id          uuid  fk -> maps(id)
-  primary key (tenant_id, conversation_id)
+memory_map_events                                           -- observability, day one
+  id               bigserial pk
+  root_memory_id   uuid not null references memory_maps(root_memory_id) on delete cascade
+  memory_id        uuid null
+  event            text not null      -- ratify | fork | promote | split_flag | review_flag | open | close
+  actor            text not null      -- model | owner | reviewer
+  payload          jsonb not null default '{}'
+  created_at       timestamptz not null default now()
 ```
 
-`map_membership.primary key (memory_id)` is what makes exclusive ownership a
-**structural guarantee**, not a convention — the per-membership-state problem
-is avoided, not deferred. A memory with no membership row = unmapped (facts,
-old flat memories) → constraint #3 satisfied for free.
+`memory_map_membership` PK on `memory_id` makes **exclusive node ownership a
+structural guarantee** — a node physically cannot belong to two maps. No
+membership row = unmapped (facts, old flat memories) → constraint #3 free.
 
-**Plugin tools** (`mindmap_<verb>`):
+Each table follows the peer RLS pattern (ENABLE RLS, tenant-scoped policy,
+`GRANT ... TO mem_app`) used by `memory_references`/`slugs`.
 
-| Tool | Maps to spec | Behaviour |
+**No change** to: `memory_references`, `metadata` JSONB (carries
+`responsible_party`, `ratification_strength`, `ratification_citation`,
+trajectory), versioning/supersession chain (kept separate from promotion).
+
+## Tool surface (core MCP tools, `mindmap_*`)
+
+| Tool | Spec | Behaviour |
 |---|---|---|
-| `mindmap_open` | `new_map(cold)` / `new_map(from_spec)` | cold: similarity-search **live maps only**, return ranked "revisit?" candidates, never auto-merge. from_spec: **exact** dedup guard (`refs_in` of the spec node filtered to live maps). Sets the new map active. |
-| `mindmap_set_active` | active-map switch | explicit act; subsequent node writes are owned by it |
-| `mindmap_write_node` | owned-node capture | writes a core memory (type position/challenge/decision/question), inserts membership into the active map, bumps `writes_since_review` |
-| `mindmap_link` | typed edge | inserts into core `memory_references` with a map `reference_kind` |
-| `mindmap_close` | `close_map` | runs graduation (below), then sets `state='archived'` |
-| `mindmap_review` | reviewer | runs the map-only reviewer pass, clears the sticky flag |
-| `mindmap_graduate` | promotion step | called inside close; can be dry-run for the propose step |
+| `mindmap_open` | `new_map(cold\|from_spec)` | mint root memory (type `question`) + slug + `memory_maps` row. cold: similarity-search **live maps only**, return ranked "revisit?" candidates, never auto-merge. from_spec: take a source memsys key, add `seeded-from` edge, **exact** dedup guard (refuse a 2nd live map already seeded from the same source). Returns map key. |
+| `mindmap_write_node` | owned capture | takes **map key** + content + `node_role` (position/challenge/decision) + optional ratification + optional links; writes a core memory, inserts exclusive membership, bumps `writes_since_review`, logs event. Past a soft byte threshold → returns a **split-suggested** flag (split into linked nodes, never trim). At `writes_since_review >= review_threshold` → returns a sticky `review_due` flag. |
+| `mindmap_link` | typed edge | insert into `memory_references` with a map `reference_kind` |
+| `mindmap_get` | resume/inspect | return the map graph: root, member nodes, edges, open loops (whose-turn), pending flags, state |
+| `mindmap_review` | reviewer | run the map-only structural pass (advisory), surface flags, reset `writes_since_review` to 0 |
+| `mindmap_close` | `close_map` + graduation | propose significant decisions → **human confirms** → for each: new KB `memory_write` (type `decision`) with a `promoted-from` edge to the archived node, carrying trajectory + ratification metadata → mint spec-index node → `state='archived'`. |
 
-**Reference-kind vocabulary** (open-text values written to `memory_references`):
+**Reference-kind vocabulary** (open-text in `memory_references`):
 `displaced-from`, `resolves-under`, `dropped-under`, `superseded-under`,
-`open-under`, `principle-under`, `promoted-from` (graduation backlink),
-`seeded-from` (map ← spec node). Extensible; the core needs no awareness.
+`open-under`, `principle-under`, `promoted-from`, `seeded-from`. Extensible.
 
-**Prompt assets (swappable, not core):** `driver.md`, `reviewer.md` shipped in
-the plugin package and loaded at runtime. In Claude-Code/agent contexts the
-reviewer runs as a **sub-agent**; in chat the main agent loads `reviewer.md`
-itself (per `6af0f365`). Replacing judgment = editing a prompt file.
+**Driver / reviewer prompts** ship as swappable asset files in the repo
+(`skills/` or a `prompts/` dir) loaded at runtime — replacing judgment = editing
+a prompt, never core code (`0aa54585`, `6af0f365`).
 
-## Lifecycle → mechanism mapping
+## The seven decisions → mechanism
 
-```
-KB/spec --seed--> mindmap_open(from_spec)      [seeded-from edge, map.live]
-        --brainstorm--> mindmap_write_node*     [owned nodes, counter++]
-        --(every N writes)--> sticky review flag [surface_pending_state]
-        --"we're done"--> mindmap_close:
-              1. propose significant decisions (model judgment)
-              2. HUMAN confirms                (the second human touch-point)
-              3. for each confirmed: NEW KB memory_write (type=decision)
-                 with a `promoted-from` reference to the archived node,
-                 carrying trajectory-summary + ratification metadata
-              4. write spec-index node; set maps.graduated_spec_index
-              5. maps.state = 'archived'
-```
+- **Lifecycle / ownership / archived (`6844c142`)** — tables above; archived maps
+  excluded from `mindmap_open` similarity search but still walkable via
+  `refs_in`/`refs_out` (cold, not deleted, not compressed). Two human
+  touch-points only: open ("let's brainstorm") and confirm-at-close.
+- **Whose-turn (`f5e52f08`)** — open nodes carry `metadata.responsible_party`
+  (`owner`|`model`); `mindmap_get` returns the open set as the resume surface.
+- **Promotion not supersession (`d1ebfc6e`)** — close calls
+  `MemoryClient.write`, never `supersede`. Separate concepts, kept separate.
+- **Atomicity / split-not-trim (`5f439cd0`)** — soft byte threshold on
+  `write_node` raises a sticky split-suggested flag; the action is split into
+  linked nodes, never compress; sticky until a review clears it.
+- **Ratification gradient (`526ca485`)** — `metadata.ratification_strength` ∈
+  `{survived-challenge, explicit-endorse, delegate, tacit}` +
+  `ratification_citation` (the owner utterance, deposited into the node so the
+  structure is self-contained). Drives graduation: endorse/survived promote
+  clean; **delegate** promotes tagged "verify substance"; tacit no auto-promote.
+- **Reviewer (`6af0f365`)** — map-only (threat model is *mistakes, not cheating*,
+  so no transcript). Trigger = `writes_since_review >= 15`; raises a sticky
+  `review_due` flag, never force-interrupts. Advisory; human-confirm-at-close is
+  the final backstop.
+- **Build order + observability (`0aa54585`)** — slices below; every ratify /
+  fork / promote / split-flag / review-flag writes a `memory_map_events` row.
 
-**Promotion is a new write, never supersession** (`d1ebfc6e`): graduation calls
-`MemoryClient.write`, *not* `supersede`. The two stay separate — supersession is
-"a fact got corrected"; promotion is "a KB node born from archived reasoning."
+## Open loops carried (NOT closed)
 
-**Archived state** is excluded from `mindmap_open` similarity search (finished
-maps never nag as "revisit?") but **included** in reference traversal
-(`refs_out`/`refs_in` still walk into it), so a deep-dive on a spec line
-recovers full reasoning. Archived = cold, not deleted, not compressed.
-
-**Two human touch-points only:** `mindmap_open` ("let's brainstorm") and
-confirm-at-close. Everything between is silent model capture.
-
-## The other four decisions
-
-- **Whose-turn (`f5e52f08`):** each open node carries `metadata.responsible_party`
-  (`owner` | `model`). `surface_pending_state` returns the open set, mostly
-  "waiting on owner" — that's the resume/graduation surface. Reviewer backstops
-  mis-assigned turns.
-- **Atomicity / split-not-trim (`5f439cd0`):** core `content` is already capped
-  at 32,768 chars. The plugin adds a **softer** byte threshold on
-  `mindmap_write_node`: past it, the node is flagged "looks like >1 decision";
-  the action is **split into linked nodes**, never compress. Flag is sticky
-  until a reviewer clears it.
-- **Ratification gradient (`526ca485`):** `mindmap_write_node` / a ratify call
-  records `metadata.ratification_strength` ∈
-  `{survived-challenge, explicit-endorse, delegate, tacit}` plus
-  `metadata.ratification_citation` (the owner utterance, deposited into the node
-  so the structure is self-contained). Strength drives graduation:
-  endorse/survived-challenge promote clean; **delegate** promotes tagged
-  "verify substance" (the dangerous-to-mislabel one); tacit does not auto-promote.
-- **Reviewer (`6af0f365`):** map-only (no transcript by design — threat model is
-  *mistakes, not cheating*). Trigger = `writes_since_review >= N`; raises a
-  sticky flag via `surface_pending_state`, never force-interrupts. Advisory:
-  surfaces flags to the driver; human-confirm-at-graduation is the final backstop.
-
-## Observability (day one, per `0aa54585`)
-
-Every ratification, fork, promotion, split-flag, and reviewer-flag writes a row
-to a `plugin_mindmap.judgment_log` (append-only: map_id, node_id, event,
-actor, payload, ts) for owner review. Edge-case judgment failures must be
-*visible, not silent* — the afternoon self-test only exercised easy cases.
-
-## Open loops carried (do NOT treat as closed)
-
-- `890f7e47` **In-flight live capture is UNTESTED** — load-bearing. Slice 4
-  exercises it deliberately and early; only post-hoc capture has passed.
-- `b2e23042` Multi-person/team — deferred. Schema mirrors core tenant/team
-  scoping so a later `visibility='team'` extension is non-breaking, but v1 is
-  single-author.
-- `ad5372db` Fact mechanics — undefined. v1 keeps facts unmapped/ownerless
-  (no membership row); no new fact behaviour.
+- `890f7e47` **In-flight live capture is UNTESTED** and load-bearing — exercised
+  deliberately in slice 4, early.
+- `b2e23042` Team/multi-person — deferred; tables mirror tenant scoping so a
+  later `visibility='team'` is non-breaking.
+- `ad5372db` Fact mechanics — undefined; v1 keeps facts unmapped/ownerless.
 
 ## Build slices (sequenced; risk early)
 
 | # | Slice | Done when |
 |---|---|---|
-| 1 | Core: extend type enum (`position`,`challenge`) + validators + recency + ADR-0007 | migration up/down green; write/get of a `position` node round-trips; non-versioned confirmed |
-| 2 | `mindmap` plugin skeleton | entry-point discovered; `plugin_mindmap` schema + tables migrate; config + permissions declared; `judgment_log` live |
-| 3 | Lifecycle spine: `mindmap_open` → `set_active` → `write_node` → `close` | one map opens, owns nodes exclusively, closes/archives; ownership PK enforced by test |
-| 4 | **Live in-flight capture** (`890f7e47`) | a running conversation captures owned nodes into the active map turn-by-turn, not post-hoc; documented as passed/failed |
-| 5 | Edges + `open` similarity-surface (live-only) + `from_spec` exact dedup | candidates surfaced not merged; dedup guard blocks duplicate from_spec maps |
-| 6 | Graduation: propose → confirm → promote-with-backlink → archive | confirmed decisions become KB nodes referencing archived originals; archived excluded from search, included in traversal |
-| 7 | Reviewer + ratification gradient + atomicity split-flag | counter trigger raises sticky flag; reviewer pass clears it; gradient + split-flag recorded and surfaced |
+| 1 | Node + slug vocabulary: enum `position`/`challenge`, slug `map`, validators, recency, ADR-0007 | migration up/down green; a `position` round-trips; non-versioned confirmed |
+| 2 | Tables: `memory_maps`, `memory_map_membership`, `memory_map_events` + RLS/grants | migrate up/down green; ownership PK rejects a 2nd membership row in test |
+| 3 | Lifecycle spine: `mindmap_open` → `write_node` → `mindmap_get` → `mindmap_close` | a map opens (root slug minted), owns nodes, archives; exercised end-to-end in a test |
+| 4 | **Live in-flight capture** (`890f7e47`) | nodes captured turn-by-turn into the named map, not post-hoc; documented pass/fail |
+| 5 | Edges + `open` live-only similarity surface + `from_spec` dedup guard | candidates surfaced not merged; duplicate from_spec blocked |
+| 6 | Graduation: propose → confirm → promote-with-`promoted-from` → archive | confirmed decisions become KB decisions referencing archived nodes; archived excluded from search, walkable via refs |
+| 7 | Reviewer + ratification gradient + split-flag | counter hits 15 → sticky `review_due`; `mindmap_review` clears it; gradient + split-flag logged and surfaced |
 
-## Decisions needed from owner at review
+## ADRs to record
 
-1. **Type-enum extension in core** — confirm `position`+`challenge` go in the
-   core enum (vs. faked as `note` + `metadata.node_role` in the plugin). The
-   spec says core; confirming because it's the one irreversible core change.
-2. **`conversation_id` source** — what keys "the active map for the
-   conversation"? Proposed: the MCP `source_client_id` / session. Needs a real
-   handle from the client side.
-3. **Reviewer trigger N** — initial writes-since-review threshold (proposed: 10;
-   it's an empirical knob per the spec's residual-tension note).
-4. **Single-author v1** — confirm team/multi-person stays deferred (`b2e23042`).
+- **ADR-0007** — `position`/`challenge` node types added to core; non-versioned
+  (extends ADR-0005).
+- **ADR-0008** — Mind-map lives in core, not a plugin; a map is a slug-addressed
+  root memory + `memory_maps` state (records owner decisions 1 & 2).

@@ -75,7 +75,7 @@ MAX_SLUG_LEN = 64
 MAX_SLUG_RETRY = 100  # per amendment #13: exhaustion is a structured error, not a fallback
 
 
-ResourceType = Literal["decision", "fact"]
+ResourceType = Literal["decision", "fact", "map"]
 
 
 class SlugClueRequiredError(Exception):

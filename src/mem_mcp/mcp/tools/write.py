@@ -33,7 +33,7 @@ from mem_mcp.teams.slugs import (
 )
 
 _TAG_RE = re.compile(r"^[a-zA-Z0-9_:.-]+$")
-MemoryType = Literal["note", "decision", "fact", "snippet", "question"]
+MemoryType = Literal["note", "decision", "fact", "snippet", "question", "position", "challenge"]
 
 # Hard write limit on memory content.
 CONTENT_MAX_CHARS = 200_000

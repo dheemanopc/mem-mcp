@@ -22,7 +22,7 @@ from mem_mcp.memory.hybrid_query import (
     PREVIEW_MAX_CHARS,
 )
 
-MemoryType = Literal["note", "decision", "fact", "snippet", "question"]
+MemoryType = Literal["note", "decision", "fact", "snippet", "question", "position", "challenge"]
 
 
 class MemoryListInput(BaseModel):
