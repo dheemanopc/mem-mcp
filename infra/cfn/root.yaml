@@ -393,6 +393,16 @@ Resources:
         Project: mem-mcp
         Component: root-bridge
 
+  SsmKiteServiceClientId:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /mem-mcp/kite/client_id
+      Type: String
+      Value: !GetAtt IdentityStack.Outputs.KiteServiceClientId
+      Tags:
+        Project: mem-mcp
+        Component: root-bridge
+
   SsmResourceServerUrl:
     Type: AWS::SSM::Parameter
     Properties:
