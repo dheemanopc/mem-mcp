@@ -231,12 +231,20 @@ async def main(dry_run: bool = False) -> int:
 
     import asyncpg
 
+    # init=_init_connection registers the pgvector text codec — WITHOUT it,
+    # asyncpg rejects a Python list passed to a `vector` column with
+    # "expected str, got list", so every multi-chunk INSERT fails (only the
+    # single-chunk SQL-to-SQL copy path worked). This standalone job pool must
+    # register the same codecs the app pool does.
+    from mem_mcp.db.pool import _init_connection
+
     pool = await asyncpg.create_pool(
         dsn=settings.db_maint_dsn_asyncpg,
         min_size=1,
         max_size=2,
         command_timeout=60,
         server_settings={"application_name": "mem-mcp-chunk-build"},
+        init=_init_connection,
     )
 
     try:
