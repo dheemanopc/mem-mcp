@@ -166,14 +166,19 @@ class TestChunkBuildJob:
         assert [c.args[3] for c in inserts] == list(range(len(inserts)))
 
     @pytest.mark.asyncio
-    async def test_embed_failure_skips_memory(self) -> None:
+    async def test_embed_failure_records_backoff_and_writes_no_chunks(self) -> None:
         content = ("sentence about topic. " * 80 + "\n\n") * 4
         conn = _conn_with_tx()
         result = await build_chunks_for_memory(
             _FakePool(conn), _FakeEmbedder(fail=True), _row(content)
         )
         assert result == "failed_embed"
-        conn.execute.assert_not_called()  # nothing written, retried next pass
+        executed = [c.args[0] for c in conn.execute.call_args_list]
+        # Records backoff state (migration 0039) so the memory is NOT re-selected
+        # every pass — a generic error is transient (not terminal).
+        assert any("INSERT INTO chunk_build_state" in q for q in executed), executed
+        # But no chunk rows are written on failure.
+        assert not any("INSERT INTO memory_chunks" in q for q in executed)
 
     @pytest.mark.asyncio
     async def test_empty_content_skipped(self) -> None:
