@@ -51,9 +51,7 @@ async def insert_map(
     )
 
 
-async def get_map_row(
-    conn: asyncpg.Connection, *, root_memory_id: UUID
-) -> dict[str, Any] | None:
+async def get_map_row(conn: asyncpg.Connection, *, root_memory_id: UUID) -> dict[str, Any] | None:
     """Fetch a single map row (or None)."""
     row = await conn.fetchrow(
         "SELECT * FROM memory_maps WHERE root_memory_id = $1",
@@ -62,9 +60,7 @@ async def get_map_row(
     return dict(row) if row else None
 
 
-async def resolve_map_root(
-    conn: asyncpg.Connection, *, team_id: UUID, map_key: str
-) -> UUID | None:
+async def resolve_map_root(conn: asyncpg.Connection, *, team_id: UUID, map_key: str) -> UUID | None:
     """Resolve a map key (the root memory's 'map' slug) to its root_memory_id."""
     return await conn.fetchval(
         "SELECT memory_id FROM slugs WHERE team_id = $1 AND resource_type = 'map' AND slug = $2",
@@ -113,9 +109,7 @@ async def insert_membership(
     )
 
 
-async def bump_review_counter(
-    conn: asyncpg.Connection, *, root_memory_id: UUID
-) -> tuple[int, int]:
+async def bump_review_counter(conn: asyncpg.Connection, *, root_memory_id: UUID) -> tuple[int, int]:
     """Increment writes_since_review; return (new_count, review_threshold)."""
     row = await conn.fetchrow(
         """

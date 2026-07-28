@@ -25,7 +25,9 @@ class MemoryUpdateInput(BaseModel):
 
     id: UUID
     content: str | None = None
-    type: Literal["note", "decision", "fact", "snippet", "question", "position", "challenge"] | None = None
+    type: (
+        Literal["note", "decision", "fact", "snippet", "question", "position", "challenge"] | None
+    ) = None
     tags: list[str] | None = None
     metadata: dict[str, Any] | None = None
     tags_op: Literal["replace", "add", "remove"] = "replace"

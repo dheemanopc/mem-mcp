@@ -8,7 +8,6 @@ seeded from the same source node.
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any, ClassVar
 from uuid import UUID
 
@@ -93,7 +92,9 @@ class MindmapOpenTool(BaseTool):
                         state="live",
                         deduped=True,
                         seeded_from=inp.seed_memory_id,
-                        review_threshold=existing["review_threshold"] if existing else inp.review_threshold,
+                        review_threshold=existing["review_threshold"]
+                        if existing
+                        else inp.review_threshold,
                         request_id=ctx.request_id,
                     )
 
@@ -157,8 +158,10 @@ class MindmapOpenTool(BaseTool):
                 event="open",
                 actor="model",
                 memory_id=root_id,
-                payload={"title": inp.title, "seeded_from": str(inp.seed_memory_id)
-                         if inp.seed_memory_id else None},
+                payload={
+                    "title": inp.title,
+                    "seeded_from": str(inp.seed_memory_id) if inp.seed_memory_id else None,
+                },
             )
 
         return MindmapOpenOutput(

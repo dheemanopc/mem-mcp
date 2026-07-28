@@ -132,10 +132,14 @@ class MindmapCloseTool(BaseTool):
                 team_id=team_id,
                 metadata={"map_index": True, "map_key": inp.map_key},
                 references=[
-                    {"target_uuid": p.decision_id, "reference_kind": "index-of",
-                     "refs_version": "pinned"}
+                    {
+                        "target_uuid": p.decision_id,
+                        "reference_kind": "index-of",
+                        "refs_version": "pinned",
+                    }
                     for p in promoted
-                ] or None,
+                ]
+                or None,
             )
             graduated_index_id = idx_out.id
 

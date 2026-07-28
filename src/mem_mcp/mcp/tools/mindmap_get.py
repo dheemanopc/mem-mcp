@@ -71,7 +71,9 @@ class MindmapGetTool(BaseTool):
                 raise JsonRpcError(-32602, "map not found", data={"errors": [{"path": "map_key"}]})
             row = await service.get_map_row(conn, root_memory_id=root_id)
             assert row is not None
-            members = await service.fetch_members(conn, root_memory_id=root_id, tenant_id=ctx.tenant_id)
+            members = await service.fetch_members(
+                conn, root_memory_id=root_id, tenant_id=ctx.tenant_id
+            )
             member_ids = [m["memory_id"] for m in members]
             edges = await service.fetch_internal_edges(conn, member_ids=member_ids)
 
@@ -87,9 +89,7 @@ class MindmapGetTool(BaseTool):
             for m in members
         ]
         open_loops = [
-            m["memory_id"]
-            for m in members
-            if m["metadata"].get("responsible_party") == "owner"
+            m["memory_id"] for m in members if m["metadata"].get("responsible_party") == "owner"
         ]
         return MindmapGetOutput(
             map_key=inp.map_key,

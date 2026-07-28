@@ -68,9 +68,7 @@ class MindmapWriteNodeTool(BaseTool):
             team_id = await resolve_team_id(conn, ctx, inp.team_id)
             root_id = await service.resolve_map_root(conn, team_id=team_id, map_key=inp.map_key)
             if root_id is None:
-                raise JsonRpcError(
-                    -32602, "map not found", data={"errors": [{"path": "map_key"}]}
-                )
+                raise JsonRpcError(-32602, "map not found", data={"errors": [{"path": "map_key"}]})
             row = await service.get_map_row(conn, root_memory_id=root_id)
             if row is None or row["state"] != "live":
                 raise JsonRpcError(
@@ -90,8 +88,11 @@ class MindmapWriteNodeTool(BaseTool):
 
         mem_type = inp.node_role if inp.node_role in ("position", "challenge") else "note"
         refs = [
-            {"target_uuid": link.target_memory_id, "reference_kind": link.reference_kind,
-             "refs_version": "pinned"}
+            {
+                "target_uuid": link.target_memory_id,
+                "reference_kind": link.reference_kind,
+                "refs_version": "pinned",
+            }
             for link in inp.links
         ] or None
 
