@@ -62,7 +62,9 @@ def upgrade() -> None:
             "WHERE seed_spec_memory_id IS NOT NULL"
         )
     )
-    op.execute(sa.text("CREATE INDEX memory_maps_tenant_state_idx ON memory_maps(tenant_id, state)"))
+    op.execute(
+        sa.text("CREATE INDEX memory_maps_tenant_state_idx ON memory_maps(tenant_id, state)")
+    )
 
     # ---- memory_map_membership --------------------------------------------
     # PK on memory_id == exclusive ownership: a node cannot be in two maps.
@@ -134,9 +136,7 @@ def upgrade() -> None:
         op.execute(sa.text(f"GRANT SELECT, INSERT, UPDATE, DELETE ON {table} TO mem_app"))
 
     # memory_map_events.id is a sequence — app role needs USAGE to insert.
-    op.execute(
-        sa.text("GRANT USAGE, SELECT ON SEQUENCE memory_map_events_id_seq TO mem_app")
-    )
+    op.execute(sa.text("GRANT USAGE, SELECT ON SEQUENCE memory_map_events_id_seq TO mem_app"))
 
 
 def downgrade() -> None:

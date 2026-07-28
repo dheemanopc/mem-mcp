@@ -104,9 +104,7 @@ async def _cleanup(pool: Any, tenant: UUID, team: UUID, client_id: str) -> None:
             await conn.execute("DELETE FROM memory_maps WHERE tenant_id = $1", tenant)
             await conn.execute("DELETE FROM slugs WHERE team_id = $1", team)
             await conn.execute("DELETE FROM memories WHERE tenant_id = $1", tenant)
-            await conn.execute(
-                "DELETE FROM team_role_assignments WHERE parent_team_id = $1", team
-            )
+            await conn.execute("DELETE FROM team_role_assignments WHERE parent_team_id = $1", team)
             await conn.execute("DELETE FROM tenant_identities WHERE tenant_id = $1", tenant)
             await conn.execute("DELETE FROM teams WHERE id = $1", team)
             await conn.execute("DELETE FROM tenants WHERE id = $1", tenant)
@@ -183,9 +181,7 @@ async def test_mindmap_full_lifecycle(pg_pool: Any) -> None:
         # split-suggested flag on an oversized node (advisory; still written)
         big = await MindmapWriteNodeTool()(
             ctx,
-            MindmapWriteNodeInput(
-                map_key=map_key, content="x" * 1300, node_role="position"
-            ),
+            MindmapWriteNodeInput(map_key=map_key, content="x" * 1300, node_role="position"),
         )
         assert big.split_suggested is True
 
@@ -290,9 +286,7 @@ async def test_mindmap_from_spec_dedup(pg_pool: Any) -> None:
     try:
         first = await MindmapOpenTool()(
             ctx,
-            MindmapOpenInput(
-                title="Revisit caching", root_question="Reopen?", seed_memory_id=seed
-            ),
+            MindmapOpenInput(title="Revisit caching", root_question="Reopen?", seed_memory_id=seed),
         )
         assert first.deduped is False
         # second open from the SAME live seed → deduped to the existing map

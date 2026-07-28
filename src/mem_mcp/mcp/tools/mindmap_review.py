@@ -64,7 +64,9 @@ class MindmapReviewTool(BaseTool):
                 raise JsonRpcError(-32602, "map not found", data={"errors": [{"path": "map_key"}]})
             row = await service.get_map_row(conn, root_memory_id=root_id)
             assert row is not None
-            members = await service.fetch_members(conn, root_memory_id=root_id, tenant_id=ctx.tenant_id)
+            members = await service.fetch_members(
+                conn, root_memory_id=root_id, tenant_id=ctx.tenant_id
+            )
             events = await service.fetch_recent_events(conn, root_memory_id=root_id)
             counter_was = int(row["writes_since_review"])
             await service.reset_review_counter(conn, root_memory_id=root_id)

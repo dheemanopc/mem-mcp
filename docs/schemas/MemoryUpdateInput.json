@@ -64,7 +64,9 @@
             "decision",
             "fact",
             "snippet",
-            "question"
+            "question",
+            "position",
+            "challenge"
           ],
           "type": "string"
         },

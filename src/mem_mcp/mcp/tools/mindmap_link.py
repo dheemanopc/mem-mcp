@@ -77,9 +77,7 @@ class MindmapLinkTool(BaseTool):
             )
             if inp.map_key is not None:
                 team_id = await resolve_team_id(conn, ctx, inp.team_id)
-                root_id = await service.resolve_map_root(
-                    conn, team_id=team_id, map_key=inp.map_key
-                )
+                root_id = await service.resolve_map_root(conn, team_id=team_id, map_key=inp.map_key)
                 if root_id is not None:
                     await service.log_event(
                         conn,

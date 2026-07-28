@@ -246,7 +246,9 @@
         "decision",
         "fact",
         "snippet",
-        "question"
+        "question",
+        "position",
+        "challenge"
       ],
       "title": "Type",
       "type": "string"
