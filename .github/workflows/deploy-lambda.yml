@@ -1,7 +1,8 @@
-# One-off: redeploy the PreSignUp Lambda code (dependency-free handler) via the
-# deploy OIDC role's SSM path. The merge-deploy only updates the EC2 app, not the
-# Lambda; this pushes the fixed handler.py to the function directly.
-# Works only if the EC2 instance role has lambda:UpdateFunctionCode.
+# One-off: redeploy the PreSignUp Lambda code (dependency-free handler) directly
+# from the runner using the deploy OIDC role. The merge-deploy only updates the
+# EC2 app, not the Lambda; this pushes the fixed handler.py to the function.
+# Requires the deploy role to have lambda:UpdateFunctionCode on mem-mcp-presignup
+# (added in deploy/cft/gha-deploy-role.yaml — apply that stack update once).
 name: deploy-lambda
 
 on:
@@ -23,6 +24,21 @@ jobs:
             exit 1
           fi
 
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify handler is dependency-free
+        run: |
+          cd lambdas/presignup
+          grep -q "urllib.request" handler.py || { echo "::error::handler.py has no urllib (not the fixed version)"; exit 1; }
+          if grep -q "import httpx" handler.py; then echo "::error::handler.py still imports httpx"; exit 1; fi
+          echo "OK: handler.py is the dependency-free version"
+
+      - name: Build zip
+        run: |
+          cd lambdas/presignup
+          python3 -c "import zipfile; z=zipfile.ZipFile('/tmp/presignup-fn.zip','w',zipfile.ZIP_DEFLATED); z.write('handler.py','handler.py'); z.close(); print('zip built')"
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -30,56 +46,16 @@ jobs:
           aws-region: ap-south-1
           role-session-name: gha-deploy-lambda-${{ github.run_id }}
 
-      - name: Send update-function-code command
-        id: send
-        env:
-          REMOTE_SCRIPT: |
-            set +e
-            cd /opt/mem-mcp/lambdas/presignup || { echo "ERR: /opt/mem-mcp/lambdas/presignup missing"; exit 1; }
-            echo "=== handler version check ==="
-            grep -q "urllib.request" handler.py || { echo "ABORT: handler.py has no urllib (fixed code not on box yet — let the app deploy finish, then retry)"; exit 1; }
-            if grep -q "import httpx" handler.py; then echo "ABORT: handler.py still imports httpx"; exit 1; fi
-            echo "OK: handler.py is the dependency-free version"
-            echo "=== build zip (python stdlib) ==="
-            python3 -c "import zipfile; z=zipfile.ZipFile('/tmp/presignup-fn.zip','w',zipfile.ZIP_DEFLATED); z.write('handler.py','handler.py'); z.close(); print('zip built')" || { echo "ZIP_ERR"; exit 1; }
-            echo "=== update-function-code ==="
-            aws lambda update-function-code --region ap-south-1 \
-              --function-name mem-mcp-presignup \
-              --zip-file fileb:///tmp/presignup-fn.zip \
-              --query '{LastModified:LastModified,CodeSize:CodeSize,Runtime:Runtime,State:Configuration}' \
-              --output json 2>&1
-            echo "=== END ==="
+      - name: Update Lambda function code
         run: |
-          SCRIPT_B64=$(printf '%s' "$REMOTE_SCRIPT" | base64 -w0)
-          CMD_ID=$(aws ssm send-command \
-            --instance-ids i-054760e67d8481307 \
-            --document-name AWS-RunShellScript \
-            --parameters "commands=[\"echo $SCRIPT_B64 | base64 -d | bash\"]" \
-            --query Command.CommandId --output text)
-          echo "cmd_id=$CMD_ID" >> "$GITHUB_OUTPUT"
-          echo "Command id: $CMD_ID"
-
-      - name: Poll and print result
-        run: |
-          CMD_ID="${{ steps.send.outputs.cmd_id }}"
-          INSTANCE_ID="i-054760e67d8481307"
-          for i in $(seq 1 20); do
-            STATUS=$(aws ssm get-command-invocation \
-              --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" \
-              --query Status --output text 2>/dev/null)
-            case "$STATUS" in
-              Success|Failed|Cancelled|TimedOut)
-                echo "=== command status: $STATUS ==="
-                echo "=== STDOUT ==="
-                aws ssm get-command-invocation --command-id "$CMD_ID" \
-                  --instance-id "$INSTANCE_ID" --query StandardOutputContent --output text
-                echo "=== STDERR ==="
-                aws ssm get-command-invocation --command-id "$CMD_ID" \
-                  --instance-id "$INSTANCE_ID" --query StandardErrorContent --output text
-                [ "$STATUS" = "Success" ] && exit 0 || exit 1
-                ;;
-            esac
-            sleep 12
-          done
-          echo "::error::deploy-lambda command did not finish in time"
-          exit 1
+          set -euo pipefail
+          echo "=== update-function-code (mem-mcp-presignup) ==="
+          aws lambda update-function-code --region ap-south-1 \
+            --function-name mem-mcp-presignup \
+            --zip-file fileb:///tmp/presignup-fn.zip \
+            --publish \
+            --query '{LastModified:LastModified,CodeSize:CodeSize,Version:Version,RuntimeVersion:Runtime}' \
+            --output json
+          echo "=== code updated; waiting for function to become Active ==="
+          aws lambda wait function-updated --region ap-south-1 --function-name mem-mcp-presignup
+          echo "OK: Lambda code updated and Active."

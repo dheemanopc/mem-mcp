@@ -126,6 +126,16 @@ Resources:
             Effect: Allow
             Action: ssm:GetCommandInvocation
             Resource: '*'
+          # Update the PreSignUp Lambda's code directly from the runner
+          # (.github/workflows/deploy-lambda.yml). Scoped to the single
+          # mem-mcp-presignup function; no other Lambda can be touched.
+          - Sid: UpdatePreSignUpLambdaCode
+            Effect: Allow
+            Action:
+              - lambda:UpdateFunctionCode
+              - lambda:GetFunction
+              - lambda:GetFunctionConfiguration
+            Resource: !Sub 'arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:mem-mcp-presignup'
 
 Outputs:
   DeployRoleArn:
