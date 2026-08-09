@@ -31,7 +31,7 @@ def upgrade() -> None:
         sa.text(
             """
             INSERT INTO tenant_system_roles (tenant_id, role, granted_by_tenant_id, notes)
-            SELECT DISTINCT ti.tenant_id, 'system_admin', NULL, :note
+            SELECT ti.tenant_id, 'system_admin', CAST(NULL AS uuid), :note
             FROM tenant_identities ti
             WHERE LOWER(ti.email) = LOWER(:email)
             ON CONFLICT ON CONSTRAINT uq_tenant_system_roles_tenant_role DO NOTHING
