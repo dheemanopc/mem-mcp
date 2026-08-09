@@ -105,57 +105,49 @@ class TestExtractProvider:
 
 
 # --------------------------------------------------------------------------
-# _post_check_invite (mock httpx)
+# _post_check_invite (mock urllib)
 # --------------------------------------------------------------------------
 
 
 class TestPostCheckInvite:
+    @staticmethod
+    def _mock_urlopen_response(payload: dict[str, object]) -> MagicMock:
+        """Build a urlopen() context-manager mock returning JSON bytes."""
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = json.dumps(payload).encode("utf-8")
+        mock_resp.__enter__.return_value = mock_resp
+        mock_resp.__exit__.return_value = False
+        return mock_resp
+
     def test_allow_response_returned(self) -> None:
         import handler
 
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"decision": "allow", "reason": "invited"}
-        mock_response.raise_for_status.return_value = None
-
+        mock_resp = self._mock_urlopen_response({"decision": "allow", "reason": "invited"})
         with (
             patch.object(handler, "_load_secret", return_value="test-secret"),
-            patch("httpx.Client") as mock_client_cls,
+            patch("urllib.request.urlopen", return_value=mock_resp) as mock_urlopen,
         ):
-            mock_client = MagicMock()
-            mock_client.__enter__.return_value = mock_client
-            mock_client.__exit__.return_value = False
-            mock_client.post.return_value = mock_response
-            mock_client_cls.return_value = mock_client
-
             result = handler._post_check_invite("u@e.com", None)
 
         assert result == {"decision": "allow", "reason": "invited"}
-        # Check the call was made with HMAC header
-        call_kwargs = mock_client.post.call_args.kwargs
-        assert "X-Internal-Auth" in call_kwargs["headers"]
-        assert call_kwargs["headers"]["Content-Type"] == "application/json"
+        # The Request carries the HMAC + content-type headers (urllib capitalises keys).
+        req = mock_urlopen.call_args.args[0]
+        assert req.get_method() == "POST"
+        assert req.get_header("X-internal-auth") is not None
+        assert req.get_header("Content-type") == "application/json"
 
     def test_provider_included_in_payload(self) -> None:
         import handler
 
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"decision": "allow", "reason": "invited"}
-        mock_response.raise_for_status.return_value = None
-
+        mock_resp = self._mock_urlopen_response({"decision": "allow", "reason": "invited"})
         with (
             patch.object(handler, "_load_secret", return_value="test-secret"),
-            patch("httpx.Client") as mock_client_cls,
+            patch("urllib.request.urlopen", return_value=mock_resp) as mock_urlopen,
         ):
-            mock_client = MagicMock()
-            mock_client.__enter__.return_value = mock_client
-            mock_client.__exit__.return_value = False
-            mock_client.post.return_value = mock_response
-            mock_client_cls.return_value = mock_client
-
             handler._post_check_invite("u@e.com", "google")
 
-        body = mock_client.post.call_args.kwargs["content"]
-        parsed = json.loads(body)
+        req = mock_urlopen.call_args.args[0]
+        parsed = json.loads(req.data)
         assert parsed == {"email": "u@e.com", "provider": "google"}
 
     def test_no_url_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
