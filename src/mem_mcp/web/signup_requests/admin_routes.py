@@ -75,6 +75,7 @@ def make_admin_signup_router(*, pool: asyncpg.Pool, audit: AuditLogger) -> APIRo
                     "reason": r.reason,
                     "client_intent": r.client_intent,
                     "status": r.status,
+                    "source": r.source,
                     "submitted_at": r.submitted_at.isoformat(),
                     "email_verified_at": r.email_verified_at.isoformat()
                     if r.email_verified_at

@@ -1,0 +1,11 @@
+[Unit]
+Description=Run mem-mcp reconcile signup backlog job hourly
+Requires=mem-mcp-reconcile-signup-backlog.service
+
+[Timer]
+OnCalendar=*-*-* *:20:00
+Persistent=true
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target

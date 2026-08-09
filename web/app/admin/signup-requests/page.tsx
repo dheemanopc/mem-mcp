@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { serverApiFetch } from "@/lib/server-api";
+import { serverApiFetchResult } from "@/lib/server-api";
 
 interface SignupRequest {
   id: string;
@@ -8,6 +8,7 @@ interface SignupRequest {
   reason: string | null;
   client_intent: string[];
   status: string;
+  source: string;
   submitted_at: string;
   email_verified_at: string | null;
   reviewed_at: string | null;
@@ -30,12 +31,15 @@ export default async function AdminSignupRequestsPage({
   const sp = await searchParams;
   const status = sp.status ?? "pending";
   const qs = status === "all" ? "" : `?status=${encodeURIComponent(status)}`;
-  const data = await serverApiFetch<RequestsResponse>(
+  const result = await serverApiFetchResult<RequestsResponse>(
     `/api/web/admin/signup-requests${qs}`,
     { redirectTo: "/admin/signup-requests" }
   );
 
-  const requests = data?.requests ?? [];
+  const requests = result.data?.requests ?? [];
+  // A 403 must never look like an empty queue — that's what hid the backlog
+  // (BUG 2026-08-09). Surface it as an explicit authorization error instead.
+  const forbidden = result.status === 403;
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-12">
@@ -57,7 +61,23 @@ export default async function AdminSignupRequestsPage({
         ))}
       </nav>
 
-      {requests.length === 0 ? (
+      {forbidden ? (
+        <div className="border border-red-300 bg-red-50 rounded p-4">
+          <p className="font-medium text-red-800">
+            Not authorized to view signup requests.
+          </p>
+          <p className="text-sm text-red-700 mt-1">
+            Your account is missing the <code>system.review_signups</code>{" "}
+            permission (granted with the <code>system_admin</code> role). The
+            queue may not actually be empty — this is an access error, not
+            &ldquo;no requests&rdquo;.
+          </p>
+        </div>
+      ) : !result.ok ? (
+        <p className="text-gray-500">
+          Couldn&rsquo;t load requests (error {result.status}). Try again.
+        </p>
+      ) : requests.length === 0 ? (
         <p className="text-gray-500">No requests in this state.</p>
       ) : (
         <ul className="space-y-3">
@@ -71,6 +91,14 @@ export default async function AdminSignupRequestsPage({
                   <span className="font-mono text-sm">{r.email}</span>
                   {r.name && <span className="text-gray-500">— {r.name}</span>}
                   <StatusBadge status={r.status} />
+                  {r.source === "google_denied" && (
+                    <span
+                      className="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-800"
+                      title="Captured when this person signed in with Google but wasn't on the invite allowlist"
+                    >
+                      via Google · not invited
+                    </span>
+                  )}
                 </div>
                 {r.reason && (
                   <p className="text-sm text-gray-700 mt-1 line-clamp-2">

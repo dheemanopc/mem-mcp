@@ -61,6 +61,12 @@ class InviteStore(Protocol):
         ...
 
 
+class DeniedAttemptRecorder(Protocol):
+    async def record(self, *, email: str, provider: str | None) -> None:
+        """Surface a not-invited login attempt so the operator can review it."""
+        ...
+
+
 class DbInviteStore:
     """Production store using asyncpg + system_tx."""
 
@@ -104,11 +110,15 @@ def make_internal_invite_router(
     *,
     store: InviteStore,
     shared_secret: str,
+    recorder: DeniedAttemptRecorder | None = None,
 ) -> APIRouter:
     """Build the /internal/check_invite router.
 
     The shared_secret comes from Settings.internal_lambda_secret (loaded from
     SSM SecureString /mem-mcp/internal/lambda_secret at process startup).
+
+    When ``recorder`` is provided, every ``not_invited`` denial is surfaced into
+    the signup review queue (best-effort — recording never changes the decision).
     """
     router = APIRouter(tags=["internal"])
 
@@ -171,6 +181,16 @@ def make_internal_invite_router(
             decision=response.decision,
             reason=response.reason,
         )
+
+        # Surface not-invited denials into the operator's review queue so a
+        # blocked Google sign-in isn't silently lost. Best-effort: a recording
+        # failure must never flip the decision or fail the auth path.
+        if recorder is not None and response.reason == "not_invited":
+            try:
+                await recorder.record(email=payload.email, provider=payload.provider)
+            except Exception as exc:
+                # Never let capture break the auth path — swallow and log.
+                _log.warning("denied_login_capture_failed", error=str(exc)[:300])
 
         return JSONResponse(content=response.model_dump(), status_code=status.HTTP_200_OK)
 

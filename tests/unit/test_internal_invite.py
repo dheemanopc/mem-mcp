@@ -43,6 +43,27 @@ def _build(store: Any | None = None, secret: str = _SECRET) -> tuple[TestClient,
     return TestClient(app), store
 
 
+class FakeRecorder:
+    def __init__(self, *, boom: bool = False) -> None:
+        self.calls: list[tuple[str, str | None]] = []
+        self.boom = boom
+
+    async def record(self, *, email: str, provider: str | None) -> None:
+        self.calls.append((email, provider))
+        if self.boom:
+            raise RuntimeError("recorder down")
+
+
+def _build_with_recorder(
+    store: FakeStore, recorder: FakeRecorder, secret: str = _SECRET
+) -> TestClient:
+    app = FastAPI()
+    app.include_router(
+        make_internal_invite_router(store=store, shared_secret=secret, recorder=recorder)
+    )
+    return TestClient(app)
+
+
 def _signed_post(
     client: TestClient,
     payload: dict[str, Any],
@@ -182,3 +203,43 @@ class TestProviderField:
         client, _ = _build(store)
         resp = _signed_post(client, {"email": "x@y.com", "provider": "google"})
         assert resp.status_code == 200
+
+
+class TestDeniedCapture:
+    """Recorder is invoked on not-invited denials, best-effort."""
+
+    def test_not_invited_triggers_recorder(self) -> None:
+        store = FakeStore({"nope@y.com": "not_invited"})
+        recorder = FakeRecorder()
+        client = _build_with_recorder(store, recorder)
+        resp = _signed_post(client, {"email": "nope@y.com", "provider": "google"})
+        assert resp.status_code == 200
+        assert resp.json() == {"decision": "deny", "reason": "not_invited"}
+        assert recorder.calls == [("nope@y.com", "google")]
+
+    def test_invited_does_not_trigger_recorder(self) -> None:
+        store = FakeStore({"yes@y.com": "invited"})
+        recorder = FakeRecorder()
+        client = _build_with_recorder(store, recorder)
+        resp = _signed_post(client, {"email": "yes@y.com"})
+        assert resp.status_code == 200
+        assert resp.json()["decision"] == "allow"
+        assert recorder.calls == []
+
+    def test_already_consumed_does_not_trigger_recorder(self) -> None:
+        store = FakeStore({"used@y.com": "already_consumed"})
+        recorder = FakeRecorder()
+        client = _build_with_recorder(store, recorder)
+        resp = _signed_post(client, {"email": "used@y.com"})
+        assert resp.json() == {"decision": "deny", "reason": "already_consumed"}
+        assert recorder.calls == []
+
+    def test_recorder_failure_does_not_change_decision(self) -> None:
+        store = FakeStore({"nope@y.com": "not_invited"})
+        recorder = FakeRecorder(boom=True)
+        client = _build_with_recorder(store, recorder)
+        resp = _signed_post(client, {"email": "nope@y.com", "provider": "google"})
+        # Capture blew up, but the deny decision is still returned cleanly.
+        assert resp.status_code == 200
+        assert resp.json() == {"decision": "deny", "reason": "not_invited"}
+        assert recorder.calls == [("nope@y.com", "google")]

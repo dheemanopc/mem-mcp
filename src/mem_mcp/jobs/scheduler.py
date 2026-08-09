@@ -143,6 +143,7 @@ _CORE_SCHEDULES: dict[str, CronSchedule] = {
     "embedding_backfill": CronSchedule(minute={15}),  # hourly at :15
     "expire_transient": CronSchedule(minute={45}, hour={22}),
     "reconcile_signups": CronSchedule(minute=set(range(0, 60, 5))),  # every 5 min
+    "reconcile_signup_backlog": CronSchedule(minute={20}),  # hourly at :20
     "refresh_team_access": CronSchedule(minute=None),  # every minute
     "retention_audit": CronSchedule(minute={45}, hour={22}),
     "retention_deletion": CronSchedule(minute={30}),  # hourly at :30
