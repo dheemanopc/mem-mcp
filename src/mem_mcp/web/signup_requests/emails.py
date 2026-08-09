@@ -67,6 +67,41 @@ async def send_operator_notification(
     await _send(to=operator_email, subject="New mem-mcp access request", body_text=body)
 
 
+async def send_backlog_digest(
+    *,
+    operator_email: str,
+    awaiting_total: int,
+    reminded: list[str],
+    expired: list[str],
+) -> None:
+    """Notify the operator that the awaiting-verification backlog changed.
+
+    Closes the invisibility gap from BUG 2026-08-09: without this, applicants
+    stuck pre-verification are indistinguishable from "nobody applied" in the
+    admin queue (which only lists 'pending').
+    """
+
+    def _bullets(emails: list[str]) -> str:
+        return "\n".join(f"  - {e}" for e in emails) if emails else "  (none)"
+
+    body = (
+        "mem-mcp signup backlog update.\n\n"
+        f"Applicants awaiting email verification (not yet in the review queue): "
+        f"{awaiting_total}\n\n"
+        f"Re-verification reminders sent this run ({len(reminded)}):\n"
+        f"{_bullets(reminded)}\n\n"
+        f"Requests expired this run — token lapsed, never verified ({len(expired)}):\n"
+        f"{_bullets(expired)}\n\n"
+        "These applicants never appear in /admin/signup-requests until they verify.\n"
+        "Awaiting rows: https://memapp.dheemantech.in/admin/signup-requests?status=awaiting_verification\n"
+    )
+    await _send(
+        to=operator_email,
+        subject="mem-mcp signup backlog — verification pending",
+        body_text=body,
+    )
+
+
 async def send_approval_email(*, to: str) -> None:
     body = (
         "Hi,\n\n"

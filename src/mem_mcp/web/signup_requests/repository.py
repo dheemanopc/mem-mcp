@@ -179,6 +179,135 @@ async def get_by_id(pool: asyncpg.Pool, *, request_id: UUID) -> SignupRequest | 
     return _row_to_signup_request(row) if row else None
 
 
+@dataclass(frozen=True)
+class StuckAwaitingRequest:
+    """A signup request stuck in awaiting_verification, for the backlog sweep."""
+
+    id: UUID
+    email: str
+    name: str | None
+    submitted_at: datetime
+    verify_expires_at: datetime | None
+    reminder_count: int
+
+
+async def expire_stale_awaiting(
+    pool: asyncpg.Pool,
+    *,
+    dry_run: bool = False,
+) -> list[str]:
+    """Move awaiting_verification rows whose verify token has lapsed to 'expired'.
+
+    These are applicants who never clicked the verification link before the TTL
+    ran out; leaving them in awaiting_verification hides them in an invisible
+    limbo. Marking them 'expired' makes the outcome explicit and queryable.
+
+    Returns the list of affected emails. When dry_run, selects (does not mutate)
+    the rows that would expire.
+    """
+    async with pool.acquire() as conn:
+        if dry_run:
+            rows = await conn.fetch(
+                "SELECT email FROM signup_requests "
+                "WHERE status = 'awaiting_verification' AND verify_expires_at < now()"
+            )
+        else:
+            rows = await conn.fetch(
+                "UPDATE signup_requests SET status = 'expired' "
+                "WHERE status = 'awaiting_verification' AND verify_expires_at < now() "
+                "RETURNING email"
+            )
+    return [r["email"] for r in rows]
+
+
+async def list_stuck_awaiting(
+    pool: asyncpg.Pool,
+    *,
+    min_age_minutes: int,
+    reminder_cooldown_hours: int,
+    max_reminders: int,
+    limit: int = 100,
+) -> list[StuckAwaitingRequest]:
+    """List awaiting_verification requests eligible for a re-verification nudge.
+
+    Eligible = token still valid, submitted long enough ago that the original
+    email had a fair chance (min_age_minutes grace), not yet at the reminder cap,
+    and past the cooldown since the last reminder.
+    """
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT id, email, name, submitted_at, verify_expires_at, reminder_count
+            FROM signup_requests
+            WHERE status = 'awaiting_verification'
+              AND verify_expires_at > now()
+              AND submitted_at < now() - make_interval(mins => $1)
+              AND reminder_count < $2
+              AND (last_reminder_at IS NULL
+                   OR last_reminder_at < now() - make_interval(hours => $3))
+            ORDER BY submitted_at ASC
+            LIMIT $4
+            """,
+            min_age_minutes,
+            max_reminders,
+            reminder_cooldown_hours,
+            limit,
+        )
+    return [
+        StuckAwaitingRequest(
+            id=r["id"],
+            email=r["email"],
+            name=r["name"],
+            submitted_at=r["submitted_at"],
+            verify_expires_at=r["verify_expires_at"],
+            reminder_count=r["reminder_count"],
+        )
+        for r in rows
+    ]
+
+
+async def issue_verification_reminder(
+    pool: asyncpg.Pool,
+    *,
+    request_id: UUID,
+    ttl_hours: int = VERIFY_TOKEN_TTL_HOURS,
+) -> str | None:
+    """Mint a fresh verify token, extend the TTL, and record the reminder.
+
+    Returns the new raw token to embed in the resent email, or None if the row
+    is no longer in awaiting_verification (raced with a verify/expire). The
+    guard in the WHERE clause makes this safe to call concurrently with the
+    public verify endpoint and the expiry sweep.
+    """
+    raw_token = secrets.token_urlsafe(32)
+    token_hash = _hash_token(raw_token)
+    now = datetime.now(tz=UTC)
+    expires = now + timedelta(hours=ttl_hours)
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            UPDATE signup_requests
+            SET verify_token_hash = $2,
+                verify_expires_at = $3,
+                reminder_count = reminder_count + 1,
+                last_reminder_at = now()
+            WHERE id = $1 AND status = 'awaiting_verification'
+            RETURNING id
+            """,
+            request_id,
+            token_hash,
+            expires,
+        )
+    return raw_token if row else None
+
+
+async def count_by_status(pool: asyncpg.Pool, *, status: str) -> int:
+    """Return the number of signup_requests currently in the given status."""
+    async with pool.acquire() as conn:
+        val = await conn.fetchval("SELECT count(*) FROM signup_requests WHERE status = $1", status)
+    return int(val or 0)
+
+
 async def mark_reviewed(
     pool: asyncpg.Pool,
     *,

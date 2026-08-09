@@ -8,6 +8,7 @@ Currently registers:
     embedding_backfill    — retry failed embeddings from Bedrock
     expire_transient      — soft-delete expired transient memories
     reconcile_signups     — sweep Cognito for missing tenants, auto-provision
+    reconcile_signup_backlog — clear stuck awaiting_verification signups (nudge + expire)
     storage_stats         — daily: refresh per-tenant total_storage_bytes
     retention_memories    — soft + hard-delete memories per retention policy (T-7.14)
     retention_tokens      — purge expired link_state + web_sessions (T-7.14)
@@ -32,6 +33,7 @@ from mem_mcp.jobs.cleanup_kite_intents import main as cleanup_kite_intents_main
 from mem_mcp.jobs.cluster_build import main as cluster_build_main
 from mem_mcp.jobs.embedding_backfill import main as embedding_backfill_main
 from mem_mcp.jobs.expire_transient import main as expire_transient_main
+from mem_mcp.jobs.reconcile_signup_backlog import main as reconcile_signup_backlog_main
 from mem_mcp.jobs.reconcile_signups import main as reconcile_signups_main
 from mem_mcp.jobs.refresh_team_access import main as refresh_team_access_main
 from mem_mcp.jobs.retention_audit import main as retention_audit_main
@@ -50,6 +52,7 @@ _JOBS: dict[str, _JobMain] = {
     "embedding_backfill": embedding_backfill_main,
     "expire_transient": expire_transient_main,
     "reconcile_signups": reconcile_signups_main,
+    "reconcile_signup_backlog": reconcile_signup_backlog_main,
     "refresh_team_access": refresh_team_access_main,
     "retention_audit": retention_audit_main,
     "retention_deletion": retention_deletion_main,
