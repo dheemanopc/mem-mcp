@@ -1,2 +1,5 @@
-httpx==0.27.2
-# boto3 is provided by the Lambda runtime; no need to package
+# No third-party runtime dependencies.
+# The deploy pipeline zips source only (sam package, no sam build / pip install),
+# so the handler uses stdlib urllib for HTTP and boto3 (provided by the Lambda
+# runtime) for SSM. Do NOT add imports here without switching cfn_deploy.sh to
+# `sam build` — otherwise they won't be installed and the trigger fails closed.

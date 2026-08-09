@@ -79,13 +79,20 @@ def _load_secret() -> str:
 def _post_check_invite(email: str, provider: str | None) -> dict[str, Any]:
     """POST /internal/check_invite with HMAC. Returns parsed JSON.
 
-    Raises: any HTTP error, JSON decode error, etc.
+    Uses the Python standard library (urllib) rather than a third-party HTTP
+    client, so the Lambda has NO packaged dependencies. The deploy pipeline zips
+    source only (``sam package``, no ``sam build`` / pip install), so importing
+    any non-stdlib, non-runtime module (like httpx) would raise ModuleNotFound at
+    runtime and the trigger would fail closed — which is exactly the bug this
+    fixes. boto3 (used by _load_secret) is provided by the Lambda runtime.
+
+    Raises: urllib HTTPError on non-2xx, URLError on transport failure, JSON
+    decode error, etc. — all bubble up to lambda_handler's fail-closed guard.
     """
     if not _INTERNAL_INVITE_URL:
         raise RuntimeError("INTERNAL_INVITE_URL env var not set")
 
-    # Lazy import
-    import httpx
+    import urllib.request
 
     payload = {"email": email}
     if provider:
@@ -95,17 +102,18 @@ def _post_check_invite(email: str, provider: str | None) -> dict[str, Any]:
     secret = _load_secret()
     sig = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
 
-    with httpx.Client(timeout=_HTTP_TIMEOUT_SECONDS) as client:
-        resp = client.post(
-            _INTERNAL_INVITE_URL,
-            content=body,
-            headers={
-                "Content-Type": "application/json",
-                "X-Internal-Auth": sig,
-            },
-        )
-        resp.raise_for_status()
-        return resp.json()  # type: ignore[no-any-return]
+    req = urllib.request.Request(
+        _INTERNAL_INVITE_URL,
+        data=body,
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "X-Internal-Auth": sig,
+        },
+    )
+    with urllib.request.urlopen(req, timeout=_HTTP_TIMEOUT_SECONDS) as resp:
+        raw = resp.read()
+    return json.loads(raw.decode("utf-8"))  # type: ignore[no-any-return]
 
 
 def lambda_handler(event: dict[str, Any], context: object) -> dict[str, Any]:
