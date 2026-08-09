@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Literal, Protocol
 
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from starlette.background import BackgroundTask
 from starlette.responses import JSONResponse
 
 from mem_mcp.db import system_tx
@@ -65,6 +66,19 @@ class DeniedAttemptRecorder(Protocol):
     async def record(self, *, email: str, provider: str | None) -> None:
         """Surface a not-invited login attempt so the operator can review it."""
         ...
+
+
+async def _safe_record(recorder: DeniedAttemptRecorder, email: str, provider: str | None) -> None:
+    """Run capture off the response path; never let it surface as an error.
+
+    Executed as a Starlette background task after the invite decision is already
+    returned, so slow side effects (DB write + SES email) can't add latency to
+    the PreSignUp Lambda's timeout budget.
+    """
+    try:
+        await recorder.record(email=email, provider=provider)
+    except Exception as exc:
+        _log.warning("denied_login_capture_failed", error=str(exc)[:300])
 
 
 class DbInviteStore:
@@ -182,16 +196,19 @@ def make_internal_invite_router(
             reason=response.reason,
         )
 
-        # Surface not-invited denials into the operator's review queue so a
-        # blocked Google sign-in isn't silently lost. Best-effort: a recording
-        # failure must never flip the decision or fail the auth path.
+        # Surface not-invited denials into the operator's review queue, but do it
+        # AFTER the response is sent, never inline. The PreSignUp Lambda calls
+        # this endpoint with a hard ~4s timeout; the capture does a DB write plus
+        # a synchronous SES email, and running that before returning pushed
+        # not_invited responses past the timeout — the Lambda then failed closed
+        # ("invite check unavailable; signup denied") and blocked the very users
+        # we meant to capture. A background task keeps the decision sub-second and
+        # moves the side effects off the auth-critical path.
+        resp = JSONResponse(content=response.model_dump(), status_code=status.HTTP_200_OK)
         if recorder is not None and response.reason == "not_invited":
-            try:
-                await recorder.record(email=payload.email, provider=payload.provider)
-            except Exception as exc:
-                # Never let capture break the auth path — swallow and log.
-                _log.warning("denied_login_capture_failed", error=str(exc)[:300])
-
-        return JSONResponse(content=response.model_dump(), status_code=status.HTTP_200_OK)
+            resp.background = BackgroundTask(
+                _safe_record, recorder, payload.email, payload.provider
+            )
+        return resp
 
     return router
