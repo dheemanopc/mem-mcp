@@ -1,6 +1,25 @@
 import Link from "next/link";
 
-export default function WelcomePage() {
+interface WelcomeSearchParams {
+  status?: string;
+  reason?: string;
+  detail?: string;
+}
+
+export default async function WelcomePage({
+  searchParams,
+}: {
+  searchParams: Promise<WelcomeSearchParams>;
+}) {
+  const sp = await searchParams;
+  // Any status other than a clean success means the sign-in didn't complete —
+  // show the actual reason instead of onboarding steps the user can't use yet.
+  const errorStatus = sp.status && sp.status !== "ok" ? sp.status : null;
+
+  if (errorStatus) {
+    return <SignInProblem status={errorStatus} reason={sp.reason} detail={sp.detail} />;
+  }
+
   return (
     <main className="mx-auto max-w-3xl px-4 py-12 space-y-8">
       <header>
@@ -42,6 +61,72 @@ export default function WelcomePage() {
         Need help? See <Link href="/skills" className="underline">/skills</Link> or
         email anand@dheemantech.com.
       </footer>
+    </main>
+  );
+}
+
+function SignInProblem({
+  status,
+  reason,
+  detail,
+}: {
+  status: string;
+  reason?: string;
+  detail?: string;
+}) {
+  const pendingProvision = status === "tenant_not_provisioned";
+  const heading = pendingProvision
+    ? "Almost there — finishing setup"
+    : "We couldn't sign you in";
+  const blurb = pendingProvision
+    ? "Your account was accepted but is still being provisioned. This usually takes a couple of minutes — try signing in again shortly."
+    : "Your sign-in didn't complete. The details below are straight from the identity provider.";
+
+  return (
+    <main className="mx-auto max-w-2xl px-4 py-12 space-y-6">
+      <header>
+        <h1 className="text-2xl font-bold">{heading}</h1>
+        <p className="text-gray-600 mt-2">{blurb}</p>
+      </header>
+
+      <dl className="border rounded-lg p-4 text-sm bg-gray-50 space-y-2">
+        <div className="flex gap-2">
+          <dt className="font-medium text-gray-700 w-24 shrink-0">Status</dt>
+          <dd className="font-mono break-all">{status}</dd>
+        </div>
+        {reason && (
+          <div className="flex gap-2">
+            <dt className="font-medium text-gray-700 w-24 shrink-0">Reason</dt>
+            <dd className="font-mono break-all">{reason}</dd>
+          </div>
+        )}
+        {detail && (
+          <div className="flex gap-2">
+            <dt className="font-medium text-gray-700 w-24 shrink-0">Detail</dt>
+            <dd className="font-mono break-all">{detail}</dd>
+          </div>
+        )}
+      </dl>
+
+      {!pendingProvision && (
+        <p className="text-sm text-gray-600">
+          If you were trying to join,{" "}
+          <Link href="/request-access" className="underline">
+            request access
+          </Link>{" "}
+          or contact{" "}
+          <a href="mailto:anand@dheemantech.com" className="underline">
+            anand@dheemantech.com
+          </a>
+          .
+        </p>
+      )}
+
+      <p className="text-sm">
+        <Link href="/auth/login" className="underline">
+          Try signing in again
+        </Link>
+      </p>
     </main>
   );
 }
