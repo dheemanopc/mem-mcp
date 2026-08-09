@@ -19,6 +19,7 @@ from fastapi import APIRouter, Cookie, Request
 from fastapi.responses import RedirectResponse, Response
 
 from mem_mcp.db.tenant_tx import system_tx
+from mem_mcp.logging_setup import get_logger
 from mem_mcp.web.sessions import (
     SESSION_COOKIE_NAME,
     SESSION_TTL,
@@ -28,6 +29,8 @@ from mem_mcp.web.sessions import (
 
 if TYPE_CHECKING:
     import asyncpg  # type: ignore[import-untyped]
+
+_log = get_logger("mem_mcp.web.routes")
 
 
 class CognitoTokens(Protocol):
@@ -152,8 +155,20 @@ def make_web_router(
            - MISS → new user or linking flow. Log warning and redirect /welcome
         """
         # Cognito error-path: ?error=access_denied&error_description=...
+        # For federated (Google) sign-ups, a PreSignUp denial surfaces here as
+        # error=invalid_request with the real cause in error_description — which
+        # we must NOT drop, or the operator is left staring at an opaque reason
+        # with no log access. Log it and forward a trimmed copy to /welcome.
         if error:
-            return RedirectResponse(f"/welcome?status=oauth_error&reason={error}", status_code=302)
+            _log.warning(
+                "auth_callback_oauth_error",
+                error=error,
+                error_description=error_description,
+            )
+            params = {"status": "oauth_error", "reason": error}
+            if error_description:
+                params["detail"] = error_description[:300]
+            return RedirectResponse(f"/welcome?{urlencode(params)}", status_code=302)
 
         # Missing code or state — happens on browser back/refresh, or if Cognito drops state.
         # Don't 422; send the user back to /welcome with a retry hint.
