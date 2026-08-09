@@ -61,6 +61,10 @@ module = "seed_invite"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+module = "yaml"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
 module = "locust.*"
 ignore_missing_imports = true
 

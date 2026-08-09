@@ -78,8 +78,72 @@ now dependency-free, its source-only package deploys a working Lambda.
 2. An **invited** user (add via `seed_invite.py add <email>`, or the
    `invite-user` workflow) gets through and is provisioned.
 
+## If it still says "invite check unavailable" after deploying
+
+The dependency bug and the KMS bug produce the **identical** user-facing message,
+so a clean handler deploy can look like it changed nothing. Check CloudWatch:
+
+```
+aws logs filter-log-events --region ap-south-1 \
+  --log-group-name /aws/lambda/mem-mcp-presignup \
+  --start-time $(( ($(date -u +%s) - 3600) * 1000 )) \
+  --query 'events[].message' --output text | tail -40
+```
+
+- `Runtime.ImportModuleError` → the dependency bug; the handler deploy did not
+  land. Redo Option A/B/C above.
+- `AccessDeniedException ... not authorized to perform: kms:Decrypt` → the KMS
+  bug below. The handler is fine; the role cannot read the shared secret.
+
+`/mem-mcp/internal/lambda/secret` is a SecureString encrypted with the
+**customer-managed** key `alias/mem-mcp`, which requires an explicit
+`kms:Decrypt` grant (an AWS-managed key would not). The grant existed in
+`infra/cfn/nested/050-lambda-presignup.yaml` but named the key by **alias ARN**
+(`arn:aws:kms:...:alias/mem-mcp`). IAM does not resolve KMS aliases in a policy
+`Resource` element, so it matched nothing and every decrypt was denied — failing
+the trigger closed and denying every signup regardless of invite status.
+
+Fixed by scoping to `key/*` with the existing `kms:EncryptionContext:PARAMETER_ARN`
+condition, which pins decrypt to this one parameter's ciphertext. Redeploy the
+stack (Option C) to apply. To unblock before a redeploy, attach the grant
+directly to the function's execution role:
+
+```
+aws iam put-role-policy \
+  --role-name <PreSignUpFnRole> \
+  --policy-name presignup-kms-decrypt-hotfix \
+  --policy-document '{"Version":"2012-10-17","Statement":[{"Sid":"DecryptInternalLambdaSecret","Effect":"Allow","Action":"kms:Decrypt","Resource":"<key-arn>","Condition":{"StringEquals":{"kms:EncryptionContext:PARAMETER_ARN":"<parameter-arn>"}}}]}'
+```
+
+Resolve `<key-arn>` with `aws kms describe-key --key-id alias/mem-mcp`. The key
+policy's `EnableRoot` statement delegates to IAM, so no key-policy edit is needed.
+
+## Health probe (no side effects)
+
+To confirm the handler imports without touching the signup queue, invoke with an
+event carrying **no email**. `lambda_handler` raises at the missing-email check
+*before* `_post_check_invite`, so there is no HTTP call, no `signup_requests`
+row, and no operator notification:
+
+```
+aws lambda invoke --region ap-south-1 --function-name mem-mcp-presignup \
+  --cli-binary-format raw-in-base64-out \
+  --payload '{"triggerSource":"PreSignUp_SignUp","request":{"userAttributes":{}},"response":{}}' \
+  --log-type Tail --query LogResult --output text /tmp/out.json | base64 -d
+```
+
+Expect `RuntimeError: PreSignUp event missing email`. Anything else — especially
+`Runtime.ImportModuleError` — means the deploy did not land. Do **not** probe
+with a fake address: a `not_invited` denial writes a pending row and emails the
+operator.
+
 ## Guard against regression
 
 Adding any dependency back to `lambdas/presignup/requirements.txt` will silently
 break the Lambda again unless `cfn_deploy.sh` is changed to `sam build` before
 packaging. Keep the PreSignUp handler dependency-free, or fix the build step.
+
+Merging to main does **not** deploy this Lambda. `deploy-prod` covers the EC2 app
+only; the Lambda is CFN/`cfn_deploy.sh` (or the `deploy-lambda` workflow) only. A
+green main proves nothing about what is running — check the function's
+`LastModified`, which is the only field that tells the truth.
