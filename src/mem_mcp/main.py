@@ -654,9 +654,12 @@ def _wire_routers(app: FastAPI) -> None:
 
     # Wire internal_invite router
     invite_store = DbInviteStore(pool=pool)
+    from mem_mcp.web.signup_requests.denied_capture import SignupQueueRecorder
+
     internal_invite_router = make_internal_invite_router(
         store=invite_store,
         shared_secret=s.internal_lambda_secret,
+        recorder=SignupQueueRecorder(pool=pool, audit=audit, operator_email=s.operator_email),
     )
     app.include_router(internal_invite_router)
 

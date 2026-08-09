@@ -28,6 +28,7 @@ class SignupRequest:
     review_notes: str | None
     email_verified_at: datetime | None
     verify_expires_at: datetime | None
+    source: str = "form"
 
 
 def _hash_token(raw: str) -> str:
@@ -48,6 +49,7 @@ def _row_to_signup_request(row: Any) -> SignupRequest:
         review_notes=row["review_notes"],
         email_verified_at=row["email_verified_at"],
         verify_expires_at=row["verify_expires_at"],
+        source=row["source"] if "source" in row else "form",
     )
 
 
@@ -104,7 +106,7 @@ async def upsert_request(
                 END
             RETURNING id, email, name, reason, client_intent, status, submitted_at,
                       reviewed_at, reviewed_by, review_notes, email_verified_at,
-                      verify_expires_at
+                      verify_expires_at, source
             """,
             email,
             name,
@@ -135,7 +137,7 @@ async def verify_token(pool: asyncpg.Pool, *, raw_token: str) -> SignupRequest |
               AND status = 'awaiting_verification'
             RETURNING id, email, name, reason, client_intent, status, submitted_at,
                       reviewed_at, reviewed_by, review_notes, email_verified_at,
-                      verify_expires_at
+                      verify_expires_at, source
             """,
             token_hash,
         )
@@ -172,7 +174,7 @@ async def get_by_id(pool: asyncpg.Pool, *, request_id: UUID) -> SignupRequest | 
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             "SELECT id, email, name, reason, client_intent, status, submitted_at, "
-            "reviewed_at, reviewed_by, review_notes, email_verified_at, verify_expires_at "
+            "reviewed_at, reviewed_by, review_notes, email_verified_at, verify_expires_at, source "
             "FROM signup_requests WHERE id = $1",
             request_id,
         )
@@ -308,6 +310,53 @@ async def count_by_status(pool: asyncpg.Pool, *, status: str) -> int:
     return int(val or 0)
 
 
+async def record_verified_access_request(
+    pool: asyncpg.Pool,
+    *,
+    email: str,
+    name: str | None = None,
+    source: str = "google_denied",
+) -> tuple[str, bool]:
+    """Surface an externally-verified would-be applicant in the review queue.
+
+    Used when a Google sign-in is denied for not being on the invited_emails
+    allowlist: Google has already verified the email, so there is no SES step to
+    wait on — the request lands straight in 'pending' for the operator to review.
+
+    Idempotent via the UNIQUE(email) constraint:
+      - no existing row            -> INSERT a 'pending' row (visible immediately)
+      - existing awaiting/expired  -> promote to 'pending' (Google proved the email)
+      - existing pending/approved/rejected -> left untouched (no clobber)
+
+    Returns (resulting_status, inserted) where ``inserted`` is True only when a
+    brand-new row was created (Postgres xmax=0 on a fresh insert).
+    """
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            INSERT INTO signup_requests (email, name, status, email_verified_at, source)
+            VALUES ($1, $2, 'pending', now(), $3)
+            ON CONFLICT (email) DO UPDATE SET
+                status = CASE
+                    WHEN signup_requests.status IN ('awaiting_verification', 'expired')
+                    THEN 'pending'
+                    ELSE signup_requests.status
+                END,
+                email_verified_at = CASE
+                    WHEN signup_requests.status IN ('awaiting_verification', 'expired')
+                    THEN now()
+                    ELSE signup_requests.email_verified_at
+                END,
+                name = COALESCE(signup_requests.name, EXCLUDED.name)
+            RETURNING status, (xmax = 0) AS inserted
+            """,
+            email.lower(),
+            name,
+            source,
+        )
+    return str(row["status"]), bool(row["inserted"])
+
+
 async def mark_reviewed(
     pool: asyncpg.Pool,
     *,
@@ -327,7 +376,7 @@ async def mark_reviewed(
             WHERE id = $1 AND status = 'pending'
             RETURNING id, email, name, reason, client_intent, status, submitted_at,
                       reviewed_at, reviewed_by, review_notes, email_verified_at,
-                      verify_expires_at
+                      verify_expires_at, source
             """,
             request_id,
             status,
