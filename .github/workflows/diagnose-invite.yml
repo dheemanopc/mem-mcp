@@ -1,0 +1,94 @@
+# One-off, read-only diagnostic: pull backend + PreSignUp Lambda logs for the
+# invite-check path via the same OIDC→SSM path deploy-prod uses. Manual only.
+# Safe to delete once the invite-check failure is diagnosed.
+name: diagnose-invite
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Check DEPLOY_ROLE_ARN configured
+        run: |
+          if [ -z "${{ vars.DEPLOY_ROLE_ARN }}" ]; then
+            echo "::error::DEPLOY_ROLE_ARN repo variable is not set."
+            exit 1
+          fi
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.DEPLOY_ROLE_ARN }}
+          aws-region: ap-south-1
+          role-session-name: gha-diagnose-${{ github.run_id }}
+
+      - name: Send diagnostic command
+        id: send
+        env:
+          DIAG_SCRIPT: |
+            set +e
+            echo "=== now(UTC): $(date -u) ==="
+            echo "=== mem-mcp.service active? ==="
+            systemctl is-active mem-mcp.service 2>&1
+            echo
+            echo "=== backend journal — invite-check path (last 120 min) ==="
+            journalctl -u mem-mcp.service --since "120 min ago" --no-pager 2>/dev/null \
+              | grep -iE "invite_check|internal_invite|check_invite|hmac_mismatch|denied_login" \
+              | tail -80
+            echo
+            echo "=== count of invite_check hits (last 120 min) ==="
+            journalctl -u mem-mcp.service --since "120 min ago" --no-pager 2>/dev/null \
+              | grep -ic "invite_check"
+            echo
+            echo "=== recent backend errors/tracebacks (last 30 min) ==="
+            journalctl -u mem-mcp.service --since "30 min ago" --no-pager 2>/dev/null \
+              | grep -iE "error|exception|traceback|500 internal" | tail -30
+            echo
+            echo "=== PreSignUp Lambda CloudWatch (last 120 min) ==="
+            START=$(( ( $(date +%s) - 7200 ) * 1000 ))
+            aws logs filter-log-events --region ap-south-1 \
+              --log-group-name /mem-mcp/lambda/presignup \
+              --start-time "$START" \
+              --query 'events[*].message' --output text 2>&1 | tail -80
+            echo "=== END ==="
+        run: |
+          SCRIPT_B64=$(printf '%s' "$DIAG_SCRIPT" | base64 -w0)
+          CMD_ID=$(aws ssm send-command \
+            --instance-ids i-054760e67d8481307 \
+            --document-name AWS-RunShellScript \
+            --parameters "commands=[\"echo $SCRIPT_B64 | base64 -d | bash\"]" \
+            --query Command.CommandId --output text)
+          echo "cmd_id=$CMD_ID" >> "$GITHUB_OUTPUT"
+          echo "Command id: $CMD_ID"
+
+      - name: Poll and print output
+        run: |
+          CMD_ID="${{ steps.send.outputs.cmd_id }}"
+          INSTANCE_ID="i-054760e67d8481307"
+          for i in $(seq 1 20); do
+            STATUS=$(aws ssm get-command-invocation \
+              --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" \
+              --query Status --output text 2>/dev/null)
+            case "$STATUS" in
+              Success|Failed|Cancelled|TimedOut)
+                echo "=== command status: $STATUS ==="
+                echo "=== STDOUT ==="
+                aws ssm get-command-invocation --command-id "$CMD_ID" \
+                  --instance-id "$INSTANCE_ID" --query StandardOutputContent --output text
+                echo "=== STDERR ==="
+                aws ssm get-command-invocation --command-id "$CMD_ID" \
+                  --instance-id "$INSTANCE_ID" --query StandardErrorContent --output text
+                exit 0
+                ;;
+            esac
+            sleep 15
+          done
+          echo "::error::diagnostic command did not finish in time"
+          exit 1
