@@ -51,12 +51,24 @@ jobs:
             journalctl -u mem-mcp.service --since "30 min ago" --no-pager 2>/dev/null \
               | grep -iE "error|exception|traceback|500 internal" | tail -30
             echo
-            echo "=== PreSignUp Lambda CloudWatch (last 120 min) ==="
-            START=$(( ( $(date +%s) - 7200 ) * 1000 ))
-            aws logs filter-log-events --region ap-south-1 \
-              --log-group-name /mem-mcp/lambda/presignup \
-              --start-time "$START" \
-              --query 'events[*].message' --output text 2>&1 | tail -80
+            echo "=== SSM param NAMES under /mem-mcp/internal (names only, NO values) ==="
+            aws ssm get-parameters-by-path --region ap-south-1 \
+              --path /mem-mcp/internal --recursive \
+              --query 'Parameters[*].Name' --output text 2>&1
+            echo
+            echo "=== exists? the param the Lambda is configured to read ==="
+            aws ssm get-parameter --region ap-south-1 \
+              --name /mem-mcp/internal/lambda/secret \
+              --query 'Parameter.Name' --output text 2>&1
+            echo "=== exists? the param the infra creates ==="
+            aws ssm get-parameter --region ap-south-1 \
+              --name /mem-mcp/internal/lambda_shared_secret \
+              --query 'Parameter.Name' --output text 2>&1
+            echo
+            echo "=== backend secret env KEY names present (values redacted) ==="
+            systemctl show mem-mcp.service -p Environment 2>/dev/null \
+              | tr ' ' '\n' | grep -iE "INTERNAL_LAMBDA|LAMBDA_SECRET|LAMBDA_SHARED" \
+              | sed 's/=.*/=<redacted>/' || echo "(none in unit Environment; likely SSM-loaded)"
             echo "=== END ==="
         run: |
           SCRIPT_B64=$(printf '%s' "$DIAG_SCRIPT" | base64 -w0)
