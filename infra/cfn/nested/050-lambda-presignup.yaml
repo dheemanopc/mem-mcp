@@ -15,7 +15,11 @@ Parameters:
   KmsKeyAlias:
     Type: String
     Default: alias/mem-mcp
-    Description: KMS alias for SSM SecureString decryption
+    # Retained so the parent stack's pass-through keeps working. Deliberately
+    # NOT referenced in the PreSignUpFn IAM policy: an alias ARN in a policy
+    # Resource element matches nothing (IAM does not resolve KMS aliases), which
+    # is what silently broke signups. Do not wire this back into a Resource.
+    Description: KMS alias for SSM SecureString decryption (informational; see PreSignUpFn policy)
 
   MemSysSubdomain:
     Type: String
@@ -54,9 +58,17 @@ Resources:
             - Effect: Allow
               Action: ssm:GetParameter
               Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/mem-mcp/internal/lambda/secret'
+            # Resource MUST be a key ARN, not an alias ARN: IAM does not resolve
+            # KMS aliases in a policy Resource element, so
+            # 'arn:aws:kms:...:alias/mem-mcp' silently matches nothing and every
+            # GetParameter(WithDecryption=true) fails AccessDenied — which fails
+            # the trigger closed and denies every signup. The key is created
+            # outside CloudFormation, so its ARN isn't available here; scope by
+            # the encryption-context condition below instead, which pins decrypt
+            # to the ciphertext of this one SSM parameter.
             - Effect: Allow
               Action: kms:Decrypt
-              Resource: !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:${KmsKeyAlias}'
+              Resource: !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/*'
               Condition:
                 StringEquals:
                   kms:EncryptionContext:PARAMETER_ARN: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/mem-mcp/internal/lambda/secret'
