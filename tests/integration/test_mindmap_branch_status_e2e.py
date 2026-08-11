@@ -443,3 +443,39 @@ async def test_answer_resolves_and_guards_graduation(pg_pool: Any) -> None:
 
     finally:
         await _cleanup(pg_pool, tenant, team, client_id)
+
+
+async def test_turn_backfill_handles_double_encoded_metadata(pg_pool: Any) -> None:
+    """The 0044 backfill matched nothing and said so to nobody.
+
+    `memories.metadata` is a jsonb column holding a JSON-encoded STRING, not an
+    object, so `metadata->>'key'` yields NULL instead of erroring. The UPDATE
+    touched 0 of 208 rows on prod and reported success. This pins the decode for
+    both shapes so the repair cannot silently rot back.
+    """
+    async with pg_pool.acquire() as conn:
+        decode = """
+            SELECT CASE
+                WHEN jsonb_typeof($1::text::jsonb) = 'string'
+                    THEN ($1::text::jsonb #>> ARRAY[]::text[])::jsonb ->> 'responsible_party'
+                WHEN jsonb_typeof($1::text::jsonb) = 'object'
+                    THEN $1::text::jsonb ->> 'responsible_party'
+                ELSE NULL
+            END
+        """
+        # Double-encoded: what the write path actually produces today.
+        double = json.dumps(json.dumps({"node_role": "position", "responsible_party": "owner"}))
+        assert await conn.fetchval(decode, double) == "owner"
+
+        # Plain object: what it would produce if the write path were fixed.
+        plain = json.dumps({"node_role": "position", "responsible_party": "model"})
+        assert await conn.fetchval(decode, plain) == "model"
+
+        # The naive 0044 form silently returns NULL on the real shape — this is
+        # the assertion that would have caught it before deploy.
+        naive = await conn.fetchval("SELECT $1::text::jsonb ->> 'responsible_party'", double)
+        assert naive is None
+
+        # Absent key stays NULL rather than erroring.
+        empty = json.dumps(json.dumps({"node_role": "note"}))
+        assert await conn.fetchval(decode, empty) is None
