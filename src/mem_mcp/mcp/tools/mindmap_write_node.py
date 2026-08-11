@@ -20,7 +20,7 @@ from mem_mcp.mcp.tools._base import BaseTool, ToolContext
 from mem_mcp.mcp.tools._mindmap_common import resolve_team_id, write_node_memory
 from mem_mcp.mindmap import RATIFICATION_STRENGTHS, SOFT_NODE_CHARS, service
 
-_NodeRole = Literal["position", "challenge", "note"]
+_NodeRole = Literal["position", "challenge", "note", "question"]
 _RatStrength = Literal["survived-challenge", "explicit-endorse", "delegate", "tacit"]
 
 
@@ -35,10 +35,27 @@ class MindmapWriteNodeInput(BaseModel):
     node_role: _NodeRole = "position"
     team_id: UUID | None = None
     responsible_party: Literal["owner", "model"] | None = None
+    authored_by: Literal["owner", "model"] | None = Field(
+        default=None,
+        description=(
+            "Who WROTE this node, as distinct from responsible_party (whose turn "
+            "it is next). Set 'owner' for human-authored contributions so the "
+            "graduation guard can refuse to settle a map past unread human input."
+        ),
+    )
     ratification_strength: _RatStrength | None = None
     ratification_citation: str | None = Field(default=None, max_length=4000)
     links: list[NodeLink] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
+    decision_criteria: str | None = Field(
+        default=None,
+        max_length=4000,
+        description=(
+            "For node_role='question': what you will do with each possible answer. "
+            "Written now, while the reasoning is still in context and therefore free; "
+            "read later by a cold agent that no longer holds the branch."
+        ),
+    )
 
 
 class MindmapWriteNodeOutput(BaseModel):
@@ -86,7 +103,9 @@ class MindmapWriteNodeTool(BaseTool):
         if inp.ratification_citation is not None:
             meta["ratification_citation"] = inp.ratification_citation
 
-        mem_type = inp.node_role if inp.node_role in ("position", "challenge") else "note"
+        mem_type = (
+            inp.node_role if inp.node_role in ("position", "challenge", "question") else "note"
+        )
         refs = [
             {
                 "target_uuid": link.target_memory_id,
@@ -115,7 +134,16 @@ class MindmapWriteNodeTool(BaseTool):
                 root_memory_id=root_id,
                 tenant_id=ctx.tenant_id,
                 node_role=inp.node_role,
+                turn=inp.responsible_party,
+                authored_by=inp.authored_by,
+                decision_criteria=inp.decision_criteria,
             )
+            # Watermark owner writes so mindmap_close can refuse to graduate past
+            # human input the agent never read. Keyed on AUTHORSHIP, not turn: an
+            # agent asking a question sets responsible_party='owner' and must not
+            # trip the guard on its own question.
+            if inp.authored_by == "owner":
+                await service.touch_owner_write(conn, root_memory_id=root_id)
             count, threshold = await service.bump_review_counter(conn, root_memory_id=root_id)
             await service.log_event(
                 conn,

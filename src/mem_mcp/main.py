@@ -65,10 +65,13 @@ from mem_mcp.mcp.tools.get import MemoryGetTool
 from mem_mcp.mcp.tools.get_batch import MemoryGetBatchTool
 from mem_mcp.mcp.tools.list import MemoryListTool
 from mem_mcp.mcp.tools.list_my_teams import ListMyTeamsTool
+from mem_mcp.mcp.tools.mindmap_answer import MindmapAnswerTool
 from mem_mcp.mcp.tools.mindmap_close import MindmapCloseTool
 from mem_mcp.mcp.tools.mindmap_get import MindmapGetTool
 from mem_mcp.mcp.tools.mindmap_link import MindmapLinkTool
 from mem_mcp.mcp.tools.mindmap_open import MindmapOpenTool
+from mem_mcp.mcp.tools.mindmap_queue import MindmapListTool, MindmapQueueTool
+from mem_mcp.mcp.tools.mindmap_resolve import MindmapResolveTool
 from mem_mcp.mcp.tools.mindmap_review import MindmapReviewTool
 from mem_mcp.mcp.tools.mindmap_write_node import MindmapWriteNodeTool
 from mem_mcp.mcp.tools.refs_in import RefsInTool
@@ -507,6 +510,10 @@ def _wire_routers(app: FastAPI) -> None:
         MindmapGetTool,
         MindmapReviewTool,
         MindmapCloseTool,
+        MindmapResolveTool,
+        MindmapAnswerTool,
+        MindmapListTool,
+        MindmapQueueTool,
     ]
     for tool_cls in tools_list:  # type: ignore[attr-defined]
         registry.register(tool_cls)  # type: ignore[arg-type]

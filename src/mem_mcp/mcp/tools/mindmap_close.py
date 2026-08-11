@@ -83,6 +83,25 @@ class MindmapCloseTool(BaseTool):
                 raise JsonRpcError(
                     -32602, "map already archived (no-reopen)", data={"code": "map_not_live"}
                 )
+            # Fail closed on unread human input. Graduation is irreversible
+            # (archived maps are no-reopen), so a map must not be settled past
+            # an owner node the agent never read — that would bury the one
+            # human intervention behind a decision claiming to be ratified.
+            unread = await service.unacknowledged_owner_input(
+                conn, root_memory_id=root_id, tenant_id=ctx.tenant_id
+            )
+            if unread:
+                raise JsonRpcError(
+                    -32602,
+                    "unacknowledged owner input: read the map before graduating",
+                    data={
+                        "code": "unacknowledged_owner_input",
+                        "nodes": [
+                            {"memory_id": str(u["memory_id"]), "content": u["content"][:500]}
+                            for u in unread
+                        ],
+                    },
+                )
 
         # Promote each confirmed decision to a NEW KB decision (not supersede).
         promoted: list[PromotedDecision] = []

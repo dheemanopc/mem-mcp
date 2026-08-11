@@ -425,9 +425,45 @@ Use to connect map nodes: a challenge displaced-from a position, a position reso
 Pass map_key to log the link as a map event. Required scope: memory.write.
 
 Example: mindmap_link(source_memory_id="<challenge>", target_memory_id="<position>", reference_kind="displaced-from", map_key="caching-strategy").""",
+    "mindmap_answer": """Answer an open question and settle its branch in one call.
+
+Call when a question raised in a map gets an answer — from the owner (the usual case, including out-of-band from the web UI) or from you. Pass answered_by="owner" when relaying or recording the human's own answer, "model" when you are answering your own question.
+
+Answering resolves the question by default (auto_resolve=True): they are one act, and splitting them leaves answered questions sitting in the queue looking unanswered. Pass auto_resolve=False only when the answer genuinely does not settle the branch.
+
+The turn hands back to the model automatically — the owner has moved. When the owner endorses rather than merely replies, pass ratification_strength and ratification_citation so the endorsement is recorded as theirs.
+
+Do not call on an archived map, or on a question already resolved (it 400s rather than silently double-answering). Required scope: memory.write.
+
+Example: mindmap_answer(map_key="caching-strategy", question_node_id="<question>", content="Go with Redis; the write volume is fine", answered_by="owner").""",
+    "mindmap_resolve": """Settle ONE branch of a map without closing the map — the per-branch counterpart to mindmap_close.
+
+Call when a question has been answered, or a line of thinking is being abandoned. Pass disposition="resolved" (it was decided) or "dropped" (abandoned unanswered). resolution_summary is REQUIRED and should be one line: it is what every later read shows in place of the branch, so a settled branch costs a sentence instead of its whole discussion. Pass resolved_by_memory_id when a specific node settles it — the resolves-under / dropped-under edge is then written too, keeping the graph walkable.
+
+Resolving is what keeps a long map cheap to resume: mindmap_get(include="open") returns open branches in full and settled ones as summaries, so context tracks OPEN work rather than total discussion.
+
+Do not call to close the whole map (that is mindmap_close), or on an archived map (no-reopen). Required scope: memory.write.
+
+Example: mindmap_resolve(map_key="caching-strategy", node_id="<question>", disposition="resolved", resolution_summary="Redis for the hot path; Postgres stays source of truth", resolved_by_memory_id="<position>").""",
+    "mindmap_list": """List thinking maps with their open-loop counts.
+
+Call when: the user asks what maps exist, which are still live, or where things stand across several threads ("what am I in the middle of?"); or to find a map_key you do not have. Filter with state (live/archived/all) and has_open_loops.
+
+Do not call to read one map's contents — that is mindmap_get. Required scope: memory.read.
+
+Example: "What thinking do I have open?" -> mindmap_list(state="live", has_open_loops=True).""",
+    "mindmap_queue": """Every question across every live map that is waiting on the owner.
+
+Call when: the user asks what needs their input ("what are you waiting on me for?", "what's blocked on me?"); or when resuming work and you want the outstanding asks in one shot instead of reopening maps one at a time.
+
+Each item carries decision_criteria — what the asking agent said it would do with each answer — so a question can be answered without reloading its branch. This is the surface that lets several threads be answered in parallel rather than one per conversational turn. Required scope: memory.read.
+
+Example: "What do you need from me?" -> mindmap_queue().""",
     "mindmap_get": """Read a map's current state — its root, all nodes, the edges between them, review status, and open loops.
 
-Call when: resuming a map mid-conversation; the user asks "where were we", "what have we got so far", "what's still open"; before graduating, to review what was built. open_loops lists nodes whose turn is the owner's (waiting on the user). Required scope: memory.read.
+Call when: resuming a map mid-conversation; the user asks "where were we", "what have we got so far", "what's still open"; before graduating, to review what was built. open_loops lists UNANSWERED questions whose turn is the owner's.
+
+Pass since=<cursor> to get only what changed since a previous call (the cursor is returned on every call) — this is how you resume a long map without re-reading it. include="open" (default) returns open branches in full and settled ones as one-line summaries; include="all" returns everything. depth="summary" (default) caps node text; depth="full" returns it whole. Defaults are the cheap path: prefer them, and drill in only where you need to. Required scope: memory.read.
 
 Example: "Where did we get to on caching?" → mindmap_get(map_key="caching-strategy").""",
     "mindmap_review": """Run the structural reviewer pass over a map and reset its write-counter.
