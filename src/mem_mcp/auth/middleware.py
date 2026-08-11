@@ -26,6 +26,7 @@ from starlette.responses import JSONResponse, Response
 
 from mem_mcp.auth.jwt_validator import JwtError, JwtValidator
 from mem_mcp.db import system_tx
+from mem_mcp.identity.personal_team import ensure_personal_team
 from mem_mcp.logging_setup import get_logger
 
 if TYPE_CHECKING:
@@ -88,56 +89,15 @@ async def _create_personal_team_and_assign(
     email_hint: str,
     cognito_sub: str,
 ) -> None:
-    """Create a personal team for ``tenant_id``, assign owner role, and set
-    default_team_id on the matching tenant_identities row.
+    """Localdev auto-create shim over the shared personal-team provisioner.
 
-    Idempotent on the team-name uniqueness (uses ON CONFLICT DO NOTHING for
-    the role assignment; teams have no name UNIQUE so a re-run would create
-    a duplicate — caller must gate on `default_team_id IS NULL`).
-    Mirrors the migration 0026 backfill shape.
-
-    NOTE: teams_insert RLS requires `created_by_tenant_id =
-    safe_current_tenant_id()`. Under system_tx the GUC is unset and the
-    INSERT fails with InsufficientPrivilegeError. SET LOCAL the GUC to the
-    target tenant for the duration of this transaction so the RLS clause
-    passes. Same fix pattern as PR #305 for the references-validator path.
+    Kept as a thin wrapper so this module's call sites and tests are unchanged.
+    The implementation lives in ``identity.personal_team`` because the prod
+    signup path (``jobs.reconcile_signups``) needs the identical shape — the two
+    had drifted, and the reconcile path was missing it entirely, which left real
+    signups unable to use MCP.
     """
-    await conn.execute(
-        "SELECT set_config('app.current_tenant_id', $1, true)",
-        str(tenant_id),
-    )
-    new_team_id = await conn.fetchval(
-        "INSERT INTO teams (name, created_by_tenant_id, team_type) "
-        "VALUES ($1, $2, 'personal') RETURNING id",
-        f"Personal — {email_hint}",
-        tenant_id,
-    )
-    owner_role_id = await conn.fetchval(
-        "SELECT id FROM roles_catalog WHERE role_key = 'owner' AND plugin_id IS NULL"
-    )
-    if owner_role_id is not None:
-        await conn.execute(
-            "INSERT INTO team_role_assignments "
-            "(parent_team_id, member_kind, member_id, role_id, status, "
-            " assigned_by_user_id) "
-            "VALUES ($1, 'user', $2, $3, 'active', $2) "
-            "ON CONFLICT DO NOTHING",
-            new_team_id,
-            tenant_id,
-            owner_role_id,
-        )
-    await conn.execute(
-        "INSERT INTO tenant_identities "
-        "(tenant_id, cognito_sub, provider, email, is_primary, default_team_id) "
-        "VALUES ($1, $2, 'cognito', $3, true, $4) "
-        "ON CONFLICT (cognito_sub) DO UPDATE SET "
-        " default_team_id = EXCLUDED.default_team_id "
-        "WHERE tenant_identities.default_team_id IS NULL",
-        tenant_id,
-        cognito_sub,
-        email_hint,
-        new_team_id,
-    )
+    await ensure_personal_team(conn, tenant_id, email_hint, cognito_sub)
 
 
 class DbTenantResolver:
