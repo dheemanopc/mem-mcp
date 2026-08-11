@@ -36,11 +36,15 @@ async def test_new_denial_is_queued_audited_and_operator_notified() -> None:
     ):
         await recorder.record(email="New@X.com", provider="google")
 
-    assert audit.audit.call_args[1]["action"] == "signup.captured_from_denied_login"
-    assert audit.audit.call_args[1]["details"]["source"] == "google_denied"
+    audit_call = audit.audit.call_args
+    assert audit_call is not None
+    assert audit_call[1]["action"] == "signup.captured_from_denied_login"
+    assert audit_call[1]["details"]["source"] == "google_denied"
     notify.assert_awaited_once()
-    assert notify.await_args[1]["applicant_email"] == "New@X.com"
-    assert notify.await_args[1]["operator_email"] == "op@x.com"
+    notify_call = notify.await_args
+    assert notify_call is not None
+    assert notify_call[1]["applicant_email"] == "New@X.com"
+    assert notify_call[1]["operator_email"] == "op@x.com"
 
 
 @pytest.mark.asyncio

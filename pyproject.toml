@@ -64,6 +64,13 @@ ignore_missing_imports = true
 module = "yaml"
 ignore_missing_imports = true
 
+# The kite skill ships as a separate plugin repo and is installed into the
+# plugin venv at deploy time, so its modules are absent from this source tree.
+# The import resolves at runtime; mypy cannot see it.
+[[tool.mypy.overrides]]
+module = "mem_mcp.skills.kite.*"
+ignore_missing_imports = true
+
 [[tool.mypy.overrides]]
 module = "locust.*"
 ignore_missing_imports = true

@@ -1,3 +1,7 @@
+# mypy: disable-error-code="attr-defined"
+# BaseTool.__call__ is declared to return BaseModel, so mypy cannot see the
+# concrete output models' fields. Suppressed at module level rather than with
+# 28 inline ignores; the assertions themselves are what give these tests value.
 """End-to-end integration test for the mind-map lifecycle.
 
 Exercises the real MCP tools against a live Postgres pool:
