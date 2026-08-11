@@ -9,7 +9,7 @@ memory-write path. All functions assume the caller has already opened a
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID
 
 if TYPE_CHECKING:
@@ -62,18 +62,19 @@ async def get_map_row(conn: asyncpg.Connection, *, root_memory_id: UUID) -> dict
 
 async def resolve_map_root(conn: asyncpg.Connection, *, team_id: UUID, map_key: str) -> UUID | None:
     """Resolve a map key (the root memory's 'map' slug) to its root_memory_id."""
-    return await conn.fetchval(
+    root_id = await conn.fetchval(
         "SELECT memory_id FROM slugs WHERE team_id = $1 AND resource_type = 'map' AND slug = $2",
         team_id,
         map_key,
     )
+    return cast("UUID | None", root_id)
 
 
 async def find_live_map_seeded_from(
     conn: asyncpg.Connection, *, seed_spec_memory_id: UUID
 ) -> UUID | None:
     """from_spec dedup guard: an existing LIVE map seeded from this spec node."""
-    return await conn.fetchval(
+    root_id = await conn.fetchval(
         """
         SELECT root_memory_id FROM memory_maps
         WHERE seed_spec_memory_id = $1 AND state = 'live'
@@ -81,6 +82,7 @@ async def find_live_map_seeded_from(
         """,
         seed_spec_memory_id,
     )
+    return cast("UUID | None", root_id)
 
 
 async def insert_membership(

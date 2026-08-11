@@ -409,7 +409,13 @@ class TestMakeWebRouter:
         )
 
         assert response.status_code == 302
-        assert response.headers["location"] == "/welcome?status=oauth_error&reason=access_denied"
+        # error_description is forwarded as `detail` (#335). Dropping it is what
+        # left the 2026-08-09 signup outage showing an opaque reason with no
+        # clue that the real cause was "invite check unavailable" — so this
+        # asserts it is carried, not merely that the redirect happens.
+        assert response.headers["location"] == (
+            "/welcome?status=oauth_error&reason=access_denied&detail=user_denied"
+        )
 
     def test_callback_missing_state_redirects_to_welcome(
         self, monkeypatch: pytest.MonkeyPatch

@@ -9,7 +9,9 @@ silently broke multi-chunk chunking and embedding backfill in production.
 
 from __future__ import annotations
 
-import asyncpg
+from typing import Any
+
+import asyncpg  # type: ignore[import-untyped]
 import pytest
 
 from mem_mcp.db.pool import _init_connection
@@ -25,10 +27,10 @@ class _StubSettings:
     db_maint_dsn_asyncpg = "postgresql://u:p@localhost/db"
 
 
-async def _assert_codec_wired(monkeypatch, module) -> None:
-    captured: dict = {}
+async def _assert_codec_wired(monkeypatch: pytest.MonkeyPatch, module: Any) -> None:
+    captured: dict[str, Any] = {}
 
-    async def fake_create_pool(**kwargs):
+    async def fake_create_pool(**kwargs: Any) -> None:
         captured.update(kwargs)
         raise _StopCreatePoolError  # abort main() right after pool construction
 
@@ -42,10 +44,12 @@ async def _assert_codec_wired(monkeypatch, module) -> None:
 
 
 @pytest.mark.asyncio
-async def test_chunk_build_pool_registers_vector_codec(monkeypatch) -> None:
+async def test_chunk_build_pool_registers_vector_codec(monkeypatch: pytest.MonkeyPatch) -> None:
     await _assert_codec_wired(monkeypatch, chunk_build)
 
 
 @pytest.mark.asyncio
-async def test_embedding_backfill_pool_registers_vector_codec(monkeypatch) -> None:
+async def test_embedding_backfill_pool_registers_vector_codec(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     await _assert_codec_wired(monkeypatch, embedding_backfill)

@@ -8,7 +8,7 @@ node creation byte-for-byte consistent with memory_write.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 from mem_mcp.mcp.errors import JsonRpcError
@@ -33,7 +33,7 @@ async def resolve_team_id(conn: Any, ctx: ToolContext, explicit: UUID | None) ->
             "no team_id and caller has no default_team_id; pass team_id explicitly",
             data={"errors": [{"path": "team_id", "message": "team_id required"}]},
         )
-    return team_id
+    return cast("UUID", team_id)
 
 
 async def write_node_memory(
