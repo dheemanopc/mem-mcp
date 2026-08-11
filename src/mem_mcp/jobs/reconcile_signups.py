@@ -21,6 +21,7 @@ from uuid import UUID
 from mem_mcp.audit.logger import AuditLogger, DbAuditLogger
 from mem_mcp.config import get_settings
 from mem_mcp.db.tenant_tx import system_tx
+from mem_mcp.identity.personal_team import ensure_personal_team
 from mem_mcp.logging_setup import get_logger, setup_logging
 
 if TYPE_CHECKING:
@@ -316,6 +317,12 @@ async def _provision_one(
                     user.workspace_domain,
                     tenant_id,
                 )
+
+            # Personal team + owner role + default_team_id. Without this the
+            # tenant exists but MCP is unusable for them: no team resolves and
+            # they hold no role. Omitted here until 2026-08-11, so every tenant
+            # this job provisioned was born unable to log in.
+            await ensure_personal_team(conn, tenant_id, user.email)
 
             # Consume pending invites
             count_accepted = await _consume_pending_invites(
