@@ -91,6 +91,7 @@ async def insert_membership(
     tenant_id: UUID,
     node_role: str,
     turn: str | None = None,
+    authored_by: str | None = None,
     decision_criteria: str | None = None,
 ) -> None:
     """Record exclusive ownership of a node by a map.
@@ -100,20 +101,24 @@ async def insert_membership(
     not the caller.
 
     ``turn`` mirrors metadata.responsible_party into a real column so the
-    open-loop query is indexed. ``decision_criteria`` is what makes a question
-    answerable — and actionable on cold reload — without its branch in context.
+    open-loop query is indexed. ``authored_by`` is deliberately separate: turn is
+    whose MOVE it is, authored_by is who WROTE the node, and the graduation guard
+    needs the latter. ``decision_criteria`` is what makes a question answerable —
+    and actionable on cold reload — without its branch in context.
     """
     await conn.execute(
         """
         INSERT INTO memory_map_membership
-            (memory_id, root_memory_id, tenant_id, node_role, turn, decision_criteria)
-        VALUES ($1, $2, $3, $4, $5, $6)
+            (memory_id, root_memory_id, tenant_id, node_role, turn, authored_by,
+             decision_criteria)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         """,
         memory_id,
         root_memory_id,
         tenant_id,
         node_role,
         turn,
+        authored_by,
         decision_criteria,
     )
 
@@ -213,6 +218,7 @@ async def fetch_members(
     rows = await conn.fetch(
         f"""
         SELECT mm.memory_id, mm.node_role, mm.added_at, mm.status, mm.turn,
+               mm.authored_by,
                mm.resolution_summary, mm.resolved_by_memory_id, mm.resolved_by_party,
                mm.resolved_at, mm.decision_criteria,
                m.content, m.type, m.metadata, m.created_at
@@ -317,10 +323,16 @@ async def touch_agent_read(conn: asyncpg.Connection, *, root_memory_id: UUID) ->
 async def unacknowledged_owner_input(
     conn: asyncpg.Connection, *, root_memory_id: UUID, tenant_id: UUID
 ) -> list[dict[str, Any]]:
-    """Owner-authored nodes written after the agent's last read.
+    """Owner-AUTHORED nodes written after the agent's last read.
 
     Empty list means the agent has seen everything the owner said. Non-empty
     means graduating now would bury human input the model never read.
+
+    Keys on ``authored_by``, never ``turn``. Using turn would break this in both
+    directions: an agent asking a question sets turn='owner' and would trip the
+    guard on its own question, while an owner answering hands the turn back to
+    'model' and their input would stop counting — the exact case the guard is
+    for.
     """
     row = await conn.fetchrow(
         "SELECT last_owner_write_at, last_agent_read_at FROM memory_maps WHERE root_memory_id = $1",
@@ -337,7 +349,7 @@ async def unacknowledged_owner_input(
         FROM memory_map_membership mm
         JOIN memories m ON m.id = mm.memory_id
         WHERE mm.root_memory_id = $1 AND m.tenant_id = $2
-          AND mm.turn = 'owner' AND m.deleted_at IS NULL
+          AND mm.authored_by = 'owner' AND m.deleted_at IS NULL
           AND ($3::timestamptz IS NULL OR mm.added_at > $3)
         ORDER BY mm.added_at ASC
         """,

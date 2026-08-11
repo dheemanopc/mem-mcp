@@ -22,6 +22,7 @@ import pytest
 
 from mem_mcp.mcp.errors import JsonRpcError
 from mem_mcp.mcp.tools._base import ToolContext
+from mem_mcp.mcp.tools.mindmap_answer import MindmapAnswerInput, MindmapAnswerTool
 from mem_mcp.mcp.tools.mindmap_close import MindmapCloseInput, MindmapCloseTool
 from mem_mcp.mcp.tools.mindmap_get import MindmapGetInput, MindmapGetTool
 from mem_mcp.mcp.tools.mindmap_open import MindmapOpenInput, MindmapOpenTool
@@ -315,7 +316,8 @@ async def test_close_refuses_unread_owner_input(pg_pool: Any) -> None:
                 map_key=key,
                 content="Owner objection the agent has not read",
                 node_role="challenge",
-                responsible_party="owner",
+                responsible_party="model",
+                authored_by="owner",
                 team_id=team,
             ),
         )
@@ -328,6 +330,111 @@ async def test_close_refuses_unread_owner_input(pg_pool: Any) -> None:
         assert exc.value.data["nodes"]  # type: ignore[index]
 
         # After reading, graduation proceeds.
+        await MindmapGetTool()(ctx, MindmapGetInput(map_key=key, team_id=team))
+        closed = await MindmapCloseTool()(
+            ctx, MindmapCloseInput(map_key=key, confirmed_decisions=[], team_id=team)
+        )
+        assert closed.state == "archived"  # type: ignore[attr-defined]
+
+    finally:
+        await _cleanup(pg_pool, tenant, team, client_id)
+
+
+async def test_answer_resolves_and_guards_graduation(pg_pool: Any) -> None:
+    """mindmap_answer end to end, plus the guard case turn-based logic missed.
+
+    An owner ANSWERING hands the turn back to the model. If the guard keyed on
+    turn it would see nothing owner-turn outstanding and happily graduate past
+    the human's answer — so this asserts the opposite.
+    """
+    async with pg_pool.acquire() as conn, conn.transaction():
+        s = await _setup(conn)
+    tenant, team, client_id = s["tenant"], s["team"], s["client_id"]
+    ctx = _ctx(pg_pool, tenant, client_id)
+
+    try:
+        opened = await MindmapOpenTool()(
+            ctx,
+            MindmapOpenInput(
+                title="Answer e2e",
+                root_question="Does answering settle the branch?",
+                team_id=team,
+            ),
+        )
+        key = opened.map_key  # type: ignore[attr-defined]
+
+        q = await MindmapWriteNodeTool()(
+            ctx,
+            MindmapWriteNodeInput(
+                map_key=key,
+                content="Redis or Postgres for the hot path?",
+                node_role="question",
+                responsible_party="owner",
+                decision_criteria="if Redis, size the cache; if Postgres, revisit indexes",
+                team_id=team,
+            ),
+        )
+        qid = q.node_id  # type: ignore[attr-defined]
+
+        # The agent's own question must NOT look like unread owner input.
+        await MindmapGetTool()(ctx, MindmapGetInput(map_key=key, team_id=team))
+        queued = await MindmapQueueTool()(ctx, MindmapQueueInput(team_id=team))
+        assert [x.memory_id for x in queued.questions] == [qid]  # type: ignore[attr-defined]
+
+        answered = await MindmapAnswerTool()(
+            ctx,
+            MindmapAnswerInput(
+                map_key=key,
+                question_node_id=qid,
+                content="Redis.\nThe write volume is well inside what it handles.",
+                answered_by="owner",
+                ratification_strength="explicit-endorse",
+                ratification_citation="go with redis",
+                team_id=team,
+            ),
+        )
+        assert answered.question_status == "resolved"  # type: ignore[attr-defined]
+        assert answered.resolution_summary == "Redis."  # type: ignore[attr-defined]
+
+        # Answering retires it from the queue and from open loops.
+        after = await MindmapGetTool()(ctx, MindmapGetInput(map_key=key, team_id=team))
+        assert qid not in after.open_loops  # type: ignore[attr-defined]
+        assert qid in {r.memory_id for r in after.resolved}  # type: ignore[attr-defined]
+
+        empty = await MindmapQueueTool()(ctx, MindmapQueueInput(team_id=team))
+        assert empty.questions == []  # type: ignore[attr-defined]
+
+        # Answering the same question twice is refused, not silently duplicated.
+        with pytest.raises(JsonRpcError) as dup:
+            await MindmapAnswerTool()(
+                ctx,
+                MindmapAnswerInput(
+                    map_key=key, question_node_id=qid, content="again", team_id=team
+                ),
+            )
+        assert dup.value.data["code"] == "question_not_open"  # type: ignore[index]
+
+        # THE guard case. Note the reads above have already acknowledged the
+        # answer — that is correct, so a fresh owner write is needed to arm the
+        # guard. It set turn='model', so turn-based logic would see nothing
+        # outstanding; authorship is what counts.
+        await MindmapWriteNodeTool()(
+            ctx,
+            MindmapWriteNodeInput(
+                map_key=key,
+                content="One more thing before you settle this",
+                node_role="challenge",
+                responsible_party="model",
+                authored_by="owner",
+                team_id=team,
+            ),
+        )
+        with pytest.raises(JsonRpcError) as exc:
+            await MindmapCloseTool()(
+                ctx, MindmapCloseInput(map_key=key, confirmed_decisions=[], team_id=team)
+            )
+        assert exc.value.data["code"] == "unacknowledged_owner_input"  # type: ignore[index]
+
         await MindmapGetTool()(ctx, MindmapGetInput(map_key=key, team_id=team))
         closed = await MindmapCloseTool()(
             ctx, MindmapCloseInput(map_key=key, confirmed_decisions=[], team_id=team)

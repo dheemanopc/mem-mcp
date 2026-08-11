@@ -35,6 +35,14 @@ class MindmapWriteNodeInput(BaseModel):
     node_role: _NodeRole = "position"
     team_id: UUID | None = None
     responsible_party: Literal["owner", "model"] | None = None
+    authored_by: Literal["owner", "model"] | None = Field(
+        default=None,
+        description=(
+            "Who WROTE this node, as distinct from responsible_party (whose turn "
+            "it is next). Set 'owner' for human-authored contributions so the "
+            "graduation guard can refuse to settle a map past unread human input."
+        ),
+    )
     ratification_strength: _RatStrength | None = None
     ratification_citation: str | None = Field(default=None, max_length=4000)
     links: list[NodeLink] = Field(default_factory=list)
@@ -127,11 +135,14 @@ class MindmapWriteNodeTool(BaseTool):
                 tenant_id=ctx.tenant_id,
                 node_role=inp.node_role,
                 turn=inp.responsible_party,
+                authored_by=inp.authored_by,
                 decision_criteria=inp.decision_criteria,
             )
-            # Watermark owner writes so mindmap_close can refuse to graduate
-            # past human input the agent never read.
-            if inp.responsible_party == "owner":
+            # Watermark owner writes so mindmap_close can refuse to graduate past
+            # human input the agent never read. Keyed on AUTHORSHIP, not turn: an
+            # agent asking a question sets responsible_party='owner' and must not
+            # trip the guard on its own question.
+            if inp.authored_by == "owner":
                 await service.touch_owner_write(conn, root_memory_id=root_id)
             count, threshold = await service.bump_review_counter(conn, root_memory_id=root_id)
             await service.log_event(

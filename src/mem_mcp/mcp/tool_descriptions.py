@@ -425,6 +425,17 @@ Use to connect map nodes: a challenge displaced-from a position, a position reso
 Pass map_key to log the link as a map event. Required scope: memory.write.
 
 Example: mindmap_link(source_memory_id="<challenge>", target_memory_id="<position>", reference_kind="displaced-from", map_key="caching-strategy").""",
+    "mindmap_answer": """Answer an open question and settle its branch in one call.
+
+Call when a question raised in a map gets an answer — from the owner (the usual case, including out-of-band from the web UI) or from you. Pass answered_by="owner" when relaying or recording the human's own answer, "model" when you are answering your own question.
+
+Answering resolves the question by default (auto_resolve=True): they are one act, and splitting them leaves answered questions sitting in the queue looking unanswered. Pass auto_resolve=False only when the answer genuinely does not settle the branch.
+
+The turn hands back to the model automatically — the owner has moved. When the owner endorses rather than merely replies, pass ratification_strength and ratification_citation so the endorsement is recorded as theirs.
+
+Do not call on an archived map, or on a question already resolved (it 400s rather than silently double-answering). Required scope: memory.write.
+
+Example: mindmap_answer(map_key="caching-strategy", question_node_id="<question>", content="Go with Redis; the write volume is fine", answered_by="owner").""",
     "mindmap_resolve": """Settle ONE branch of a map without closing the map — the per-branch counterpart to mindmap_close.
 
 Call when a question has been answered, or a line of thinking is being abandoned. Pass disposition="resolved" (it was decided) or "dropped" (abandoned unanswered). resolution_summary is REQUIRED and should be one line: it is what every later read shows in place of the branch, so a settled branch costs a sentence instead of its whole discussion. Pass resolved_by_memory_id when a specific node settles it — the resolves-under / dropped-under edge is then written too, keeping the graph walkable.

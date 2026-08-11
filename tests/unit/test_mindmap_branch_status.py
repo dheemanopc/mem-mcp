@@ -241,3 +241,91 @@ def test_decision_criteria_defaults_to_none_for_ordinary_nodes() -> None:
 
     inp = MindmapWriteNodeInput(map_key="m", content="a position")
     assert inp.decision_criteria is None
+
+
+# --------------------------------------------------------------------------
+# mindmap_answer
+# --------------------------------------------------------------------------
+
+
+def test_answer_defaults_to_owner_and_auto_resolve() -> None:
+    """The common case is a human answering out of band; it should need no flags."""
+    from mem_mcp.mcp.tools.mindmap_answer import MindmapAnswerInput
+
+    inp = MindmapAnswerInput(map_key="m", question_node_id=uuid4(), content="go with B")
+    assert inp.answered_by == "owner"
+    assert inp.auto_resolve is True
+
+
+def test_answer_summary_falls_back_to_first_line() -> None:
+    from mem_mcp.mcp.tools.mindmap_answer import _summarise
+
+    assert _summarise("Go with Redis\n\nbecause the write volume is fine") == "Go with Redis"
+
+
+def test_answer_summary_caps_long_single_line() -> None:
+    from mem_mcp.mcp.tools.mindmap_answer import _SUMMARY_CAP, _summarise
+
+    out = _summarise("y" * (_SUMMARY_CAP + 300))
+    assert len(out) <= _SUMMARY_CAP + 1
+    assert out.endswith("…")
+
+
+def test_answer_rejects_unknown_answered_by() -> None:
+    from mem_mcp.mcp.tools.mindmap_answer import MindmapAnswerInput
+
+    with pytest.raises(ValueError):
+        MindmapAnswerInput(
+            map_key="m",
+            question_node_id=uuid4(),
+            content="x",
+            answered_by="human",  # type: ignore[arg-type]
+        )
+
+
+# --------------------------------------------------------------------------
+# authored_by vs turn — the distinction the graduation guard depends on
+# --------------------------------------------------------------------------
+
+
+def test_write_node_exposes_authored_by_separately_from_turn() -> None:
+    """Conflating them breaks the guard both ways: an agent asking a question
+    would trip it, and an owner answering would not."""
+    from mem_mcp.mcp.tools.mindmap_write_node import MindmapWriteNodeInput
+
+    asking = MindmapWriteNodeInput(
+        map_key="m", content="Which way?", node_role="question", responsible_party="owner"
+    )
+    assert asking.responsible_party == "owner"
+    assert asking.authored_by is None, "an agent's question is not owner-authored input"
+
+    replying = MindmapWriteNodeInput(
+        map_key="m", content="This way", responsible_party="model", authored_by="owner"
+    )
+    assert replying.authored_by == "owner"
+    assert replying.responsible_party == "model"
+
+
+@pytest.mark.asyncio
+async def test_guard_keys_on_authorship_not_turn() -> None:
+    from mem_mcp.mindmap import service
+
+    class _Conn(_FakeConn):
+        async def fetchrow(self, sql: str, *args: Any) -> dict[str, Any]:
+            from datetime import UTC, datetime
+
+            self.queries.append((sql, args))
+            return {
+                "last_owner_write_at": datetime(2026, 8, 12, tzinfo=UTC),
+                "last_agent_read_at": datetime(2026, 8, 11, tzinfo=UTC),
+            }
+
+    conn = _Conn()
+    await service.unacknowledged_owner_input(
+        conn,
+        root_memory_id=ROOT,
+        tenant_id=uuid4(),
+    )
+    node_query = next(sql for sql, _ in conn.queries if "memory_map_membership" in sql)
+    assert "mm.authored_by = 'owner'" in node_query
+    assert "mm.turn = 'owner'" not in node_query

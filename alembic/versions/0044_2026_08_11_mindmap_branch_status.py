@@ -26,6 +26,13 @@ Two things were missing to fix that:
 ``turn`` is promoted out of ``memories.metadata.responsible_party`` into a real
 column so the open-loop query is an indexed scan rather than a JSONB probe.
 
+``authored_by`` is separate from ``turn`` on purpose. ``turn`` is whose MOVE it
+is; ``authored_by`` is who WROTE the node. Conflating them breaks the graduation
+guard in both directions: an agent asking a question sets turn='owner' and would
+look like unread human input, while an owner answering hands the turn back to
+'model' and their input would stop counting as theirs — which is precisely the
+case the guard exists for.
+
 ``memory_map_events.id`` is already a BIGSERIAL on an append-only log, so it
 serves as the delta cursor with no new sequence or column.
 
@@ -52,6 +59,7 @@ def upgrade() -> None:
         ALTER TABLE memory_map_membership
             ADD COLUMN status TEXT NOT NULL DEFAULT 'open',
             ADD COLUMN turn TEXT NULL,
+            ADD COLUMN authored_by TEXT NULL,
             ADD COLUMN resolution_summary TEXT NULL,
             ADD COLUMN resolved_by_memory_id UUID NULL REFERENCES memories(id) ON DELETE SET NULL,
             ADD COLUMN resolved_by_party TEXT NULL,
@@ -66,6 +74,8 @@ def upgrade() -> None:
                 CHECK (status IN ('open', 'resolved', 'dropped')),
             ADD CONSTRAINT memory_map_membership_turn_check
                 CHECK (turn IS NULL OR turn IN ('owner', 'model')),
+            ADD CONSTRAINT memory_map_membership_authored_by_check
+                CHECK (authored_by IS NULL OR authored_by IN ('owner', 'model')),
             ADD CONSTRAINT memory_map_membership_resolved_by_party_check
                 CHECK (resolved_by_party IS NULL OR resolved_by_party IN ('owner', 'model'))
     """)
@@ -116,6 +126,7 @@ def downgrade() -> None:
         sa.text("""
         ALTER TABLE memory_map_membership
             DROP CONSTRAINT IF EXISTS memory_map_membership_resolved_by_party_check,
+            DROP CONSTRAINT IF EXISTS memory_map_membership_authored_by_check,
             DROP CONSTRAINT IF EXISTS memory_map_membership_turn_check,
             DROP CONSTRAINT IF EXISTS memory_map_membership_status_check
     """)
@@ -128,6 +139,7 @@ def downgrade() -> None:
             DROP COLUMN IF EXISTS resolved_by_party,
             DROP COLUMN IF EXISTS resolved_by_memory_id,
             DROP COLUMN IF EXISTS resolution_summary,
+            DROP COLUMN IF EXISTS authored_by,
             DROP COLUMN IF EXISTS turn,
             DROP COLUMN IF EXISTS status
     """)

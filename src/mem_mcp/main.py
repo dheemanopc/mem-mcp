@@ -65,6 +65,7 @@ from mem_mcp.mcp.tools.get import MemoryGetTool
 from mem_mcp.mcp.tools.get_batch import MemoryGetBatchTool
 from mem_mcp.mcp.tools.list import MemoryListTool
 from mem_mcp.mcp.tools.list_my_teams import ListMyTeamsTool
+from mem_mcp.mcp.tools.mindmap_answer import MindmapAnswerTool
 from mem_mcp.mcp.tools.mindmap_close import MindmapCloseTool
 from mem_mcp.mcp.tools.mindmap_get import MindmapGetTool
 from mem_mcp.mcp.tools.mindmap_link import MindmapLinkTool
@@ -510,6 +511,7 @@ def _wire_routers(app: FastAPI) -> None:
         MindmapReviewTool,
         MindmapCloseTool,
         MindmapResolveTool,
+        MindmapAnswerTool,
         MindmapListTool,
         MindmapQueueTool,
     ]
