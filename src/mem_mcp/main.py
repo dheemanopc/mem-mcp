@@ -99,6 +99,7 @@ from mem_mcp.web.handlers.export import make_export_router
 from mem_mcp.web.handlers.feedback import make_feedback_router
 from mem_mcp.web.handlers.identities import make_identities_router
 from mem_mcp.web.handlers.memories import make_memories_router
+from mem_mcp.web.handlers.mindmaps import make_mindmaps_router
 from mem_mcp.web.handlers.notices import make_notices_router
 from mem_mcp.web.handlers.stats import make_stats_router
 from mem_mcp.web.handlers.teams import make_teams_router
@@ -547,6 +548,8 @@ def _wire_routers(app: FastAPI) -> None:
 
     memories_router = make_memories_router(pool=pool, deps=deps)
     app.include_router(memories_router)
+
+    app.include_router(make_mindmaps_router(pool=pool, deps=deps))
 
     tenant_router = make_tenant_router(
         pool=pool,
