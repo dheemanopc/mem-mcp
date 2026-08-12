@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { serverApiFetch } from "@/lib/server-api";
-import { MapView, type MapPayload } from "./map-view";
+import { GraphView, type MapPayload } from "./graph-view";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +23,8 @@ export default async function MindmapDetailPage({
   if (!data) notFound();
 
   return (
-    <main className="mx-auto max-w-4xl px-4 py-8">
+    // The canvas wants width: this page runs wider than the reading pages.
+    <main className="mx-auto max-w-[1400px] px-4 py-6">
       <nav className="mb-4">
         <Link
           href="/mindmaps"
@@ -32,7 +33,7 @@ export default async function MindmapDetailPage({
           ← All maps
         </Link>
       </nav>
-      <MapView mapKey={mapKey} data={data} />
+      <GraphView mapKey={mapKey} data={data} />
     </main>
   );
 }
