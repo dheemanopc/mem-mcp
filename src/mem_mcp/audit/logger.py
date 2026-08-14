@@ -87,6 +87,10 @@ AUDIT_ACTIONS: tuple[str, ...] = (
     "skill.kite.intent_confirmed",
     "skill.kite.intent_cancelled",
     "skill.kite.intent_smoke_failed",
+    # admin tools (memsys_admin_*) — recorded on allow AND deny, see
+    # mcp/tools/_admin_base.py
+    "admin.find_user",
+    "admin.get_user",
 )
 
 
@@ -136,6 +140,8 @@ AuditAction = Literal[
     "skill.kite.intent_confirmed",
     "skill.kite.intent_cancelled",
     "skill.kite.intent_smoke_failed",
+    "admin.find_user",
+    "admin.get_user",
 ]
 
 AuditResult = Literal["success", "denied", "error"]
