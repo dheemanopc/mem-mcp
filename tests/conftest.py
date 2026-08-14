@@ -18,7 +18,7 @@ from __future__ import annotations
 import hashlib
 import os
 import secrets
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -154,6 +154,45 @@ def mcp_client() -> Any:
 # Enterprise test fixtures (PR #239 / PR 1.B)
 # Live-DB; all skip via pg_pool when MEM_MCP_TEST_DSN is unset.
 # ────────────────────────────────────────────────────────────────────────────
+
+
+async def _cleanup_tenant_teams(conn: Any, tenant_id: UUID) -> None:
+    """Remove every team this tenant created, plus their dependent rows.
+
+    Without this, teams outlive the fixture that made them and two things
+    break: ``teams.workspace_domain`` is uniquely indexed, so the second test
+    creating an ``example.com`` team collides with the first; and the leftover
+    team's FK to ``tenants`` blocks the tenant delete at teardown. Both surface
+    as unrelated-looking errors several tests later.
+
+    Order matters — dependants first, then the teams themselves.
+    """
+    await conn.execute(
+        "UPDATE memories SET team_id = NULL WHERE team_id IN"
+        " (SELECT id FROM teams WHERE created_by_tenant_id = $1)",
+        tenant_id,
+    )
+    await conn.execute(
+        "DELETE FROM team_role_assignments WHERE member_id = $1"
+        " OR parent_team_id IN (SELECT id FROM teams WHERE created_by_tenant_id = $1)",
+        tenant_id,
+    )
+    await conn.execute(
+        "DELETE FROM user_effective_team_access WHERE user_id = $1"
+        " OR resource_team_id IN (SELECT id FROM teams WHERE created_by_tenant_id = $1)",
+        tenant_id,
+    )
+    await conn.execute(
+        "DELETE FROM team_invites WHERE team_id IN"
+        " (SELECT id FROM teams WHERE created_by_tenant_id = $1)",
+        tenant_id,
+    )
+    await conn.execute(
+        "DELETE FROM team_members WHERE team_id IN"
+        " (SELECT id FROM teams WHERE created_by_tenant_id = $1)",
+        tenant_id,
+    )
+    await conn.execute("DELETE FROM teams WHERE created_by_tenant_id = $1", tenant_id)
 
 
 @pytest.fixture
@@ -327,6 +366,7 @@ async def user_personal(pg_pool: Any) -> AsyncIterator[dict[str, Any]]:
     # Cleanup
     async with pg_pool.acquire() as conn:
         await conn.execute("DELETE FROM web_sessions WHERE session_hash = $1", session_hash)
+        await _cleanup_tenant_teams(conn, tenant_id)
         await conn.execute("DELETE FROM tenant_identities WHERE id = $1", identity_id)
         await conn.execute("DELETE FROM tenants WHERE id = $1", tenant_id)
 
@@ -388,6 +428,7 @@ async def user_with_workspace(pg_pool: Any) -> AsyncIterator[dict[str, Any]]:
     # Cleanup
     async with pg_pool.acquire() as conn:
         await conn.execute("DELETE FROM web_sessions WHERE session_hash = $1", session_hash)
+        await _cleanup_tenant_teams(conn, tenant_id)
         await conn.execute("DELETE FROM tenant_identities WHERE id = $1", identity_id)
         await conn.execute("DELETE FROM tenants WHERE id = $1", tenant_id)
 
@@ -446,6 +487,7 @@ async def other_user_same_workspace(pg_pool: Any) -> AsyncIterator[dict[str, Any
     # Cleanup
     async with pg_pool.acquire() as conn:
         await conn.execute("DELETE FROM web_sessions WHERE session_hash = $1", session_hash)
+        await _cleanup_tenant_teams(conn, tenant_id)
         await conn.execute("DELETE FROM tenant_identities WHERE id = $1", identity_id)
         await conn.execute("DELETE FROM tenants WHERE id = $1", tenant_id)
 
@@ -504,24 +546,88 @@ async def user_different_workspace(pg_pool: Any) -> AsyncIterator[dict[str, Any]
     # Cleanup
     async with pg_pool.acquire() as conn:
         await conn.execute("DELETE FROM web_sessions WHERE session_hash = $1", session_hash)
+        await _cleanup_tenant_teams(conn, tenant_id)
         await conn.execute("DELETE FROM tenant_identities WHERE id = $1", identity_id)
         await conn.execute("DELETE FROM tenants WHERE id = $1", tenant_id)
 
 
+# Settings fields with no default (config.py). create_app() constructs Settings
+# eagerly, so every one of these must be present or the app cannot be built. A
+# developer's .env happens to supply them locally, which is why this was never
+# noticed — CI has no .env, so without these the client fixture cannot work
+# there at all.
+_REQUIRED_APP_SETTINGS = {
+    "MEM_MCP_COGNITO_USER_POOL_ID": "test-pool",
+    "MEM_MCP_COGNITO_DOMAIN": "test.auth.localhost",
+    "MEM_MCP_RESOURCE_URL": "http://localhost:8080",
+    "MEM_MCP_WEB_URL": "http://localhost:3000",
+    "MEM_MCP_WEB_CLIENT_ID": "test-client",
+    "MEM_MCP_WEB_CLIENT_SECRET": "test-secret",
+    "MEM_MCP_INTERNAL_LAMBDA_SECRET": "test-lambda-secret",
+    "MEM_MCP_SES_FROM": "test@localhost",
+    "MEM_MCP_BACKUP_BUCKET": "test-bucket",
+    "MEM_MCP_BACKUP_GPG_PASSPHRASE": "test-passphrase",
+    "MEM_MCP_WEB_SESSION_SECRET": "test-session-secret",
+    "MEM_MCP_LINK_STATE_SECRET": "test-link-secret",
+}
+
+
 @pytest.fixture
-def client(pg_pool: Any) -> Any:
+def client(pg_pool: Any, monkeypatch: pytest.MonkeyPatch) -> Iterator[Any]:
     """FastAPI TestClient over the real app, with pg_pool wired in.
 
     Uses the live DB pointed to by MEM_MCP_TEST_DSN via the fixture's
     dependency on pg_pool (skips cleanly if DSN unset).
+
+    Two things this has to do that are easy to miss:
+
+    1. **Enter the TestClient as a context manager.** `create_app()` only
+       registers /healthz and /readyz; every real router is wired inside
+       `lifespan()`, and `TestClient(app)` does not run lifespan unless used
+       as a context manager. The previous version returned a bare
+       `TestClient(app)`, so the app under test had exactly two routes and
+       every request 404'd.
+    2. Supply the required Settings values, so the app can be constructed
+       without a developer's local .env (CI has none).
     """
     from fastapi.testclient import TestClient
 
+    from mem_mcp.config import _reset_settings_cache_for_tests
     from mem_mcp.main import create_app
 
-    # Create the app (lifespan will use the existing pg_pool from init_pool)
+    test_dsn = os.environ["MEM_MCP_TEST_DSN"]
+    monkeypatch.setenv("MEM_MCP_DB_DSN", test_dsn)
+    monkeypatch.setenv("MEM_MCP_DB_MAINT_DSN", test_dsn)
+    # Env-only config. Without this, get_settings() constructs a real boto3 SSM
+    # client and calls GetParametersByPath during lifespan — a live AWS call,
+    # which GUIDELINES §1.2 forbids outright in tests. It passes on a developer
+    # machine with credentials and fails in CI with NoCredentialsError, which is
+    # the worst possible failure mode.
+    monkeypatch.setenv("MEM_MCP_SKIP_SSM", "1")
+    for key, value in _REQUIRED_APP_SETTINGS.items():
+        monkeypatch.setenv(key, value)
+
+    # get_settings() is lru_cached; drop any instance built before these vars
+    # were set, and again on teardown so a cached test config cannot leak.
+    _reset_settings_cache_for_tests()
+
     app = create_app()
-    return TestClient(app)
+    # The CSRF middleware is double-submit: unsafe methods need a csrf_token
+    # cookie AND a matching X-CSRF-Token header. Set both as client defaults so
+    # individual tests don't each have to reproduce the handshake — they are
+    # testing the handlers, not CSRF (which has its own suite in
+    # tests/unit/test_web_csrf.py).
+    csrf = "test-csrf-token"
+    # `with` → lifespan runs → init_pool() against the test DSN → routers wired.
+    try:
+        with TestClient(
+            app,
+            headers={"X-CSRF-Token": csrf},
+            cookies={"csrf_token": csrf},
+        ) as test_client:
+            yield test_client
+    finally:
+        _reset_settings_cache_for_tests()
 
 
 @pytest.fixture
