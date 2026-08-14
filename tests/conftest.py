@@ -592,13 +592,24 @@ def client(pg_pool: Any, monkeypatch: pytest.MonkeyPatch) -> Iterator[Any]:
     """
     from fastapi.testclient import TestClient
 
+    from mem_mcp.config import _reset_settings_cache_for_tests
     from mem_mcp.main import create_app
 
     test_dsn = os.environ["MEM_MCP_TEST_DSN"]
     monkeypatch.setenv("MEM_MCP_DB_DSN", test_dsn)
     monkeypatch.setenv("MEM_MCP_DB_MAINT_DSN", test_dsn)
+    # Env-only config. Without this, get_settings() constructs a real boto3 SSM
+    # client and calls GetParametersByPath during lifespan — a live AWS call,
+    # which GUIDELINES §1.2 forbids outright in tests. It passes on a developer
+    # machine with credentials and fails in CI with NoCredentialsError, which is
+    # the worst possible failure mode.
+    monkeypatch.setenv("MEM_MCP_SKIP_SSM", "1")
     for key, value in _REQUIRED_APP_SETTINGS.items():
         monkeypatch.setenv(key, value)
+
+    # get_settings() is lru_cached; drop any instance built before these vars
+    # were set, and again on teardown so a cached test config cannot leak.
+    _reset_settings_cache_for_tests()
 
     app = create_app()
     # The CSRF middleware is double-submit: unsafe methods need a csrf_token
@@ -608,12 +619,15 @@ def client(pg_pool: Any, monkeypatch: pytest.MonkeyPatch) -> Iterator[Any]:
     # tests/unit/test_web_csrf.py).
     csrf = "test-csrf-token"
     # `with` → lifespan runs → init_pool() against the test DSN → routers wired.
-    with TestClient(
-        app,
-        headers={"X-CSRF-Token": csrf},
-        cookies={"csrf_token": csrf},
-    ) as test_client:
-        yield test_client
+    try:
+        with TestClient(
+            app,
+            headers={"X-CSRF-Token": csrf},
+            cookies={"csrf_token": csrf},
+        ) as test_client:
+            yield test_client
+    finally:
+        _reset_settings_cache_for_tests()
 
 
 @pytest.fixture
