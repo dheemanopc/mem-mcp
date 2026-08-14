@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import pytest
 from fastapi.testclient import TestClient
 
 
@@ -25,7 +24,7 @@ class TestTeamCreation:
         data = resp.json()
         assert data["team"]["name"] == "Engineering"
         assert data["team"]["workspace_domain"] == "example.com"
-        assert data["your_role"] == "admin"
+        assert data["your_role"] == "owner"
 
     async def test_workspace_user_explicit_matching_domain(
         self, client: TestClient, user_with_workspace: Any
@@ -111,7 +110,7 @@ class TestTeamListing:
         teams = list_resp.json()["teams"]
         assert len(teams) == 1
         assert teams[0]["id"] == team_id
-        assert teams[0]["your_role"] == "admin"
+        assert teams[0]["your_role"] == "owner"
 
 
 class TestMemberManagement:
@@ -132,7 +131,7 @@ class TestMemberManagement:
         # Add other_user_same_workspace
         add_resp = client.post(
             f"/api/web/teams/{team_id}/members",
-            json={"tenant_id": other_user_same_workspace["tenant_id"]},
+            json={"tenant_id": str(other_user_same_workspace["tenant_id"])},
             cookies={"mem_session": user_with_workspace["session"]},
         )
         assert add_resp.status_code == 200
@@ -159,7 +158,7 @@ class TestMemberManagement:
         # Try to add user_different_workspace
         add_resp = client.post(
             f"/api/web/teams/{team_id}/members",
-            json={"tenant_id": user_different_workspace["tenant_id"]},
+            json={"tenant_id": str(user_different_workspace["tenant_id"])},
             cookies={"mem_session": user_with_workspace["session"]},
         )
         assert add_resp.status_code == 400
@@ -180,7 +179,7 @@ class TestMemberManagement:
         # Try to add user_with_workspace
         add_resp = client.post(
             f"/api/web/teams/{team_id}/members",
-            json={"tenant_id": user_with_workspace["tenant_id"]},
+            json={"tenant_id": str(user_with_workspace["tenant_id"])},
             cookies={"mem_session": user_personal["session"]},
         )
         assert add_resp.status_code == 400
@@ -268,7 +267,7 @@ class TestMemberManagement:
 
         client.post(
             f"/api/web/teams/{team_id}/members",
-            json={"tenant_id": other_user_same_workspace["tenant_id"]},
+            json={"tenant_id": str(other_user_same_workspace["tenant_id"])},
             cookies={"mem_session": user_with_workspace["session"]},
         )
 
@@ -293,7 +292,7 @@ class TestMemberManagement:
 
         client.post(
             f"/api/web/teams/{team_id}/members",
-            json={"tenant_id": other_user_same_workspace["tenant_id"]},
+            json={"tenant_id": str(other_user_same_workspace["tenant_id"])},
             cookies={"mem_session": user_with_workspace["session"]},
         )
 
@@ -344,26 +343,10 @@ class TestTeamDeletion:
         assert get_resp.status_code == 404
 
 
-@pytest.fixture
-def user_with_workspace() -> Any:
-    """Fixture: workspace user (workspace_domain='example.com')."""
-    # Returns dict with tenant_id, session, workspace_domain
-    pass
-
-
-@pytest.fixture
-def user_personal() -> Any:
-    """Fixture: personal user (no workspace_domain)."""
-    pass
-
-
-@pytest.fixture
-def other_user_same_workspace() -> Any:
-    """Fixture: another user in same workspace (example.com)."""
-    pass
-
-
-@pytest.fixture
-def user_different_workspace() -> Any:
-    """Fixture: user in different workspace (other.com)."""
-    pass
+# NOTE: this module used to end with four stub fixtures (`user_with_workspace`,
+# `user_personal`, `other_user_same_workspace`, `user_different_workspace`) whose
+# bodies were `pass`. Being defined in the test module, they SHADOWED the real
+# fixtures in tests/conftest.py and handed every test `None`, so the whole file
+# had never passed. It went unnoticed because the `client` fixture depends on
+# `pg_pool`, which skips when MEM_MCP_TEST_DSN is unset — and the CI unit job
+# does not set it. Removed; the conftest fixtures now apply.

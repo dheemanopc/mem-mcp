@@ -1,4 +1,22 @@
-"""Team management handlers: CRUD operations, member management, invites."""
+"""Team management handlers: CRUD operations, member management, invites.
+
+Membership is read from ``team_role_assignments`` + ``roles_catalog`` — the
+RBAC source of truth since Spec 1. This module previously gated every endpoint
+on the legacy ``team_members`` table, which ``memsys_create_team`` stopped
+writing to (its own comment explains why: the legacy RLS policy made it
+chicken-and-egg for a brand-new team). On prod that table holds **zero rows**,
+so every check here resolved to "not a member" and the whole team API returned
+403 to everyone, including team owners on their own teams.
+
+Authorization goes through ``teams.authz.require_team_permission``, the same
+helper the MCP team tools use, so the two surfaces cannot drift apart on who
+is allowed to do what.
+
+Writes go through ``teams.assignments`` rather than raw SQL because those
+functions also refresh ``user_effective_team_access`` — the table that gates
+memory visibility. Writing the assignment directly would leave effective
+access stale.
+"""
 
 from __future__ import annotations
 
@@ -8,11 +26,54 @@ from uuid import UUID
 from fastapi import APIRouter, Cookie, HTTPException
 from pydantic import BaseModel, Field
 
+from mem_mcp.auth.permissions import Permission
+from mem_mcp.auth.rbac import get_team_role
 from mem_mcp.db.tenant_tx import system_tx
+from mem_mcp.teams.assignments import assign_role
+from mem_mcp.teams.assignments import remove_member as remove_role_assignment
+from mem_mcp.teams.authz import TeamPermissionDeniedError, require_team_permission
 from mem_mcp.web.sessions import lookup_session
 
 if TYPE_CHECKING:
     import asyncpg  # type: ignore[import-untyped]
+
+# Roles that administer a team. Both map to the full team permission set;
+# `owner` is what team creation grants, `admin` is the legacy equivalent.
+ADMIN_ROLE_KEYS = ("owner", "admin")
+
+
+async def _require_team_permission_http(
+    conn: asyncpg.Connection,
+    *,
+    tenant_id: UUID,
+    team_id: UUID,
+    permission: Permission,
+) -> None:
+    """Adapt the shared team gate to this transport's error type."""
+    try:
+        await require_team_permission(
+            conn, tenant_id=tenant_id, team_id=team_id, permission=permission
+        )
+    except TeamPermissionDeniedError as e:
+        raise HTTPException(status_code=403, detail="not authorized") from e
+
+
+async def _count_administrators(conn: asyncpg.Connection, team_id: UUID) -> int:
+    """Active users holding an administering role, for last-admin protection."""
+    count: int = await conn.fetchval(
+        """
+        SELECT COUNT(*)
+        FROM team_role_assignments tra
+        JOIN roles_catalog rc ON rc.id = tra.role_id
+        WHERE tra.parent_team_id = $1
+          AND tra.member_kind = 'user'
+          AND tra.status = 'active'
+          AND rc.role_key = ANY($2::text[])
+        """,
+        team_id,
+        list(ADMIN_ROLE_KEYS),
+    )
+    return count
 
 
 class TeamCreateBody(BaseModel):
@@ -33,13 +94,15 @@ class MemberAddBody(BaseModel):
 
     tenant_id: UUID | None = None
     invited_email: str | None = None
-    role: str = Field(default="member", pattern="^(admin|member|viewer)$")
+    # `owner` accepted so the web UI can express what team creation already
+    # grants; the roles below are the roles_catalog internal role_keys.
+    role: str = Field(default="member", pattern="^(owner|admin|member|viewer)$")
 
 
 class MemberPatchBody(BaseModel):
     """Request body for PATCH /api/web/teams/{id}/members/{tenant_id}."""
 
-    role: str = Field(..., pattern="^(admin|member|viewer)$")
+    role: str = Field(..., pattern="^(owner|admin|member|viewer)$")
 
 
 def make_teams_router(
@@ -118,22 +181,20 @@ def make_teams_router(
                 sess.tenant_id,
             )
 
-            # Add creator as admin member
-            await conn.execute(
-                """
-                INSERT INTO team_members (team_id, tenant_id, role, status, added_by_tenant_id)
-                VALUES ($1, $2, $3, $4, $5)
-                """,
-                team["id"],
-                sess.tenant_id,
-                "admin",
-                "active",
-                sess.tenant_id,
+            # Creator becomes owner — same role memsys_create_team grants, so a
+            # team looks identical whether it was made from the web or over MCP.
+            await assign_role(
+                conn,
+                parent_team_id=team["id"],
+                member_kind="user",
+                member_id=sess.tenant_id,
+                role_key="owner",
+                assigned_by_user_id=sess.tenant_id,
             )
 
         return {
             "team": dict(team),
-            "your_role": "admin",
+            "your_role": "owner",
         }
 
     @router.get("/api/web/teams")
@@ -151,11 +212,15 @@ def make_teams_router(
             rows = await conn.fetch(
                 """
                 SELECT t.id, t.name, t.workspace_domain, t.created_at,
-                       tm.role, tm.added_at
+                       rc.role_key AS role, tra.assigned_at AS added_at
                 FROM teams t
-                INNER JOIN team_members tm ON t.id = tm.team_id
-                WHERE tm.tenant_id = $1 AND tm.status = 'active' AND t.deleted_at IS NULL
-                ORDER BY tm.added_at DESC
+                INNER JOIN team_role_assignments tra ON t.id = tra.parent_team_id
+                INNER JOIN roles_catalog rc ON rc.id = tra.role_id
+                WHERE tra.member_id = $1
+                  AND tra.member_kind = 'user'
+                  AND tra.status = 'active'
+                  AND t.deleted_at IS NULL
+                ORDER BY tra.assigned_at DESC
                 """,
                 sess.tenant_id,
             )
@@ -191,16 +256,10 @@ def make_teams_router(
             raise HTTPException(status_code=400, detail="invalid team_id") from e
 
         async with system_tx(pool) as conn:
-            # Verify caller is a member
-            member_row = await conn.fetchrow(
-                """
-                SELECT role FROM team_members
-                WHERE team_id = $1 AND tenant_id = $2 AND status = 'active'
-                """,
-                team_uuid,
-                sess.tenant_id,
-            )
-            if not member_row:
+            # Verify caller is a member. 404 rather than 403 on purpose — a
+            # non-member should not learn that the team exists.
+            caller_role = await get_team_role(conn, sess.tenant_id, team_uuid)
+            if caller_role is None:
                 raise HTTPException(status_code=404, detail="team not found or not a member")
 
             team = await conn.fetchrow(
@@ -214,11 +273,12 @@ def make_teams_router(
             if not team:
                 raise HTTPException(status_code=404, detail="team not found")
 
-            # Count active members
+            # Count active user members. Sub-teams are excluded so the number
+            # matches the member list this endpoint's UI renders.
             member_count_row = await conn.fetchval(
                 """
-                SELECT COUNT(*) FROM team_members
-                WHERE team_id = $1 AND status = 'active'
+                SELECT COUNT(*) FROM team_role_assignments
+                WHERE parent_team_id = $1 AND member_kind = 'user' AND status = 'active'
                 """,
                 team_uuid,
             )
@@ -230,7 +290,7 @@ def make_teams_router(
                 "workspace_domain": team["workspace_domain"],
                 "created_at": team["created_at"].isoformat(),
             },
-            "your_role": member_row["role"],
+            "your_role": caller_role,
             "member_count": member_count_row,
         }
 
@@ -253,17 +313,13 @@ def make_teams_router(
             raise HTTPException(status_code=400, detail="invalid team_id") from e
 
         async with system_tx(pool) as conn:
-            # Check admin access
-            member_row = await conn.fetchrow(
-                """
-                SELECT role FROM team_members
-                WHERE team_id = $1 AND tenant_id = $2 AND status = 'active'
-                """,
-                team_uuid,
-                sess.tenant_id,
+            await _require_team_permission_http(
+                conn,
+                tenant_id=sess.tenant_id,
+                team_id=team_uuid,
+                permission=Permission.TEAM_MANAGE_SETTINGS,
             )
-            if not member_row or member_row["role"] != "admin":
-                raise HTTPException(status_code=403, detail="not authorized")
+            caller_role = await get_team_role(conn, sess.tenant_id, team_uuid)
 
             updated = await conn.fetchrow(
                 """
@@ -277,7 +333,7 @@ def make_teams_router(
 
         return {
             "team": dict(updated),
-            "your_role": member_row["role"],
+            "your_role": caller_role,
         }
 
     @router.delete("/api/web/teams/{team_id}")
@@ -298,17 +354,12 @@ def make_teams_router(
             raise HTTPException(status_code=400, detail="invalid team_id") from e
 
         async with system_tx(pool) as conn:
-            # Check admin access
-            member_row = await conn.fetchrow(
-                """
-                SELECT role FROM team_members
-                WHERE team_id = $1 AND tenant_id = $2 AND status = 'active'
-                """,
-                team_uuid,
-                sess.tenant_id,
+            await _require_team_permission_http(
+                conn,
+                tenant_id=sess.tenant_id,
+                team_id=team_uuid,
+                permission=Permission.TEAM_DELETE,
             )
-            if not member_row or member_row["role"] != "admin":
-                raise HTTPException(status_code=403, detail="not authorized")
 
             # Single transaction: orphan memories then soft-delete team
             async with conn.transaction():
@@ -358,17 +409,12 @@ def make_teams_router(
             )
 
         async with system_tx(pool) as conn:
-            # Check caller is admin
-            caller_member = await conn.fetchrow(
-                """
-                SELECT role FROM team_members
-                WHERE team_id = $1 AND tenant_id = $2 AND status = 'active'
-                """,
-                team_uuid,
-                sess.tenant_id,
+            await _require_team_permission_http(
+                conn,
+                tenant_id=sess.tenant_id,
+                team_id=team_uuid,
+                permission=Permission.TEAM_MANAGE_MEMBERS,
             )
-            if not caller_member or caller_member["role"] != "admin":
-                raise HTTPException(status_code=403, detail="not authorized")
 
             # Get team info for domain validation
             team = await conn.fetchrow(
@@ -415,19 +461,16 @@ def make_teams_router(
                             },
                         )
 
-                # Insert member
+                # assign_role, not a raw INSERT: it also refreshes
+                # user_effective_team_access, which gates memory visibility.
                 try:
-                    await conn.execute(
-                        """
-                        INSERT INTO team_members (team_id, tenant_id, role, status, added_by_tenant_id)
-                        VALUES ($1, $2, $3, $4, $5)
-                        ON CONFLICT DO NOTHING
-                        """,
-                        team_uuid,
-                        body.tenant_id,
-                        body.role,
-                        "active",
-                        sess.tenant_id,
+                    await assign_role(
+                        conn,
+                        parent_team_id=team_uuid,
+                        member_kind="user",
+                        member_id=body.tenant_id,
+                        role_key=body.role,
+                        assigned_by_user_id=sess.tenant_id,
                     )
                 except Exception as e:
                     raise HTTPException(status_code=400, detail=f"failed to add member: {e}") from e
@@ -472,27 +515,26 @@ def make_teams_router(
             raise HTTPException(status_code=400, detail="invalid team_id") from e
 
         async with system_tx(pool) as conn:
-            # Verify caller is a member
-            member_row = await conn.fetchrow(
-                """
-                SELECT role FROM team_members
-                WHERE team_id = $1 AND tenant_id = $2 AND status = 'active'
-                """,
-                team_uuid,
-                sess.tenant_id,
-            )
-            if not member_row:
+            # Verify caller is a member (404, not 403 — see get_team)
+            caller_role = await get_team_role(conn, sess.tenant_id, team_uuid)
+            if caller_role is None:
                 raise HTTPException(status_code=404, detail="team not found or not a member")
 
-            # Fetch active members with identity info
+            # Active user members with identity info. member_kind='user' filters
+            # out sub-teams, which are not people and have no identity row.
             members = await conn.fetch(
                 """
-                SELECT tm.tenant_id, tm.role, tm.status, tm.added_at,
+                SELECT tra.member_id AS tenant_id, rc.role_key AS role,
+                       tra.status, tra.assigned_at AS added_at,
                        ti.email, ti.provider, ti.id as identity_id
-                FROM team_members tm
-                LEFT JOIN tenant_identities ti ON tm.tenant_id = ti.tenant_id AND ti.is_primary
-                WHERE tm.team_id = $1 AND tm.status = 'active'
-                ORDER BY tm.added_at
+                FROM team_role_assignments tra
+                JOIN roles_catalog rc ON rc.id = tra.role_id
+                LEFT JOIN tenant_identities ti
+                       ON tra.member_id = ti.tenant_id AND ti.is_primary
+                WHERE tra.parent_team_id = $1
+                  AND tra.member_kind = 'user'
+                  AND tra.status = 'active'
+                ORDER BY tra.assigned_at
                 """,
                 team_uuid,
             )
@@ -500,7 +542,7 @@ def make_teams_router(
             # Fetch pending invites
             invites = await conn.fetch(
                 """
-                SELECT email, role, invited_at, invited_by_tenant_id
+                SELECT email, role, status, invited_at, invited_by_tenant_id
                 FROM team_invites
                 WHERE team_id = $1 AND status = 'pending'
                 ORDER BY invited_at
@@ -524,6 +566,7 @@ def make_teams_router(
             {
                 "email": i["email"],
                 "role": i["role"],
+                "status": i["status"],
                 "invited_at": i["invited_at"].isoformat(),
                 "invited_by_tenant_id": str(i["invited_by_tenant_id"]),
             }
@@ -553,46 +596,38 @@ def make_teams_router(
             raise HTTPException(status_code=400, detail="invalid team_id or tenant_id") from e
 
         async with system_tx(pool) as conn:
-            # Check caller is admin
-            caller_member = await conn.fetchrow(
-                """
-                SELECT role FROM team_members
-                WHERE team_id = $1 AND tenant_id = $2 AND status = 'active'
-                """,
-                team_uuid,
-                sess.tenant_id,
+            await _require_team_permission_http(
+                conn,
+                tenant_id=sess.tenant_id,
+                team_id=team_uuid,
+                permission=Permission.TEAM_MANAGE_MEMBERS,
             )
-            if not caller_member or caller_member["role"] != "admin":
-                raise HTTPException(status_code=403, detail="not authorized")
 
-            # Check last admin constraint
-            if body.role != "admin":
-                admin_count = await conn.fetchval(
-                    """
-                    SELECT COUNT(*) FROM team_members
-                    WHERE team_id = $1 AND role = 'admin' AND status = 'active'
-                    """,
-                    team_uuid,
+            target_role = await get_team_role(conn, target_uuid, team_uuid)
+            if target_role is None:
+                raise HTTPException(status_code=404, detail="member not found")
+
+            # Last-administrator protection. Only fires when this change would
+            # actually drop an administrator: demoting a non-admin, or moving
+            # between owner and admin, cannot strand the team.
+            demoting_an_admin = target_role in ADMIN_ROLE_KEYS and body.role not in ADMIN_ROLE_KEYS
+            if demoting_an_admin and await _count_administrators(conn, team_uuid) == 1:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "code": "last_admin_protected",
+                        "message": "Cannot demote the last admin of the team",
+                    },
                 )
-                if admin_count == 1:
-                    raise HTTPException(
-                        status_code=400,
-                        detail={
-                            "code": "last_admin_protected",
-                            "message": "Cannot demote the last admin of the team",
-                        },
-                    )
 
-            # Update role
-            await conn.execute(
-                """
-                UPDATE team_members
-                SET role = $1
-                WHERE team_id = $2 AND tenant_id = $3
-                """,
-                body.role,
-                team_uuid,
-                target_uuid,
+            # assign_role upserts and refreshes effective access.
+            await assign_role(
+                conn,
+                parent_team_id=team_uuid,
+                member_kind="user",
+                member_id=target_uuid,
+                role_key=body.role,
+                assigned_by_user_id=sess.tenant_id,
             )
 
         return {"success": True}
@@ -617,59 +652,37 @@ def make_teams_router(
             raise HTTPException(status_code=400, detail="invalid team_id or tenant_id") from e
 
         async with system_tx(pool) as conn:
-            # Get caller and target info
-            caller_member = await conn.fetchrow(
-                """
-                SELECT role FROM team_members
-                WHERE team_id = $1 AND tenant_id = $2 AND status = 'active'
-                """,
-                team_uuid,
-                sess.tenant_id,
-            )
-            if not caller_member:
+            caller_role = await get_team_role(conn, sess.tenant_id, team_uuid)
+            if caller_role is None:
                 raise HTTPException(status_code=403, detail="not authorized")
 
-            target_member = await conn.fetchrow(
-                """
-                SELECT role FROM team_members
-                WHERE team_id = $1 AND tenant_id = $2 AND status = 'active'
-                """,
-                team_uuid,
-                target_uuid,
-            )
-            if not target_member:
+            target_role = await get_team_role(conn, target_uuid, team_uuid)
+            if target_role is None:
                 raise HTTPException(status_code=404, detail="member not found")
 
-            # Check permissions: admin or removing self
-            if caller_member["role"] != "admin" and sess.tenant_id != target_uuid:
-                raise HTTPException(status_code=403, detail="not authorized")
-
-            # Check last admin constraint
-            if target_member["role"] == "admin":
-                admin_count = await conn.fetchval(
-                    """
-                    SELECT COUNT(*) FROM team_members
-                    WHERE team_id = $1 AND role = 'admin' AND status = 'active'
-                    """,
-                    team_uuid,
+            # Removing yourself needs no admin rights; removing anyone else does.
+            if sess.tenant_id != target_uuid:
+                await _require_team_permission_http(
+                    conn,
+                    tenant_id=sess.tenant_id,
+                    team_id=team_uuid,
+                    permission=Permission.TEAM_MANAGE_MEMBERS,
                 )
-                if admin_count == 1:
-                    raise HTTPException(
-                        status_code=400,
-                        detail={
-                            "code": "last_admin_protected",
-                            "message": "Cannot remove the last admin of the team",
-                        },
-                    )
 
-            # Remove member
-            await conn.execute(
-                """
-                DELETE FROM team_members
-                WHERE team_id = $1 AND tenant_id = $2
-                """,
-                team_uuid,
-                target_uuid,
+            if target_role in ADMIN_ROLE_KEYS and await _count_administrators(conn, team_uuid) == 1:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "code": "last_admin_protected",
+                        "message": "Cannot remove the last admin of the team",
+                    },
+                )
+
+            await remove_role_assignment(
+                conn,
+                parent_team_id=team_uuid,
+                member_kind="user",
+                member_id=target_uuid,
             )
 
         return {"deleted": True}
@@ -693,17 +706,12 @@ def make_teams_router(
             raise HTTPException(status_code=400, detail="invalid team_id") from e
 
         async with system_tx(pool) as conn:
-            # Check caller is admin
-            caller_member = await conn.fetchrow(
-                """
-                SELECT role FROM team_members
-                WHERE team_id = $1 AND tenant_id = $2 AND status = 'active'
-                """,
-                team_uuid,
-                sess.tenant_id,
+            await _require_team_permission_http(
+                conn,
+                tenant_id=sess.tenant_id,
+                team_id=team_uuid,
+                permission=Permission.TEAM_MANAGE_MEMBERS,
             )
-            if not caller_member or caller_member["role"] != "admin":
-                raise HTTPException(status_code=403, detail="not authorized")
 
             # Delete invite
             deleted = await conn.execute(
@@ -775,8 +783,10 @@ def make_teams_router(
             if exclude_team_uuid:
                 query_base += """
                     AND ti.tenant_id NOT IN (
-                        SELECT tenant_id FROM team_members
-                        WHERE team_id = $3 AND status = 'active'
+                        SELECT member_id FROM team_role_assignments
+                        WHERE parent_team_id = $3
+                          AND member_kind = 'user'
+                          AND status = 'active'
                     )
                 """
                 params.append(exclude_team_uuid)
