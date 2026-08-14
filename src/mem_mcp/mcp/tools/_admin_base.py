@@ -40,6 +40,10 @@ if TYPE_CHECKING:
     from mem_mcp.audit.logger import AuditAction
 
 
+class _PermissionDeniedError(Exception):
+    """Internal signal. Converted to JsonRpcError once the transaction has closed."""
+
+
 class AdminTool(BaseTool):
     """Base for admin tools. Subclasses implement ``run``, never ``__call__``."""
 
@@ -57,25 +61,31 @@ class AdminTool(BaseTool):
         # system_tx: admin reads are cross-tenant, so there is no
         # app.current_tenant_id to set. Anything reached from here must filter
         # in SQL rather than leaning on RLS.
-        async with system_tx(ctx.db_pool) as conn:
-            allowed = await self._check_permission(conn, ctx)
-            if not allowed:
-                await self._audit(conn, ctx, result="denied")
-                raise JsonRpcError(
-                    -32603,
-                    f"caller lacks required permission: {self.required_permission.value}",
-                    data={"missing_permission": self.required_permission.value},
-                )
-
-            try:
+        try:
+            async with system_tx(ctx.db_pool) as conn:
+                if not await self._check_permission(conn, ctx):
+                    raise _PermissionDeniedError
                 output = await self.run(conn, ctx, inp)
-            except JsonRpcError:
-                # run() already chose the client-facing error; still audit it.
-                await self._audit(conn, ctx, result="error")
-                raise
-
-            await self._audit(conn, ctx, result="success")
-            return output
+                # Success rides the same transaction on purpose (LLD §4.9):
+                # if the operation rolls back, its audit row goes with it.
+                await self._audit(conn, ctx, result="success")
+                return output
+        except _PermissionDeniedError:
+            # Failure audits MUST go on a fresh transaction. system_tx wraps
+            # the block in conn.transaction(), so a row written just before
+            # raising would roll back with the exception and the denial would
+            # vanish — the opposite of what an audit trail is for.
+            await self._audit_standalone(ctx, result="denied")
+            raise JsonRpcError(
+                -32603,
+                f"caller lacks required permission: {self.required_permission.value}",
+                data={"missing_permission": self.required_permission.value},
+            ) from None
+        except JsonRpcError:
+            # run() already chose the client-facing error; audit out of band
+            # for the same rollback reason.
+            await self._audit_standalone(ctx, result="error")
+            raise
 
     async def _check_permission(self, conn: asyncpg.Connection, ctx: ToolContext) -> bool:
         # Imported lazily: mem_mcp.auth.rbac pulls in FastAPI + web.sessions for
@@ -84,6 +94,13 @@ class AdminTool(BaseTool):
         from mem_mcp.auth.rbac import has_permission
 
         return await has_permission(conn, ctx.tenant_id, self.required_permission)
+
+    async def _audit_standalone(self, ctx: ToolContext, *, result: str) -> None:
+        """Audit on its own transaction, so it survives the caller's rollback."""
+        if ctx.deps is None:
+            return
+        async with system_tx(ctx.db_pool) as conn:
+            await self._audit(conn, ctx, result=result)
 
     async def _audit(
         self,

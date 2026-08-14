@@ -12,17 +12,19 @@ collide with the hardcoded-email fixtures elsewhere in the suite.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 import pytest
 
 from mem_mcp.admin.errors import NotFoundError
 from mem_mcp.admin.service import find_users, get_user
+from mem_mcp.audit.logger import DbAuditLogger
 from mem_mcp.auth.permissions import Permission
 from mem_mcp.db import system_tx, tenant_tx
 from mem_mcp.mcp.errors import JsonRpcError
 from mem_mcp.mcp.tools._base import ToolContext
+from mem_mcp.mcp.tools._deps import make_default_deps
 from mem_mcp.mcp.tools.admin_find_user import AdminFindUserInput, AdminFindUserTool
 from mem_mcp.mcp.tools.admin_get_user import AdminGetUserInput, AdminGetUserTool
 
@@ -53,6 +55,12 @@ async def _make_tenant(pool: Any, *, label: str) -> tuple[UUID, UUID, str]:
 
 
 def _ctx(pool: Any, tenant_id: UUID, identity_id: UUID) -> ToolContext:
+    # Real DbAuditLogger, not the Noop — the audit behaviour is part of what
+    # these tests verify, and a Noop would make the assertions vacuous.
+    deps = make_default_deps(
+        embeddings=cast(Any, None),
+        audit=DbAuditLogger(),
+    )
     return ToolContext(
         request_id=str(uuid4()),
         tenant_id=tenant_id,
@@ -60,7 +68,23 @@ def _ctx(pool: Any, tenant_id: UUID, identity_id: UUID) -> ToolContext:
         client_id="admin-it",
         scopes=frozenset({"memory.read", "memory.write"}),
         db_pool=pool,
+        deps=deps,
     )
+
+
+async def _audit_rows(pool: Any, tenant_id: UUID) -> list[Any]:
+    async with system_tx(pool) as conn:
+        return list(
+            await conn.fetch(
+                """
+                SELECT action, result, details
+                FROM audit_log
+                WHERE tenant_id = $1 AND action LIKE 'admin.%'
+                ORDER BY created_at
+                """,
+                tenant_id,
+            )
+        )
 
 
 @pytest.fixture
@@ -123,6 +147,46 @@ class TestPermissionGate:
         tool = AdminFindUserTool()
         output = await tool(admin_ctx, AdminFindUserInput(query="admin-"))
         assert output.count >= 1  # type: ignore[attr-defined]
+
+
+class TestAuditTrail:
+    """Every admin call leaves a row — allowed or denied."""
+
+    async def test_success_is_audited(self, admin_ctx: ToolContext, pg_pool: Any) -> None:
+        await AdminFindUserTool()(admin_ctx, AdminFindUserInput(query="admin-"))
+        rows = await _audit_rows(pg_pool, admin_ctx.tenant_id)
+        assert [r["action"] for r in rows] == ["admin.find_user"]
+        assert rows[0]["result"] == "success"
+
+    async def test_denial_survives_the_rollback(self, plain_ctx: ToolContext, pg_pool: Any) -> None:
+        """Regression: the denial audit must NOT roll back with the refusal.
+
+        system_tx wraps the tool body in conn.transaction(). Writing the audit
+        row inside that block and then raising discards it, so the one event
+        an operator most wants to see — a denied admin call — would leave no
+        trace at all.
+        """
+        with pytest.raises(JsonRpcError):
+            await AdminFindUserTool()(plain_ctx, AdminFindUserInput(query="admin-"))
+
+        rows = await _audit_rows(pg_pool, plain_ctx.tenant_id)
+        assert len(rows) == 1, "denial audit row was lost to the rollback"
+        assert rows[0]["result"] == "denied"
+
+    async def test_denial_records_the_missing_permission(
+        self, plain_ctx: ToolContext, pg_pool: Any
+    ) -> None:
+        import json
+
+        with pytest.raises(JsonRpcError):
+            await AdminGetUserTool()(plain_ctx, AdminGetUserInput(tenant_id=uuid4()))
+
+        rows = await _audit_rows(pg_pool, plain_ctx.tenant_id)
+        details = rows[0]["details"]
+        if isinstance(details, str):
+            details = json.loads(details)
+        assert details["via"] == "mcp"
+        assert details["required_permission"] == Permission.SYSTEM_MANAGE_TENANTS.value
 
 
 class TestFindUsers:
