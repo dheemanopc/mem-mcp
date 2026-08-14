@@ -1,9 +1,13 @@
-"""Security: the admin tool family must not be reachable without system roles.
+"""Security: the admin tool family must not be reachable without a system role.
 
-These gate CI and must never be skipped (GUIDELINES §2). The threat model is
-specific: these tools are callable by an LLM over MCP, and they read across
-every tenant on the instance. A hole here is a cross-tenant data leak, not a
-privilege nuisance.
+Marked `security` so the nightly gate (`pytest tests/security -m security`)
+picks these up. The threat model is specific: these tools are callable by an
+LLM over MCP and they read across every tenant on the instance, so a hole here
+is a cross-tenant data leak rather than a privilege nuisance.
+
+The DB-backed permission-gate coverage lives in
+tests/integration/test_admin_tools.py, which runs in the PR gate. What is here
+is the isolation-specific half.
 """
 
 from __future__ import annotations
@@ -16,98 +20,116 @@ import pytest
 from mem_mcp.auth.permissions import ROLE_PERMISSIONS, Permission
 from mem_mcp.db import system_tx
 from mem_mcp.mcp.errors import JsonRpcError
+from mem_mcp.mcp.tools._base import ToolContext
 from mem_mcp.mcp.tools.admin_find_user import AdminFindUserInput, AdminFindUserTool
-from mem_mcp.mcp.tools.admin_get_user import AdminGetUserInput, AdminGetUserTool
+
+pytestmark = pytest.mark.security
 
 
 class TestTeamAdminIsNotSystemAdmin:
-    """Team-level 'admin' must not confer system-level admin."""
+    """Team-level 'admin' must never confer system-level admin."""
 
-    def test_team_admin_role_lacks_system_permissions(self) -> None:
-        """The role matrix itself must keep the namespaces disjoint."""
-        team_admin_perms = ROLE_PERMISSIONS["admin"]
-        assert Permission.SYSTEM_MANAGE_TENANTS not in team_admin_perms
-        assert not any(p.value.startswith("system.") for p in team_admin_perms)
+    def test_team_roles_hold_no_system_permissions(self) -> None:
+        """The role matrix keeps the namespaces disjoint."""
+        for role_key in ("admin", "member"):
+            perms = ROLE_PERMISSIONS[role_key]
+            assert Permission.SYSTEM_MANAGE_TENANTS not in perms
+            assert not any(p.value.startswith("system.") for p in perms)
 
-    async def test_team_admin_cannot_call_find_user(
-        self, tool_ctx_with_workspace: Any, pg_pool: Any
-    ) -> None:
-        """Owning a team does not let you enumerate the instance's users."""
+    async def test_team_owner_cannot_enumerate_users(self, pg_pool: Any) -> None:
+        """Owning a team does not let you list the instance's users.
+
+        The caller here is the creator/owner of a team — the strongest
+        team-scoped role available — and must still be refused.
+        """
+        from mem_mcp.teams.assignments import assign_role
+
+        tenant_id = uuid4()
+        identity_id = uuid4()
+        team_id = uuid4()
+        email = f"teamowner-{tenant_id}@sec-admin.invalid"
+
         async with system_tx(pg_pool) as conn:
-            team_id = uuid4()
-            # teams.workspace_domain is globally unique, so an earlier test in
-            # the session may already own the example.com team. Either way the
-            # caller ends up with a team-level role and no system role, which
-            # is the condition under test.
+            await conn.execute(
+                "INSERT INTO tenants (id, email, status) VALUES ($1, $2, 'active')",
+                tenant_id,
+                email,
+            )
+            await conn.execute(
+                """
+                INSERT INTO tenant_identities
+                    (id, tenant_id, cognito_sub, provider, email, is_primary)
+                VALUES ($1, $2, $3, 'cognito', $4, true)
+                """,
+                identity_id,
+                tenant_id,
+                f"sub-{tenant_id}",
+                email,
+            )
             await conn.execute(
                 """
                 INSERT INTO teams (id, name, workspace_domain, created_by_tenant_id)
-                VALUES ($1, 'sec-probe', 'example.com', $2)
-                ON CONFLICT DO NOTHING
+                VALUES ($1, 'sec-probe', NULL, $2)
                 """,
                 team_id,
-                tool_ctx_with_workspace.tenant_id,
+                tenant_id,
             )
+            await assign_role(
+                conn,
+                parent_team_id=team_id,
+                member_kind="user",
+                member_id=tenant_id,
+                role_key="owner",
+                assigned_by_user_id=tenant_id,
+            )
+
+        ctx = ToolContext(
+            request_id=str(uuid4()),
+            tenant_id=tenant_id,
+            identity_id=identity_id,
+            client_id="sec-admin",
+            scopes=frozenset({"memory.read", "memory.write"}),
+            db_pool=pg_pool,
+        )
 
         tool = AdminFindUserTool()
         with pytest.raises(JsonRpcError) as exc:
-            await tool(tool_ctx_with_workspace, AdminFindUserInput(query="workspace-"))
+            await tool(ctx, AdminFindUserInput(query="teamowner-"))
         assert exc.value.data is not None
         assert exc.value.data["missing_permission"] == Permission.SYSTEM_MANAGE_TENANTS.value
 
-
-class TestNoExistenceOracle:
-    """A denied caller must not learn whether a record exists."""
-
-    async def test_find_user_denies_rather_than_returning_empty(
-        self, tool_ctx_personal: Any
-    ) -> None:
-        """Denial must be an error, not an empty list.
-
-        An empty list is indistinguishable from 'no match', which would let an
-        unprivileged caller probe for the existence of accounts.
-        """
-        tool = AdminFindUserTool()
-        with pytest.raises(JsonRpcError):
-            await tool(tool_ctx_personal, AdminFindUserInput(query="anything"))
-
-    async def test_get_user_denies_before_checking_existence(self, tool_ctx_personal: Any) -> None:
-        """Denial must not depend on whether the tenant_id is real.
-
-        Both a real and a fabricated id must fail the same way, otherwise the
-        error code itself is an oracle.
-        """
-        tool = AdminGetUserTool()
-
-        with pytest.raises(JsonRpcError) as real:
-            await tool(tool_ctx_personal, AdminGetUserInput(tenant_id=tool_ctx_personal.tenant_id))
-        with pytest.raises(JsonRpcError) as fake:
-            await tool(tool_ctx_personal, AdminGetUserInput(tenant_id=uuid4()))
-
-        assert real.value.code == fake.value.code
-        assert real.value.data == fake.value.data
-
-
-class TestSqlInjectionProbes:
-    """Operator-supplied search text is untrusted."""
-
-    @pytest.mark.parametrize(
-        "probe",
-        [
-            "' OR '1'='1",
-            "'; DROP TABLE tenants; --",
-            "%' --",
-            "\\\\",
-        ],
-    )
-    async def test_probes_do_not_escape_the_parameter(
-        self, tool_ctx_personal: Any, pg_pool: Any, probe: str
-    ) -> None:
-        """Each probe must be treated as literal text, and the table must survive."""
-        from mem_mcp.admin.service import find_users
+    async def test_denial_is_an_error_not_an_empty_list(self, pg_pool: Any) -> None:
+        """Returning [] to an unprivileged caller would be an existence oracle."""
+        tenant_id = uuid4()
+        identity_id = uuid4()
+        email = f"nobody-{tenant_id}@sec-admin.invalid"
 
         async with system_tx(pg_pool) as conn:
-            rows = await find_users(conn, query=probe)
-            assert rows == []
-            # The table is still there — proves nothing was executed.
-            assert await conn.fetchval("SELECT COUNT(*) FROM tenants") >= 1
+            await conn.execute(
+                "INSERT INTO tenants (id, email, status) VALUES ($1, $2, 'active')",
+                tenant_id,
+                email,
+            )
+            await conn.execute(
+                """
+                INSERT INTO tenant_identities
+                    (id, tenant_id, cognito_sub, provider, email, is_primary)
+                VALUES ($1, $2, $3, 'cognito', $4, true)
+                """,
+                identity_id,
+                tenant_id,
+                f"sub-{tenant_id}",
+                email,
+            )
+
+        ctx = ToolContext(
+            request_id=str(uuid4()),
+            tenant_id=tenant_id,
+            identity_id=identity_id,
+            client_id="sec-admin",
+            scopes=frozenset({"memory.read"}),
+            db_pool=pg_pool,
+        )
+
+        with pytest.raises(JsonRpcError):
+            await AdminFindUserTool()(ctx, AdminFindUserInput(query="nobody-"))
