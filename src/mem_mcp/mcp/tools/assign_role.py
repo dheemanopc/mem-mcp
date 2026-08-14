@@ -12,6 +12,7 @@ from mem_mcp.mcp.errors import JsonRpcError
 from mem_mcp.mcp.tool_descriptions import TOOL_DESCRIPTIONS
 from mem_mcp.mcp.tools._base import BaseTool, ToolContext
 from mem_mcp.teams.assignments import assign_role
+from mem_mcp.teams.authz import TeamPermissionDeniedError, require_can_manage_members
 from mem_mcp.teams.roles import RoleNotFoundError
 
 
@@ -42,6 +43,15 @@ class AssignRoleTool(BaseTool):
     async def __call__(self, ctx: ToolContext, inp: BaseModel) -> BaseModel:
         assert isinstance(inp, AssignRoleInput)
         async with system_tx(ctx.db_pool) as conn:
+            # system_tx bypasses RLS, so this check is the ONLY thing standing
+            # between the caller and any team whose UUID they happen to know.
+            try:
+                await require_can_manage_members(conn, tenant_id=ctx.tenant_id, team_id=inp.team_id)
+            except TeamPermissionDeniedError as e:
+                raise JsonRpcError(
+                    -32603, str(e), data={"missing_permission": e.permission.value}
+                ) from e
+
             try:
                 await assign_role(
                     conn,

@@ -12,6 +12,7 @@ from mem_mcp.mcp.errors import JsonRpcError
 from mem_mcp.mcp.tool_descriptions import TOOL_DESCRIPTIONS
 from mem_mcp.mcp.tools._base import BaseTool, ToolContext
 from mem_mcp.teams.assignments import assign_role
+from mem_mcp.teams.authz import TeamPermissionDeniedError, require_can_manage_members
 from mem_mcp.teams.dag import CycleWouldFormError, MaxDepthExceededError
 from mem_mcp.teams.roles import RoleNotFoundError
 
@@ -62,6 +63,17 @@ class AddTeamMemberTool(BaseTool):
                 raise JsonRpcError(-32602, "provide either member_id or member_email, not both")
 
         async with system_tx(ctx.db_pool) as conn:
+            # Gate BEFORE resolving member_email. Resolving first would let an
+            # unauthorized caller use the tool as an email-existence oracle:
+            # "does alice@corp.com have an account?" answered by which error
+            # comes back. Refuse on the team first, leak nothing about users.
+            try:
+                await require_can_manage_members(conn, tenant_id=ctx.tenant_id, team_id=inp.team_id)
+            except TeamPermissionDeniedError as e:
+                raise JsonRpcError(
+                    -32603, str(e), data={"missing_permission": e.permission.value}
+                ) from e
+
             # Resolve member_email → member_id if applicable
             resolved_member_id: UUID | None = inp.member_id
             status = "active"

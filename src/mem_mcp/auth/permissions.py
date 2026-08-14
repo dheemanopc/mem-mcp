@@ -52,14 +52,37 @@ _TEAM_MEMBER_PERMS = {
     Permission.TEAM_WRITE_MEMORY,
     Permission.TEAM_READ_MEMORY,
 }
+_TEAM_READONLY_PERMS = {
+    Permission.TEAM_VIEW,
+    Permission.TEAM_READ_MEMORY,
+}
 
-# System roles: keys are Role enum values. Team roles: keys are 'admin'/'member'.
+# System roles: keys are Role enum values. Team roles: keys are role_key values
+# from the `roles_catalog` table.
+#
+# Every role_key in roles_catalog MUST appear here. Spec 1 grew the catalog to
+# seven roles (owner/admin/member/viewer/vendor/customer/service-bot) but this
+# map was left at the legacy two, so has_permission() silently returned False
+# for the other five — including `owner`, which is what memsys_create_team
+# assigns to whoever creates a team. Any gate on a team permission would have
+# locked out the team's own creator. `tests/unit/test_role_permissions_cover_catalog.py`
+# now pins the two lists together.
 ROLE_PERMISSIONS: dict[str, set[Permission]] = {
     Role.SYSTEM_ADMIN.value: _ALL_SYSTEM,
     # ^ system_admin gets ALL system permissions
     # (design note: system_admin does NOT implicitly hold team-level write permissions —
     # that requires explicit team membership. See spec §2.)
     Role.SYSTEM_SUPPORT.value: _SUPPORT_SYSTEM_READS,
+    # --- team roles (roles_catalog.role_key) ---
+    # role_class 'internal'
+    "owner": _TEAM_ADMIN_PERMS,
     "admin": _TEAM_ADMIN_PERMS,
     "member": _TEAM_MEMBER_PERMS,
+    "viewer": _TEAM_READONLY_PERMS,
+    # role_class 'external' — cross-org collaborators. Read-only by default;
+    # widening these is a deliberate product decision, not a default.
+    "vendor": _TEAM_READONLY_PERMS,
+    "customer": _TEAM_READONLY_PERMS,
+    # role_class 'service' — headless clients. May write, never administer.
+    "service-bot": _TEAM_MEMBER_PERMS,
 }
