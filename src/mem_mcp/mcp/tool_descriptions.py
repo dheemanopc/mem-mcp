@@ -480,4 +480,26 @@ After close the map is archived: it no longer surfaces in mindmap_open similarit
 Do not call until the user has confirmed the decisions. Required scope: memory.write.
 
 Example: mindmap_close(map_key="caching-strategy", confirmed_decisions=[{content:"Adopt Redis for the hot read path", slug_clue:"redis-hot-path", from_node_id:"<position>", ratification_strength:"survived-challenge"}]).""",
+    "memsys_admin_find_user": """Search every user on the instance by partial email address or display name. Operator tool — requires the system.manage_tenants permission, which only a system_admin holds.
+
+Call when: the user needs a tenant_id they do not have ("what's Manasi's user id?"); you are about to add someone to a team and need to confirm which account is theirs; the user asks who signed up recently, or how many accounts exist matching some name or domain.
+
+Do not call for: looking up the caller's own account (they already have that context); listing the caller's teams (use memsys_list_my_teams); any lookup where you already hold the exact email — memsys_add_team_member accepts member_email directly, so a find_user call first is redundant.
+
+Matching is case-insensitive and substring-based across email and display_name; LIKE wildcards in the query are escaped, so a literal % matches a literal %. Results are ordered newest-signup-first, which is what "who joined recently" wants. query must be at least 2 characters. limit defaults to 20, capped at 100.
+
+Every call is written to the audit log, including calls that are denied for lack of permission.
+
+Examples: "Who is manasi?" → memsys_admin_find_user(query="manasi"). "Show me everyone on dheemantech.in" → memsys_admin_find_user(query="@dheemantech.in", limit=50). "Who are the three newest users?" → memsys_admin_find_user(query="@", limit=3).""",
+    "memsys_admin_get_user": """Fetch one user's full record by tenant_id, including their system roles and every team they belong to with their role in each. Operator tool — requires the system.manage_tenants permission, which only a system_admin holds.
+
+Call when: you have a tenant_id (typically from memsys_admin_find_user) and need the detail behind it; the user asks what teams someone is in, or whether someone holds system_admin; you are diagnosing why a specific person can or cannot see something.
+
+Do not call for: searching by name or email — you need an exact tenant_id here, use memsys_admin_find_user first; listing your own teams (memsys_list_my_teams); enumerating a team's members, which this does not do (it goes user → teams, not team → users).
+
+Returns the same fields as find_user plus system_roles (e.g. ["system_admin"], usually empty) and teams (team_id, team_name, and the caller's role_key in that team). Team membership comes from the RBAC assignment table, so personal teams appear alongside real ones. Soft-deleted teams are excluded.
+
+Unknown tenant_id returns an invalid-params error rather than an empty result. Every call is audited, including denials.
+
+Examples: "What teams is this user in?" → memsys_admin_get_user(tenant_id="3cfb9a05-..."). "Does she have admin rights?" → memsys_admin_get_user(tenant_id="...") then read system_roles.""",
 }

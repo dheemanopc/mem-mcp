@@ -56,6 +56,8 @@ from mem_mcp.logging_setup import get_logger, setup_logging
 from mem_mcp.mcp.registry import ToolRegistry
 from mem_mcp.mcp.tools._deps import make_default_deps
 from mem_mcp.mcp.tools.add_team_member import AddTeamMemberTool
+from mem_mcp.mcp.tools.admin_find_user import AdminFindUserTool
+from mem_mcp.mcp.tools.admin_get_user import AdminGetUserTool
 from mem_mcp.mcp.tools.assign_role import AssignRoleTool
 from mem_mcp.mcp.tools.create_team import CreateTeamTool
 from mem_mcp.mcp.tools.delete import MemoryDeleteTool
@@ -515,6 +517,10 @@ def _wire_routers(app: FastAPI) -> None:
         MindmapAnswerTool,
         MindmapListTool,
         MindmapQueueTool,
+        # Admin tool family — gated on system.* permissions via AdminTool,
+        # NOT reachable by an ordinary caller. See mcp/tools/_admin_base.py.
+        AdminFindUserTool,
+        AdminGetUserTool,
     ]
     for tool_cls in tools_list:  # type: ignore[attr-defined]
         registry.register(tool_cls)  # type: ignore[arg-type]

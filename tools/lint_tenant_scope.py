@@ -51,6 +51,13 @@ EXEMPT_PREFIXES = (
     # (matches caller-tenant rows AND cross-team rows with visibility='team').
     # Same cross-team gating pattern as teams/effective_access.py.
     "src/mem_mcp/mcp/tools/get_batch.py",
+    # admin/service.py exists precisely to answer "which tenant is this
+    # person?", so a tenant_id filter is impossible by construction — the
+    # tenant_id is the unknown. Gating is at the caller: every entry point is
+    # behind Permission.SYSTEM_MANAGE_TENANTS, enforced for MCP in
+    # mcp/tools/_admin_base.py and for web in require_permission(). Covered by
+    # tests/security/test_admin_isolation.py.
+    "src/mem_mcp/admin/service.py",
 )
 
 CONN_METHODS = frozenset({"execute", "fetch", "fetchrow", "fetchval", "executemany"})
