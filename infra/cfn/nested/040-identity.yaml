@@ -182,6 +182,38 @@ Resources:
         - family_name
         - picture
 
+  # Machine-to-machine (client_credentials) client for headless partner
+  # systems — e.g. the kite trading system — that call POST /mcp with a
+  # self-minted access token (no human, no redirect). Distinct from the
+  # interactive WebAppClient above.
+  #
+  # Constraints (enforced by Cognito):
+  #   - client_credentials MUST NOT request openid/email/profile — only
+  #     resource-server custom scopes. The token has no user; its `sub`
+  #     equals this client's ID, so a matching tenant_identities row must
+  #     be seeded (see scripts/seed-service-tenant.sh).
+  #   - client_credentials REQUIRES GenerateSecret: true.
+  #   - No CallbackURLs / SupportedIdentityProviders / refresh tokens.
+  KiteServiceClient:
+    Type: AWS::Cognito::UserPoolClient
+    DependsOn:
+      - ResourceServer
+    Properties:
+      ClientName: mem-kite-service-client
+      UserPoolId: !Ref UserPool
+      GenerateSecret: true
+      AllowedOAuthFlows:
+        - client_credentials
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthScopes:
+        - !Sub 'https://${MemSysSubdomain}.${DomainName}/memory.read'
+        - !Sub 'https://${MemSysSubdomain}.${DomainName}/memory.write'
+      ExplicitAuthFlows: []
+      EnableTokenRevocation: true
+      AccessTokenValidity: 60
+      TokenValidityUnits:
+        AccessToken: minutes
+
 Outputs:
   UserPoolId:
     Description: Cognito User Pool ID
@@ -224,3 +256,9 @@ Outputs:
     Value: !Ref WebAppClient
     Export:
       Name: !Sub '${AWS::StackName}-WebClientId'
+
+  KiteServiceClientId:
+    Description: Machine (client_credentials) Cognito client ID for headless partner systems. Secret is retrieved post-deploy via describe-user-pool-client and stored in /mem-mcp/kite/client_secret.
+    Value: !Ref KiteServiceClient
+    Export:
+      Name: !Sub '${AWS::StackName}-KiteServiceClientId'
