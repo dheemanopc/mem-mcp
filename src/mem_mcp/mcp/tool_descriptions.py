@@ -429,11 +429,11 @@ Example: mindmap_link(source_memory_id="<challenge>", target_memory_id="<positio
 
 Call when a question raised in a map gets an answer — from the owner (the usual case, including out-of-band from the web UI) or from you. Pass answered_by="owner" when relaying or recording the human's own answer, "model" when you are answering your own question.
 
-Answering resolves the question by default (auto_resolve=True): they are one act, and splitting them leaves answered questions sitting in the queue looking unanswered. Pass auto_resolve=False only when the answer genuinely does not settle the branch.
+The `mode` controls what answering does to the question, and the caller — not the tool — decides. mode="resolve" (default) settles the branch: answering and resolving are one act, and splitting them leaves answered questions sitting in the queue looking unanswered. mode="reopen" records the answer but puts the question back to open and hands the turn to the other party — use it when a supposedly-settled question needs more thought. mode="comment" attaches the answer as a note without touching the question's status. (Legacy auto_resolve=True/False maps to resolve/reopen; mode wins if both are set.)
 
-The turn hands back to the model automatically — the owner has moved. When the owner endorses rather than merely replies, pass ratification_strength and ratification_citation so the endorsement is recorded as theirs.
+A question can be answered again even after it is resolved or dropped — every answer is a new node and nothing is overwritten, so re-answering, correcting, or commenting is always allowed while the map is live. Only an archived map refuses (it is a deliberate freeze).
 
-Do not call on an archived map, or on a question already resolved (it 400s rather than silently double-answering). Required scope: memory.write.
+The turn hands back automatically — the owner has moved. When the owner endorses rather than merely replies, pass ratification_strength and ratification_citation so the endorsement is recorded as theirs. Required scope: memory.write.
 
 Example: mindmap_answer(map_key="caching-strategy", question_node_id="<question>", content="Go with Redis; the write volume is fine", answered_by="owner").""",
     "mindmap_resolve": """Settle ONE branch of a map without closing the map — the per-branch counterpart to mindmap_close.
