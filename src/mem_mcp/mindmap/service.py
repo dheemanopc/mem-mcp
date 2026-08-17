@@ -306,6 +306,38 @@ async def set_node_status(
     return str(result).split()[-1] != "0"
 
 
+async def reopen_node(
+    conn: asyncpg.Connection,
+    *,
+    memory_id: UUID,
+    root_memory_id: UUID,
+    turn: str,
+) -> bool:
+    """Reopen a settled branch: status back to 'open', turn handed on, all
+    resolution fields cleared. Returns False when the node isn't in this map.
+
+    Scoped by root_memory_id as well as memory_id so a caller cannot reopen a
+    node belonging to a different map by guessing its id (same guard as
+    set_node_status).
+    """
+    result = await conn.execute(
+        """
+        UPDATE memory_map_membership
+           SET status = 'open',
+               turn = $3,
+               resolution_summary = NULL,
+               resolved_by_memory_id = NULL,
+               resolved_by_party = NULL,
+               resolved_at = NULL
+         WHERE memory_id = $1 AND root_memory_id = $2
+        """,
+        memory_id,
+        root_memory_id,
+        turn,
+    )
+    return str(result).split()[-1] != "0"
+
+
 async def touch_owner_write(conn: asyncpg.Connection, *, root_memory_id: UUID) -> None:
     """Record that the owner wrote, for the graduation guard."""
     await conn.execute(

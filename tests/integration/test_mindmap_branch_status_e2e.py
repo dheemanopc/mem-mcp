@@ -404,15 +404,20 @@ async def test_answer_resolves_and_guards_graduation(pg_pool: Any) -> None:
         empty = await MindmapQueueTool()(ctx, MindmapQueueInput(team_id=team))
         assert empty.questions == []  # type: ignore[attr-defined]
 
-        # Answering the same question twice is refused, not silently duplicated.
-        with pytest.raises(JsonRpcError) as dup:
-            await MindmapAnswerTool()(
-                ctx,
-                MindmapAnswerInput(
-                    map_key=key, question_node_id=qid, content="again", team_id=team
-                ),
-            )
-        assert dup.value.data["code"] == "question_not_open"  # type: ignore[index]
+        # With the new mode parameter, answering a resolved question now succeeds
+        # (mode="resolve" by default). A new answer node is created and linked,
+        # and the question's resolved_by_memory_id points to the newest answer.
+        re_answered = await MindmapAnswerTool()(
+            ctx,
+            MindmapAnswerInput(
+                map_key=key,
+                question_node_id=qid,
+                content="Thought about it more: Postgres after all.",
+                answered_by="owner",
+                team_id=team,
+            ),
+        )
+        assert re_answered.question_status == "resolved"  # type: ignore[attr-defined]
 
         # THE guard case. Note the reads above have already acknowledged the
         # answer — that is correct, so a fresh owner write is needed to arm the
@@ -479,3 +484,167 @@ async def test_turn_backfill_handles_double_encoded_metadata(pg_pool: Any) -> No
         # Absent key stays NULL rather than erroring.
         empty = json.dumps(json.dumps({"node_role": "note"}))
         assert await conn.fetchval(decode, empty) is None
+
+
+async def test_answer_modes_reopen_comment_and_re_resolve(pg_pool: Any) -> None:
+    """Answering is the caller's prerogative, not the tool's.
+
+    A resolved question can be answered again — resolve refreshes it, comment
+    leaves it settled while accruing a note, reopen puts it back in play. Every
+    answer is a NEW node; none overwrites a prior one. This locks the removal of
+    the old `question_not_open` gate.
+    """
+    async with pg_pool.acquire() as conn, conn.transaction():
+        s = await _setup(conn)
+    tenant, team, client_id = s["tenant"], s["team"], s["client_id"]
+    ctx = _ctx(pg_pool, tenant, client_id)
+
+    async def _status(qid: UUID) -> dict[str, Any]:
+        async with pg_pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT status, turn, resolved_at, resolved_by_memory_id, resolution_summary "
+                "FROM memory_map_membership WHERE memory_id = $1",
+                qid,
+            )
+        return dict(row)
+
+    async def _answer_count(qid: UUID) -> int:
+        async with pg_pool.acquire() as conn:
+            return await conn.fetchval(
+                "SELECT count(*) FROM memory_references "
+                "WHERE target_memory_id = $1 AND reference_kind = 'answers'",
+                qid,
+            )
+
+    try:
+        opened = await MindmapOpenTool()(
+            ctx,
+            MindmapOpenInput(
+                title="Answer modes e2e",
+                root_question="Can a settled question be answered again?",
+                team_id=team,
+            ),
+        )
+        key = opened.map_key  # type: ignore[attr-defined]
+
+        q = await MindmapWriteNodeTool()(
+            ctx,
+            MindmapWriteNodeInput(
+                map_key=key,
+                content="Which datastore for the queue?",
+                node_role="question",
+                responsible_party="owner",
+                team_id=team,
+            ),
+        )
+        qid = q.node_id  # type: ignore[attr-defined]
+
+        # --- first answer, default mode → resolve ---------------------------
+        a1 = await MindmapAnswerTool()(
+            ctx,
+            MindmapAnswerInput(
+                map_key=key,
+                question_node_id=qid,
+                content="Postgres — we already run it.",
+                answered_by="owner",
+                team_id=team,
+            ),
+        )
+        st = await _status(qid)
+        assert st["status"] == "resolved"
+        assert st["resolved_by_memory_id"] == a1.answer_node_id  # type: ignore[attr-defined]
+        assert st["resolved_at"] is not None
+
+        # --- answer an ALREADY-resolved question: no question_not_open error -
+        # mode=resolve refreshes the pointer to the newest answer.
+        a2 = await MindmapAnswerTool()(
+            ctx,
+            MindmapAnswerInput(
+                map_key=key,
+                question_node_id=qid,
+                content="On reflection, Postgres with SKIP LOCKED.",
+                answered_by="owner",
+                mode="resolve",
+                team_id=team,
+            ),
+        )
+        st = await _status(qid)
+        assert st["status"] == "resolved"
+        assert st["resolved_by_memory_id"] == a2.answer_node_id  # type: ignore[attr-defined]
+        assert await _answer_count(qid) == 2, "prior answer node must survive"
+
+        # --- comment on a resolved question: status untouched ---------------
+        await MindmapAnswerTool()(
+            ctx,
+            MindmapAnswerInput(
+                map_key=key,
+                question_node_id=qid,
+                content="Note: SKIP LOCKED needs a stable ORDER BY.",
+                answered_by="owner",
+                mode="comment",
+                team_id=team,
+            ),
+        )
+        st = await _status(qid)
+        assert st["status"] == "resolved", "comment must not disturb resolution"
+        assert st["resolved_by_memory_id"] == a2.answer_node_id  # type: ignore[attr-defined]
+        assert await _answer_count(qid) == 3
+
+        # --- reopen a resolved question -------------------------------------
+        await MindmapAnswerTool()(
+            ctx,
+            MindmapAnswerInput(
+                map_key=key,
+                question_node_id=qid,
+                content="Actually reconsidering — Redis streams may fit better.",
+                answered_by="owner",
+                mode="reopen",
+                team_id=team,
+            ),
+        )
+        st = await _status(qid)
+        assert st["status"] == "open"
+        assert st["resolved_at"] is None
+        assert st["resolved_by_memory_id"] is None
+        assert st["turn"] == "model", "owner reopened → ball is with the model"
+        assert await _answer_count(qid) == 4
+
+        # Reopen surfaces the question as a live, unresolved node again — it
+        # leaves `resolved` and comes back in `nodes` with status 'open'. It is
+        # NOT in open_loops: the owner answered, so the turn is the model's and
+        # open_loops is owner-facing (turn='owner' AND status='open').
+        after = await MindmapGetTool()(ctx, MindmapGetInput(map_key=key, team_id=team))
+        assert qid not in {r.memory_id for r in after.resolved}  # type: ignore[attr-defined]
+        reopened = next(n for n in after.nodes if n.memory_id == qid)  # type: ignore[attr-defined]
+        assert reopened.status == "open"
+        assert qid not in set(after.open_loops)  # type: ignore[attr-defined]
+
+        # --- legacy auto_resolve=False still means reopen -------------------
+        # First settle it again, then answer with the deprecated boolean.
+        await MindmapAnswerTool()(
+            ctx,
+            MindmapAnswerInput(
+                map_key=key,
+                question_node_id=qid,
+                content="Settle: Redis streams.",
+                answered_by="owner",
+                mode="resolve",
+                team_id=team,
+            ),
+        )
+        assert (await _status(qid))["status"] == "resolved"
+        await MindmapAnswerTool()(
+            ctx,
+            MindmapAnswerInput(
+                map_key=key,
+                question_node_id=qid,
+                content="Legacy reopen path.",
+                answered_by="owner",
+                auto_resolve=False,
+                team_id=team,
+            ),
+        )
+        assert (await _status(qid))["status"] == "open"
+
+    finally:
+        await _cleanup(pg_pool, tenant, team, client_id)

@@ -41,6 +41,14 @@ class MindmapAnswerInput(BaseModel):
     ) = None
     ratification_citation: str | None = Field(default=None, max_length=4000)
     resolution_summary: str | None = Field(default=None, max_length=500)
+    # How answering affects the QUESTION's status. The tool never refuses an
+    # answer based on status; the caller declares intent:
+    #   resolve — mark the question resolved (settle it)
+    #   reopen  — put the question back to 'open', hand the turn to the other party
+    #   comment — add the answer but leave the question's status untouched
+    mode: Literal["resolve", "reopen", "comment"] | None = None
+    # Deprecated alias for `mode`. auto_resolve=True → "resolve", False → "reopen".
+    # If both are set, `mode` wins.
     auto_resolve: bool = True
     team_id: UUID | None = None
 
@@ -95,12 +103,14 @@ class MindmapAnswerTool(BaseTool):
                     "question node is not a member of this map",
                     data={"errors": [{"path": "question_node_id"}]},
                 )
-            if question["status"] != "open":
-                raise JsonRpcError(
-                    -32602,
-                    f"question is already {question['status']}",
-                    data={"code": "question_not_open", "status": question["status"]},
-                )
+            # NOTE: no status gate here on purpose. Answering is the caller's
+            # prerogative, not the tool's — a resolved or dropped question can be
+            # answered again (see `mode`). Only integrity guards remain: the map
+            # must be live and the node must be a member of this map.
+
+        # The caller declares what answering does to the question's status.
+        # `mode` wins over the deprecated `auto_resolve` boolean.
+        mode = inp.mode if inp.mode is not None else ("resolve" if inp.auto_resolve else "reopen")
 
         meta: dict[str, Any] = {"node_role": "note", "responsible_party": "model"}
         if inp.ratification_strength is not None:
@@ -143,7 +153,8 @@ class MindmapAnswerTool(BaseTool):
                 await service.touch_owner_write(conn, root_memory_id=root_id)
 
             status = question["status"]
-            if inp.auto_resolve:
+            summary_out: str | None = None
+            if mode == "resolve":
                 await service.set_node_status(
                     conn,
                     memory_id=inp.question_node_id,
@@ -154,6 +165,19 @@ class MindmapAnswerTool(BaseTool):
                     resolved_by_party=inp.answered_by,
                 )
                 status = "resolved"
+                summary_out = summary
+            elif mode == "reopen":
+                # The owner has more to say: put the question back in play and
+                # hand the turn to the other party. Prior resolution is cleared.
+                next_turn = "model" if inp.answered_by == "owner" else "owner"
+                await service.reopen_node(
+                    conn,
+                    memory_id=inp.question_node_id,
+                    root_memory_id=root_id,
+                    turn=next_turn,
+                )
+                status = "open"
+            # mode == "comment": leave the question's status/resolution untouched.
 
             await service.log_event(
                 conn,
@@ -164,7 +188,7 @@ class MindmapAnswerTool(BaseTool):
                 memory_id=answer_id,
                 payload={
                     "question_node_id": str(inp.question_node_id),
-                    "auto_resolved": inp.auto_resolve,
+                    "mode": mode,
                     "ratification_strength": inp.ratification_strength,
                 },
             )
@@ -174,7 +198,7 @@ class MindmapAnswerTool(BaseTool):
             answer_node_id=answer_id,
             question_node_id=inp.question_node_id,
             question_status=status,
-            resolution_summary=summary if inp.auto_resolve else None,
+            resolution_summary=summary_out,
             cursor=cursor,
             request_id=ctx.request_id,
         )
